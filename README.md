@@ -36,3 +36,10 @@ Puis donnez-lui une tâche précise, par exemple :
 - Notifications simulées
 - Pages de démonstration pour publications, portefeuille, statistiques, profil et paramètres
 - Messages d'avertissement sur le caractère fictif des données
+
+## Versions HTML autonomes
+L'espace Clipper existe aussi en un seul fichier HTML (sans serveur, à ouvrir directement dans Chrome ou Firefox) :
+```bash
+node standalone/clipper/build.mjs
+```
+Le fichier est généré dans `standalone/clipper/dist/clipboost-clipper.html`.
