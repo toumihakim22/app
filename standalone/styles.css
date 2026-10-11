@@ -1,6 +1,7 @@
 @import "tailwindcss" source(none);
-@source "./app.js";
+@source "./src/*.js";
 @source "./index.html";
+@source "../components/landing/*.tsx";
 
 @theme {
   --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
@@ -11,6 +12,10 @@
   --color-brand-700: #6d28d9;
   --color-ink: #1f2430;
   --color-income: #0f766e;
+}
+
+html {
+  scroll-behavior: smooth;
 }
 
 body {

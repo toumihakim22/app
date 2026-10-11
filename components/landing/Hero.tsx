@@ -22,6 +22,7 @@ export default function Hero() {
           <div className="mt-9 flex flex-col gap-3 sm:flex-row">
             <a
               href="#inscription"
+              data-route="inscription"
               className="rounded-2xl bg-ink px-7 py-4 text-center text-base font-semibold text-white shadow-lg shadow-ink/20 transition hover:bg-black"
             >
               + Devenir Clipper

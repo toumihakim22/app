@@ -1,9 +1,31 @@
 import Logo from "./Logo";
 
 const cols = [
-  { title: "Plateforme", links: ["Campagnes", "Devenir Clipper", "Pour les marques", "Tarifs"] },
-  { title: "Ressources", links: ["Guide du clipper", "FAQ", "Blog", "Contact"] },
-  { title: "Légal", links: ["Conditions d'utilisation", "Confidentialité", "Mentions légales"] },
+  {
+    title: "Plateforme",
+    links: [
+      { label: "Campagnes", href: "#campagnes" },
+      { label: "Devenir Clipper", href: "#inscription", route: "inscription" },
+      { label: "Se connecter", href: "#inscription", route: "connexion" },
+      { label: "Pour les marques", href: "#marques" },
+    ],
+  },
+  {
+    title: "Ressources",
+    links: [
+      { label: "Comment ça marche", href: "#comment-ca-marche" },
+      { label: "FAQ", href: "#faq" },
+      { label: "Administration", href: "#inscription", route: "connexion" },
+    ],
+  },
+  {
+    title: "Légal",
+    links: [
+      { label: "Conditions d'utilisation", href: "#" },
+      { label: "Confidentialité", href: "#" },
+      { label: "Mentions légales", href: "#" },
+    ],
+  },
 ];
 
 export default function Footer() {
@@ -21,9 +43,9 @@ export default function Footer() {
             <p className="text-sm font-bold text-ink">{c.title}</p>
             <ul className="mt-4 space-y-3">
               {c.links.map((l) => (
-                <li key={l}>
-                  <a href="#" className="text-sm text-gray-500 transition hover:text-ink">
-                    {l}
+                <li key={l.label}>
+                  <a href={l.href} data-route={"route" in l ? l.route : undefined} className="text-sm text-gray-500 transition hover:text-ink">
+                    {l.label}
                   </a>
                 </li>
               ))}

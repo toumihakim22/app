@@ -45,7 +45,7 @@ export default function Audiences() {
                 </li>
               ))}
             </ul>
-            <a href="#inscription" className="mt-9 inline-block rounded-2xl bg-ink px-6 py-3.5 font-semibold text-white transition hover:bg-black">
+            <a href="#inscription" data-route="inscription" className="mt-9 inline-block rounded-2xl bg-ink px-6 py-3.5 font-semibold text-white transition hover:bg-black">
               + Devenir Clipper
             </a>
           </div>
@@ -61,7 +61,7 @@ export default function Audiences() {
                 </li>
               ))}
             </ul>
-            <a href="#inscription" className="mt-9 inline-block rounded-2xl bg-white px-6 py-3.5 font-semibold text-brand-700 transition hover:bg-brand-50">
+            <a href="#inscription" data-route="inscription" className="mt-9 inline-block rounded-2xl bg-white px-6 py-3.5 font-semibold text-brand-700 transition hover:bg-brand-50">
               Lancer une campagne <span aria-hidden="true">🚀</span>
             </a>
           </div>

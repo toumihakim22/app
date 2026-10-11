@@ -37,9 +37,10 @@ Puis donnez-lui une tâche précise, par exemple :
 - Pages de démonstration pour publications, portefeuille, statistiques, profil et paramètres
 - Messages d'avertissement sur le caractère fictif des données
 
-## Versions HTML autonomes
-L'espace Clipper existe aussi en un seul fichier HTML (sans serveur, à ouvrir directement dans Chrome ou Firefox) :
+## Version HTML autonome (site complet)
+Tout le site tient aussi dans un seul fichier HTML, à ouvrir directement dans Chrome ou Firefox : page d'accueil, inscription par email avec code de vérification simulé, connexion, espace Clipper et tableau de bord administrateur.
 ```bash
-node standalone/clipper/build.mjs
+npm run build              # génère la page d'accueil
+node standalone/build.mjs  # crée standalone/dist/clipboost-site.html
 ```
-Le fichier est généré dans `standalone/clipper/dist/clipboost-clipper.html`.
+Comptes de démonstration : `yacine@clipboost.dz` / `clipper123` (Clipper) et `admin@clipboost.dz` / `admin123` (administrateur). Les données vivent en mémoire et sont réinitialisées au rechargement de la page.

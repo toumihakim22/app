@@ -33,6 +33,7 @@ export default function Earnings() {
             </div>
             <a
               href="#inscription"
+              data-route="inscription"
               className="mt-4 block rounded-2xl bg-brand-600 py-4 text-center text-base font-semibold text-white transition hover:bg-brand-700"
             >
               Inviter un créateur <span aria-hidden="true">🙋</span>
