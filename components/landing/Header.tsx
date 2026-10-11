@@ -57,8 +57,7 @@ export default function Header() {
         </button>
       </div>
 
-      {open && (
-        <div id="menu-mobile" className="border-t border-gray-100 bg-white px-4 pb-5 pt-2 lg:hidden">
+      <div id="menu-mobile" className={`${open ? "" : "hidden "}border-t border-gray-100 bg-white px-4 pb-5 pt-2 lg:hidden`}>
           <nav className="flex flex-col" aria-label="Navigation mobile">
             {links.map((l) => (
               <a
@@ -80,8 +79,7 @@ export default function Header() {
               Commencer gratuitement
             </a>
           </div>
-        </div>
-      )}
+      </div>
     </header>
   );
 }

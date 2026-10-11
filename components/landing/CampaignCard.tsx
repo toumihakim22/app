@@ -18,7 +18,7 @@ export default function CampaignCard({ c }: { c: Campaign }) {
   }
 
   return (
-    <article className="flex flex-col rounded-3xl bg-white p-2.5 shadow-sm ring-1 ring-gray-100 transition hover:-translate-y-0.5 hover:shadow-md">
+    <article data-category={c.category} data-search={`${c.title} ${c.brand}`.toLowerCase()} className="flex flex-col rounded-3xl bg-white p-2.5 shadow-sm ring-1 ring-gray-100 transition hover:-translate-y-0.5 hover:shadow-md">
       <div className={`relative aspect-[4/3.6] overflow-hidden rounded-2xl bg-gradient-to-br ${c.gradient}`}>
         <span className="absolute left-3 top-3 rounded-lg bg-ink/90 px-2 py-1 text-sm font-bold text-white">
           {c.ratePer1k} DA<span className="font-medium text-white/70"> /1K</span>
@@ -53,6 +53,7 @@ export default function CampaignCard({ c }: { c: Campaign }) {
         <button
           type="button"
           onClick={copyLink}
+          data-copy={`https://clipboost.dz/c/${c.id}`}
           className={`mt-4 rounded-xl py-2 text-sm font-semibold transition ${
             copied ? "bg-emerald-50 text-emerald-700" : "bg-brand-50 text-brand-700 hover:bg-brand-100"
           }`}
