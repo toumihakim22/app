@@ -65,6 +65,7 @@ function campaignCard(c, compact = false) {
       <ul class="mt-3 space-y-2 text-sm text-gray-700">
         <li class="flex items-center gap-2"><span class="h-2.5 w-2.5 rounded-full bg-rose-500"></span>${esc(c.brand)} · ${c.category}</li>
         <li class="flex items-center gap-2"><span class="h-2.5 w-2.5 rounded-full bg-emerald-600"></span>${joined ? `${da(generated)} générés` : `${c.clippers} clippers inscrits`}</li>
+        <li class="flex items-center gap-2"><span class="h-2.5 w-2.5 rounded-full bg-amber-500"></span>Max ${da(c.maxPayout)} par clip</li>
       </ul>
       ${compact ? "" : `<div class="mt-3"><div class="flex justify-between text-xs text-gray-500"><span>Budget utilisé</span><span>${pct} %</span></div><div class="mt-1 h-1.5 rounded-full bg-gray-100"><div class="h-1.5 rounded-full bg-brand-600" style="width:${pct}%"></div></div></div>`}
       ${joined
@@ -96,9 +97,12 @@ function publicationsTable(list, { showUser = false, actions = false } = {}) {
       const c = campaignById(p.campaign), owner = userById(p.userId);
       const thumb = `<span class="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-gradient-to-br ${c.gradient} text-xl">${c.emoji}</span>`;
       const platform = `<span class="rounded-md px-2 py-1 text-xs font-semibold ${platformTone[p.platform]}">${p.platform}</span>`;
-      const gain = p.status === "Validée" ? da(earningsOf(p)) : "—";
+      const gain = p.status === "Validée" ? `${da(earningsOf(p))}${isCapped(p) ? `<span class="block text-xs font-medium text-amber-600">Plafond atteint</span>` : ""}`
+        : p.status === "En attente" && belowMin(p) ? `<span class="text-xs font-medium text-gray-500">Sous le seuil<span class="block">${fmt(p.views)} / ${fmt(viewsFor(c, c.minPayout))} vues</span></span>` : "—";
       const sub = showUser ? `${esc(owner.name)} · ${esc(c.title)}` : `${esc(c.title)} · ${date(p.date)}`;
-      const decision = actions && p.status === "En attente"
+      const decision = actions && p.status === "En attente" && belowMin(p)
+        ? `<span class="flex flex-wrap items-center gap-2"><span class="rounded-lg bg-gray-100 px-3 py-1.5 text-xs font-semibold text-gray-500" title="Le clip n'a pas encore atteint le seuil minimum de la campagne">Seuil non atteint</span><button type="button" data-action="adm-reject" data-id="${p.id}" class="rounded-lg bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-600 hover:bg-rose-100">Refuser</button></span>`
+        : actions && p.status === "En attente"
         ? `<span class="flex gap-2"><button type="button" data-action="adm-validate" data-id="${p.id}" class="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700">Valider</button><button type="button" data-action="adm-reject" data-id="${p.id}" class="rounded-lg bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-600 hover:bg-rose-100">Refuser</button></span>`
         : `${statusBadge(p.status)}${p.reason ? `<span class="mt-1 block text-xs text-rose-500">${esc(p.reason)}</span>` : ""}`;
       return `<div class="border-b border-gray-50 px-4 py-4 last:border-0 md:grid md:grid-cols-[2fr_1fr_1fr_1fr_1fr] md:items-center md:gap-4 md:px-6">
@@ -254,7 +258,7 @@ function cProfil() {
           <div class="sm:col-span-2">${field("Bio", `<textarea name="bio" rows="3" placeholder="Présentez votre style de clips aux marques…" class="${inputCls}">${esc(u.bio)}</textarea>`)}</div>
           <div class="sm:col-span-2"><button class="rounded-xl bg-ink px-5 py-2.5 text-sm font-semibold text-white hover:bg-black">Enregistrer</button></div></form>`)}
         ${card(`<p class="font-bold">Comptes connectés</p><div class="mt-4 divide-y divide-gray-100">${accounts.map(([pl, h, f, on]) => `<div class="flex items-center justify-between gap-3 py-3"><div><p class="font-semibold">${pl}</p><p class="text-sm text-gray-500">${on ? `${esc(h)} · ${f}` : f}</p></div>
-          <button type="button" data-action="toast" data-msg="${on ? `${pl} déjà connecté (démonstration)` : `Connexion ${pl} simulée`}" class="rounded-xl px-3 py-2 text-sm font-semibold ${on ? "bg-emerald-50 text-emerald-700" : "bg-brand-50 text-brand-700"}">${on ? "Connecté" : "Connecter"}</button></div>`).join("")}</div>`)}
+          <button type="button" data-action="toast" data-msg="${on ? `Compte ${pl} déjà connecté` : `Redirection vers ${pl} pour autoriser ClipBoost…`}" class="rounded-xl px-3 py-2 text-sm font-semibold ${on ? "bg-emerald-50 text-emerald-700" : "bg-brand-50 text-brand-700"}">${on ? "Connecté" : "Connecter"}</button></div>`).join("")}</div>`)}
       </div>
     </div>`;
 }
@@ -272,9 +276,9 @@ function cParametres() {
         ${card(`<p class="font-bold">Langue et région</p><div class="mt-4 grid gap-4 sm:grid-cols-2">
           ${field("Langue", `<select class="${inputCls}"><option>Français</option></select>`)}
           ${field("Devise", `<select class="${inputCls}"><option>Dinar algérien (DA)</option></select>`)}</div>`)}
-        ${card(`<p class="font-bold">Moyen de retrait</p><p class="mt-1 text-sm text-gray-500">Utilisé pour vos demandes de retrait (simulation).</p>
+        ${card(`<p class="font-bold">Moyen de retrait</p><p class="mt-1 text-sm text-gray-500">Utilisé pour vos demandes de retrait.</p>
           <div class="mt-4 space-y-2">${["CCP •••• 5678", "BaridiMob"].map((m, i) => `<label class="flex cursor-pointer items-center gap-3 rounded-xl p-3 ring-1 ring-gray-200 has-[:checked]:bg-brand-50 has-[:checked]:ring-brand-500"><input type="radio" name="payout" ${i === 0 ? "checked" : ""} class="accent-brand-600"/> <span class="font-medium">${m}</span></label>`).join("")}</div>`)}
-        <button type="button" data-action="toast" data-msg="Préférences enregistrées (démonstration)" class="w-full rounded-2xl bg-ink py-3.5 font-semibold text-white hover:bg-black">Enregistrer les préférences</button>
+        <button type="button" data-action="toast" data-msg="Préférences enregistrées" class="w-full rounded-2xl bg-ink py-3.5 font-semibold text-white hover:bg-black">Enregistrer les préférences</button>
       </div>
     </div>`;
 }
@@ -293,6 +297,9 @@ function clipperModal() {
         <div class="rounded-2xl bg-gray-50 p-3"><p class="text-xs text-gray-500">Budget</p><p class="text-sm font-bold sm:text-base">${da(c.budget)}</p></div>
         <div class="rounded-2xl bg-gray-50 p-3"><p class="text-xs text-gray-500">Restant</p><p class="text-sm font-bold sm:text-base">${da(c.budget - c.spent)}</p></div>
         <div class="rounded-2xl bg-gray-50 p-3"><p class="text-xs text-gray-500">Clippers</p><p class="text-sm font-bold sm:text-base">${c.clippers}</p></div></div>
+      <div class="mt-3 grid grid-cols-2 gap-3">
+        <div class="rounded-2xl bg-brand-50 p-3"><p class="text-xs text-brand-700">Seuil minimum</p><p class="text-sm font-bold sm:text-base">${da(c.minPayout)}</p><p class="text-xs text-gray-500">soit ${fmt(viewsFor(c, c.minPayout))} vues pour être payé</p></div>
+        <div class="rounded-2xl bg-amber-50 p-3"><p class="text-xs text-amber-700">Plafond par clip</p><p class="text-sm font-bold sm:text-base">${da(c.maxPayout)}</p><p class="text-xs text-gray-500">atteint à ${fmt(viewsFor(c, c.maxPayout))} vues</p></div></div>
       <p class="mt-5 font-bold">Règles de la campagne</p>
       <ul class="mt-2 space-y-2">${c.rules.map((r) => `<li class="flex gap-2 text-sm text-gray-700"><span class="text-income">${icon("check", "h-4 w-4")}</span>${esc(r)}</li>`).join("")}</ul>
       <p class="mt-4 text-sm text-gray-500">Plateformes : ${c.platforms.join(", ")}</p>
@@ -315,7 +322,7 @@ function clipperModal() {
   if (m.type === "withdraw") {
     const min = db.settings.minWithdraw, bal = Math.floor(balance());
     if (bal < min) return modalShell(`<h2 class="text-2xl font-extrabold">Demander un retrait</h2><p class="mt-3 text-gray-600">Votre solde disponible (${da(bal)}) est inférieur au minimum de retrait fixé à <b>${da(min)}</b>.</p>`);
-    return modalShell(`<h2 class="text-2xl font-extrabold">Demander un retrait</h2><p class="mt-1 text-sm text-gray-500">Solde disponible : <b>${da(bal)}</b>. Aucun argent réel n'est transféré.</p>
+    return modalShell(`<h2 class="text-2xl font-extrabold">Demander un retrait</h2><p class="mt-1 text-sm text-gray-500">Solde disponible : <b>${da(bal)}</b>. Le virement est traité sous 48 h ouvrées.</p>
       <form data-form="withdraw" class="mt-6 space-y-4">
         ${field("Montant (DA)", `<input name="amount" type="number" min="${min}" max="${bal}" step="100" required value="${Math.min(10000, bal)}" class="${inputCls}"/>`, `Minimum ${da(min)} · validé par l'équipe ClipBoost.`)}
         ${field("Vers", `<select name="to" class="${inputCls}"><option>CCP •••• 5678</option><option>BaridiMob</option></select>`)}

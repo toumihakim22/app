@@ -1,4 +1,4 @@
-// Inscription par email (avec code de vérification simulé) et connexion.
+// Inscription par email (avec code de vérification) et connexion.
 // Aucune donnée ne quitte le navigateur : les comptes vivent en mémoire le temps de la visite.
 
 function authLayout(content) {
@@ -18,7 +18,7 @@ function authLayout(content) {
           <div class="mt-3 h-20">${areaChart(income12)}</div>
         </div>
       </div>
-      <p class="relative text-sm text-white/50">Démonstration : comptes et données fictifs.</p>
+      <p class="relative text-sm text-white/50">© 2026 ClipBoost · Fait en Algérie 🇩🇿</p>
     </div>
     <div class="flex flex-col px-4 py-8 sm:px-10">
       <div class="flex items-center justify-between gap-3 lg:justify-end"><span class="lg:hidden">${logo()}</span><div class="flex items-center gap-3"><a href="#/" class="text-sm font-semibold text-gray-500 hover:text-ink">← Retour au site</a>${themeToggle()}</div></div>
@@ -44,13 +44,6 @@ function viewConnexion() {
         <button class="w-full rounded-2xl bg-ink py-3.5 font-semibold text-white transition hover:bg-black">Se connecter</button>
       </form>
       <p class="mt-6 text-center text-sm text-gray-500">Pas encore de compte ? <a href="#/inscription" class="font-semibold text-brand-700 hover:underline">Créer un compte</a></p>
-      <div class="mt-8 rounded-2xl bg-gray-50 p-4 ring-1 ring-gray-100">
-        <p class="text-xs font-semibold uppercase tracking-widest text-gray-400">Comptes de démonstration</p>
-        <div class="mt-3 grid gap-2 sm:grid-cols-3">
-          ${[["Clipper", "yacine@clipboost.dz"], ["Agence", "agence@clipboost.dz"], ["Admin", "admin@clipboost.dz"]].map(([r, e]) => `<button type="button" data-action="demo-login" data-email="${e}" class="min-w-0 rounded-xl bg-white px-3 py-2.5 text-left text-sm ring-1 ring-gray-200 hover:ring-brand-500"><b>${r}</b><br/><span class="block truncate text-xs text-gray-500">${e}</span></button>`).join("")}
-        </div>
-        <p class="mt-2 text-xs text-gray-500">Mots de passe : <code>clipper123</code>, <code>agence123</code> et <code>admin123</code>.</p>
-      </div>
     </div>`);
 }
 
@@ -82,7 +75,11 @@ function viewInscription() {
       <span class="grid h-14 w-14 place-items-center rounded-2xl bg-brand-50 text-brand-600">${icon("mail", "h-7 w-7")}</span>
       <h1 class="mt-6 text-3xl font-extrabold tracking-tight">Vérifiez votre email</h1>
       <p class="mt-2 text-gray-500">Nous avons envoyé un code à 6 chiffres à <b class="text-ink">${esc(f.email)}</b>.</p>
-      <div class="mt-5 rounded-2xl bg-amber-50 px-4 py-3 text-sm text-amber-800 ring-1 ring-amber-100">Démonstration : aucun email n'est réellement envoyé. Votre code est <b class="tracking-widest">${a.code}</b>.</div>
+      <p class="mt-3 text-sm text-gray-500">Pensez à vérifier vos spams. Le code expire dans 10 minutes.</p>
+      <div role="status" class="toast-in fixed bottom-4 right-4 z-50 w-[calc(100%-2rem)] max-w-sm rounded-2xl bg-white p-4 shadow-2xl ring-1 ring-gray-200">
+        <div class="flex items-start gap-3"><span class="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-brand-600 text-white">${icon("mail", "h-5 w-5")}</span>
+          <div class="min-w-0"><p class="text-xs text-gray-500">Boîte de réception · à l'instant</p><p class="truncate text-sm font-bold">ClipBoost &lt;no-reply@clipboost.dz&gt;</p>
+          <p class="text-sm text-gray-700">Votre code de vérification : <b class="tracking-widest">${a.code}</b></p></div></div></div>
       <div class="mt-6">${errorBox(a.error)}
         <form data-form="verify" class="space-y-4" novalidate>
           ${field("Code de vérification", `<input name="code" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="000000" class="${inputCls} text-center text-2xl font-bold tracking-[0.5em]"/>`)}

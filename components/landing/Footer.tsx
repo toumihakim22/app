@@ -57,7 +57,7 @@ export default function Footer() {
       <div className="border-t border-gray-100">
         <div className="mx-auto flex max-w-7xl flex-col gap-2 px-4 py-6 text-xs text-gray-400 sm:flex-row sm:justify-between sm:px-6 lg:px-8">
           <p>© 2026 ClipBoost. Tous droits réservés.</p>
-          <p>Maquette de démonstration : toutes les données affichées sont fictives.</p>
+          <p>Fait avec passion en Algérie 🇩🇿</p>
         </div>
       </div>
     </footer>

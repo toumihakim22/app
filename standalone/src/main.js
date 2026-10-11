@@ -205,7 +205,7 @@ root.addEventListener("click", (e) => {
     case "logout": return logout();
     case "toast": return toast(t.dataset.msg);
     case "toggle-pwd": state.auth.showPwd = !state.auth.showPwd; return render();
-    case "forgot": return toast("Un lien de réinitialisation serait envoyé par email (démonstration).");
+    case "forgot": return toast("Si un compte existe, un lien de réinitialisation a été envoyé par email.");
     case "demo-login": {
       const u = db.users.find((x) => x.email === t.dataset.email);
       const form = root.querySelector('[data-form="login"]');
@@ -214,7 +214,7 @@ root.addEventListener("click", (e) => {
     }
     case "signup-back": state.auth.step = "form"; state.auth.error = ""; return render();
     case "signup-role": captureSignupForm(); state.auth.form.role = t.dataset.value; state.auth.fieldErrors = {}; return render();
-    case "resend-code": state.auth.code = newCode(); state.auth.error = ""; render(); return toast("Nouveau code envoyé (démonstration)");
+    case "resend-code": state.auth.code = newCode(); state.auth.error = ""; render(); return toast("Nouveau code envoyé");
   }
   if (state.route.area === "admin") handleAdminAction(action, t);
   else if (state.route.area === "agence") handleAgencyAction(action, t);

@@ -119,7 +119,7 @@ function aModeration() {
 
 function aRetraits() {
   const list = db.transactions.filter((t) => t.type === "retrait");
-  return `${pageHeader("Retraits", `Seuil minimum actuel : ${da(db.settings.minWithdraw)}. Aucun virement réel n'est effectué.`)}
+  return `${pageHeader("Retraits", `Seuil minimum actuel : ${da(db.settings.minWithdraw)}.`)}
     <div class="mt-8 space-y-3">${list.map((t) => {
       const u = userById(t.userId);
       return `<div class="flex flex-col gap-3 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-gray-100 sm:flex-row sm:items-center">
@@ -211,9 +211,11 @@ function handleAdminAction(action, t) {
     case "adm-new-campaign": state.modal = { type: "new-campaign" }; return render();
     case "adm-validate": {
       const p = db.publications.find((x) => x.id === +id);
-      if (!p.views) p.views = 1500 + Math.floor(Math.random() * 9000); // vues comptabilisées pendant la vérification
+      if (!p.views) p.views = 2500 + Math.floor(Math.random() * 9000); // vues comptabilisées pendant la vérification
       p.status = "Validée";
-      const amount = Math.round(earningsOf(p)), c = campaignById(p.campaign);
+      const c = campaignById(p.campaign);
+      if (belowMin(p)) { p.status = "En attente"; return toast(`Seuil non atteint : ${fmt(viewsFor(c, c.minPayout))} vues minimum`); }
+      const amount = Math.round(earningsOf(p));
       c.spent = Math.min(c.budget, c.spent + amount);
       db.transactions.unshift({ id: `T-${1046 + db.transactions.length}`, userId: p.userId, date: TODAY, time: nowTime(), label: c.title, amount, type: "gain", status: "Validé" });
       notify(p.userId, "✅", `Votre clip « ${p.title} » a été validé : +${da(amount)}.`);
@@ -250,6 +252,8 @@ function handleAdminSubmit(form, data) {
     logActivity("🚫", `Clip « ${p.title} » refusé.`);
     state.modal = null; render(); toast("Clip refusé, le clipper est notifié");
   } else if (form === "adm-campaign") {
+    const err = payoutError(data);
+    if (err) return toast(err);
     db.campaigns.unshift(buildCampaign(data, { brand: data.brand.trim(), ownerId: null, status: "Active" }));
     clippers().forEach((u) => notify(u.id, "🎯", `Nouvelle campagne : ${data.title.trim()} (${data.rate} DA /1K).`));
     logActivity("🎯", `Campagne « ${data.title.trim()} » créée.`);

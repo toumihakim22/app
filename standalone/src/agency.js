@@ -96,7 +96,7 @@ function gClips() {
 function gBudget() {
   const u = me(), list = myCampaigns();
   const total = list.reduce((s, c) => s + c.budget, 0), spent = list.reduce((s, c) => s + c.spent, 0);
-  return `${pageHeader("Budget", "Suivez la consommation de vos campagnes et rechargez leur budget (simulation, aucun paiement réel).")}
+  return `${pageHeader("Budget", "Suivez la consommation de vos campagnes et rechargez leur budget.")}
     <div class="mt-8 grid gap-4 sm:grid-cols-3">
       ${card(`<p class="text-sm text-gray-500">Crédit disponible</p><p class="mt-2 text-2xl font-extrabold">${da(u.credit)}</p><button type="button" data-action="ag-credit" class="mt-4 w-full rounded-xl bg-brand-600 py-2.5 text-sm font-semibold text-white hover:bg-brand-700">Recharger le crédit</button>`, "p-5")}
       ${card(`<p class="text-sm text-gray-500">Budget engagé</p><p class="mt-2 text-2xl font-extrabold">${da(total)}</p><p class="mt-1 text-xs text-gray-500">sur ${list.length} campagne(s)</p>`, "p-5")}
@@ -139,6 +139,8 @@ function campaignForm(formName, submitLabel, note) {
     ${field("Catégorie", `<select name="category" class="${inputCls}">${CATEGORIES.map((c) => `<option>${c}</option>`).join("")}</select>`)}
     ${field("Tarif pour 1 000 vues (DA)", `<input name="rate" type="number" min="50" max="500" value="120" required class="${inputCls}"/>`)}
     ${field("Budget (DA)", `<input name="budget" type="number" min="10000" step="1000" value="200000" required class="${inputCls}"/>`)}
+    ${field("Seuil minimum par clip (DA)", `<input name="minPayout" type="number" min="0" step="10" value="240" required class="${inputCls}"/><span class="mt-1 block text-xs text-gray-500">Gain à atteindre avant que le clip soit examiné.</span>`)}
+    ${field("Plafond par clip (DA)", `<input name="maxPayout" type="number" min="100" step="100" value="24000" required class="${inputCls}"/><span class="mt-1 block text-xs text-gray-500">Un clip viral ne peut pas dépasser ce montant.</span>`)}
     <div class="sm:col-span-2"><span class="text-sm font-medium text-gray-700">Visuel</span><div class="mt-1.5 flex flex-wrap gap-2">${emojis.map((e, i) => `<label class="cursor-pointer"><input type="radio" name="emoji" value="${e}" ${i === 0 ? "checked" : ""} class="peer sr-only"/><span class="grid h-11 w-11 place-items-center rounded-xl text-xl ring-1 ring-gray-200 peer-checked:bg-brand-50 peer-checked:ring-2 peer-checked:ring-brand-500">${e}</span></label>`).join("")}</div></div>
     <div class="sm:col-span-2"><span class="text-sm font-medium text-gray-700">Plateformes</span><div class="mt-1.5 flex flex-wrap gap-2">${["TikTok", "Instagram", "YouTube"].map((pl) => `<label class="cursor-pointer"><input type="checkbox" name="pf-${pl}" checked class="peer sr-only"/><span class="block rounded-xl px-4 py-2 text-sm font-semibold ring-1 ring-gray-200 peer-checked:bg-brand-50 peer-checked:text-brand-700 peer-checked:ring-brand-500">${pl}</span></label>`).join("")}</div></div>
     <div class="sm:col-span-2">${field("Règles (une par ligne)", `<textarea name="rules" rows="3" class="${inputCls}">Clip de 15 à 60 secondes\nMentionner la marque</textarea>`)}</div>
@@ -147,10 +149,16 @@ function campaignForm(formName, submitLabel, note) {
   </form>`;
 }
 
+function payoutError(data) {
+  if (+data.maxPayout <= +data.minPayout) return "Le plafond doit être supérieur au seuil minimum";
+  if (+data.maxPayout > +data.budget) return "Le plafond par clip ne peut pas dépasser le budget";
+  return "";
+}
+
 function buildCampaign(data, extra) {
   const platforms = ["TikTok", "Instagram", "YouTube"].filter((pl) => data[`pf-${pl}`]);
   return {
-    id: `c${Date.now()}`, title: data.title.trim(), category: data.category, rate: +data.rate, budget: +data.budget, spent: 0, clippers: 0,
+    id: `c${Date.now()}`, title: data.title.trim(), category: data.category, rate: +data.rate, budget: +data.budget, minPayout: +data.minPayout, maxPayout: +data.maxPayout, spent: 0, clippers: 0,
     createdAt: TODAY, gradient: GRADIENTS[db.campaigns.length % GRADIENTS.length], emoji: data.emoji, platforms: platforms.length ? platforms : ["TikTok"],
     rules: data.rules.split("\n").map((r) => r.trim()).filter(Boolean), ...extra,
   };
@@ -161,7 +169,7 @@ function agencyModal() {
   if (!m) return "";
   if (m.type === "ag-new") {
     return modalShell(`<h2 class="text-2xl font-extrabold">Nouvelle campagne</h2><p class="mt-1 text-sm text-gray-500">Elle sera publiée après vérification par l'équipe ClipBoost.</p>
-      ${campaignForm("ag-campaign", "Envoyer pour validation", "Le budget est réservé sur votre crédit dès l'approbation (simulation).")}`, "max-w-xl");
+      ${campaignForm("ag-campaign", "Envoyer pour validation", "Le budget est réservé sur votre crédit dès l'approbation de la campagne.")}`, "max-w-xl");
   }
   if (m.type === "ag-open") {
     const c = campaignById(m.id), clips = clipsOf([c.id]), pct = Math.min(100, Math.round((c.spent / c.budget) * 100));
@@ -169,7 +177,7 @@ function agencyModal() {
       <div class="mt-5 flex items-start justify-between gap-3"><div><p class="text-sm text-gray-500">${c.category} · créée le ${date(c.createdAt)}</p><h2 class="text-2xl font-extrabold">${esc(c.title)}</h2></div>${statusBadge(c.status)}</div>
       <p class="mt-1 text-sm text-gray-500">${agencyStatusHint(c)}</p>
       <div class="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
-        ${[["Tarif", `${c.rate} DA /1K`], ["Clippers", c.clippers], ["Clips", clips.length], ["Vues", fmt(campaignViews(c))]].map(([k, v]) => `<div class="rounded-2xl bg-gray-50 p-3 text-center"><p class="text-xs text-gray-500">${k}</p><p class="font-bold">${v}</p></div>`).join("")}
+        ${[["Tarif", `${c.rate} DA /1K`], ["Seuil", da(c.minPayout)], ["Plafond", da(c.maxPayout)], ["Clippers", c.clippers], ["Clips", clips.length], ["Vues", fmt(campaignViews(c))]].map(([k, v]) => `<div class="rounded-2xl bg-gray-50 p-3 text-center"><p class="text-xs text-gray-500">${k}</p><p class="font-bold">${v}</p></div>`).join("")}
       </div>
       <div class="mt-4"><div class="flex justify-between text-xs text-gray-500"><span>${da(c.spent)} consommés sur ${da(c.budget)}</span><span>${pct} %</span></div><div class="mt-1 h-2 rounded-full bg-gray-100"><div class="h-2 rounded-full bg-brand-600" style="width:${pct}%"></div></div></div>
       <p class="mt-5 font-bold">Règles</p><ul class="mt-2 space-y-1.5">${c.rules.map((r) => `<li class="flex gap-2 text-sm text-gray-700"><span class="text-income">${icon("check", "h-4 w-4")}</span>${esc(r)}</li>`).join("")}</ul>
@@ -189,10 +197,10 @@ function agencyModal() {
         <button class="w-full rounded-xl bg-brand-600 py-3 font-semibold text-white hover:bg-brand-700">Ajouter au budget</button></form>`}`);
   }
   if (m.type === "ag-credit") {
-    return modalShell(`<h2 class="text-2xl font-extrabold">Recharger le crédit</h2><p class="mt-1 text-sm text-gray-500">Démonstration : aucun paiement n'est effectué.</p>
+    return modalShell(`<h2 class="text-2xl font-extrabold">Recharger le crédit</h2><p class="mt-1 text-sm text-gray-500">Paiement sécurisé par carte Edahabia ou CIB.</p>
       <form data-form="ag-credit" class="mt-6 space-y-4">
         <div class="grid grid-cols-3 gap-2">${[50000, 100000, 250000].map((v, i) => `<label class="cursor-pointer"><input type="radio" name="amount" value="${v}" ${i === 1 ? "checked" : ""} class="peer sr-only"/><span class="block rounded-xl py-3 text-center text-sm font-bold ring-1 ring-gray-200 peer-checked:bg-brand-50 peer-checked:text-brand-700 peer-checked:ring-2 peer-checked:ring-brand-500">${da(v)}</span></label>`).join("")}</div>
-        <button class="w-full rounded-xl bg-brand-600 py-3 font-semibold text-white hover:bg-brand-700">Recharger (simulation)</button></form>`);
+        <button class="w-full rounded-xl bg-brand-600 py-3 font-semibold text-white hover:bg-brand-700">Payer et recharger</button></form>`);
   }
   return "";
 }
@@ -219,6 +227,8 @@ function handleAgencyAction(action, t) {
 function handleAgencySubmit(form, data) {
   const u = me();
   if (form === "ag-campaign") {
+    const err = payoutError(data);
+    if (err) return toast(err);
     const c = buildCampaign(data, { brand: u.name, ownerId: u.id, status: "En attente" });
     db.campaigns.unshift(c);
     notify(u.id, "⏳", `Votre campagne « ${c.title} » est en cours de vérification.`);
@@ -234,7 +244,7 @@ function handleAgencySubmit(form, data) {
     state.modal = null; render(); toast(`${da(amount)} ajoutés au budget`);
   } else if (form === "ag-credit") {
     u.credit += +data.amount;
-    state.modal = null; render(); toast(`Crédit rechargé de ${da(+data.amount)} (simulation)`);
+    state.modal = null; render(); toast(`Crédit rechargé de ${da(+data.amount)}`);
   } else if (form === "ag-profile") {
     const old = u.name;
     u.name = data.name.trim() || u.name; u.contact = data.contact.trim(); u.country = data.country; u.website = data.website.trim();

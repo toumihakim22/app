@@ -9,7 +9,13 @@ const nowTime = () => { const d = new Date(); return `${String(d.getHours()).pad
 const initials = (name) => name.split(/\s+/).filter(Boolean).map((w) => w[0]).join("").slice(0, 2).toUpperCase();
 const campaignById = (id) => db.campaigns.find((c) => c.id === id);
 const userById = (id) => db.users.find((u) => u.id === id);
-const earningsOf = (p) => (p.status === "Validée" ? (p.views / 1000) * campaignById(p.campaign).rate : 0);
+const rawEarnings = (p) => (p.views / 1000) * campaignById(p.campaign).rate;
+// Sous le seuil minimum, un clip ne rapporte rien ; au-delà du plafond, ses gains s'arrêtent.
+const belowMin = (p) => rawEarnings(p) < (campaignById(p.campaign).minPayout || 0);
+const isCapped = (p) => rawEarnings(p) >= (campaignById(p.campaign).maxPayout || Infinity);
+const payoutOf = (p) => (belowMin(p) ? 0 : Math.min(rawEarnings(p), campaignById(p.campaign).maxPayout || Infinity));
+const earningsOf = (p) => (p.status === "Validée" ? payoutOf(p) : 0);
+const viewsFor = (c, amount) => Math.ceil((amount / c.rate) * 1000);
 const isEmail = (s) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(s);
 
 const icons = {

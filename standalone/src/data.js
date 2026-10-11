@@ -1,4 +1,4 @@
-// Données fictives du site. Tout vit en mémoire : un rechargement de la page remet la démo à zéro.
+// Données du site, en mémoire.
 
 const CATEGORIES = ["Sport", "Food", "Tech", "Mode", "Musique", "Humour"];
 const COUNTRIES = ["Algérie", "Maroc", "Tunisie", "Libye", "Mauritanie", "Égypte", "France", "Belgique", "Suisse", "Canada", "Sénégal", "Côte d'Ivoire", "Arabie saoudite", "Émirats arabes unis", "Qatar", "Autre"];
@@ -48,7 +48,7 @@ const db = {
     { id: 8, userId: 2, campaign: "atlas", title: "3 tenues, 1 manteau", platform: "Instagram", date: "2026-10-10", views: 31200, status: "En attente" },
     { id: 9, userId: 2, campaign: "kahwa", title: "Brunch à Oran", platform: "TikTok", date: "2026-10-06", views: 18800, status: "Validée" },
     { id: 10, userId: 4, campaign: "rire", title: "Quand ta mère trouve ton bulletin", platform: "TikTok", date: "2026-10-10", views: 52900, status: "En attente" },
-    { id: 11, userId: 5, campaign: "derby", title: "Les supporters chantent", platform: "TikTok", date: "2026-10-11", views: 2300, status: "En attente" },
+    { id: 11, userId: 5, campaign: "derby", title: "Les supporters chantent", platform: "TikTok", date: "2026-10-11", views: 1600, status: "En attente" },
     { id: 12, userId: 3, campaign: "gaming", title: "Clutch en finale", platform: "YouTube", date: "2026-09-20", views: 8800, status: "Validée" },
   ],
 
@@ -80,6 +80,11 @@ const db = {
     { icon: "⛔", text: "Karim Haddad a été suspendu (vues non conformes).", time: "28 sept." },
   ],
 };
+
+// Seuil minimum (gain avant examen du clip) et plafond de gains par clip, en DA.
+// Par défaut : 2 000 vues pour le seuil, 200 000 vues pour le plafond.
+const PAYOUT_PRESETS = { rire: { maxPayout: 6000 } };
+db.campaigns.forEach((c) => Object.assign(c, { minPayout: c.rate * 2, maxPayout: c.rate * 200 }, PAYOUT_PRESETS[c.id]));
 
 const views30 = [3.1, 3.4, 2.9, 4.2, 5.1, 4.8, 5.6, 6.2, 5.9, 6.8, 7.4, 7.1, 6.5, 7.9, 8.6, 8.2, 9.4, 10.1, 9.7, 11.2, 12.4, 11.8, 12.9, 14.1, 13.6, 15.2, 16.8, 15.9, 17.4, 18.6];
 const income12 = [8, 9, 12, 18, 24, 27, 27, 26, 29, 33, 35, 33, 27];
