@@ -43,4 +43,4 @@ Tout le site tient aussi dans un seul fichier HTML, à ouvrir directement dans C
 npm run build              # génère la page d'accueil
 node standalone/build.mjs  # crée standalone/dist/clipboost-site.html
 ```
-Comptes de démonstration : `yacine@clipboost.dz` / `clipper123` (Clipper) et `admin@clipboost.dz` / `admin123` (administrateur). Les données vivent en mémoire et sont réinitialisées au rechargement de la page.
+Comptes de démonstration : `yacine@clipboost.dz` / `clipper123` (Clipper), `agence@clipboost.dz` / `agence123` (Agence, création de campagnes) et `admin@clipboost.dz` / `admin123` (administrateur). Le bouton soleil/lune bascule entre mode clair et mode sombre. Les données vivent en mémoire et sont réinitialisées au rechargement de la page.

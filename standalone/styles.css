@@ -2,6 +2,7 @@
 @source "./src/*.js";
 @source "./index.html";
 @source "../components/landing/*.tsx";
+@import "../app/dark.css";
 
 @theme {
   --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;

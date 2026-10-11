@@ -16,7 +16,7 @@ export default function FinalCta() {
               <a href="#inscription" data-route="inscription" className="rounded-2xl bg-brand-600 px-8 py-4 font-semibold text-white shadow-lg shadow-brand-600/40 transition hover:bg-brand-500">
                 + Devenir Clipper
               </a>
-              <a href="#inscription" data-route="inscription" className="rounded-2xl bg-white/10 px-8 py-4 font-semibold text-white ring-1 ring-white/20 transition hover:bg-white/15">
+              <a href="#inscription" data-route="inscription-agence" className="rounded-2xl bg-white/10 px-8 py-4 font-semibold text-white ring-1 ring-white/20 transition hover:bg-white/15">
                 Je suis une marque
               </a>
             </div>

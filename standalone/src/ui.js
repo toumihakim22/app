@@ -131,7 +131,42 @@ function modalShell(body, size = "max-w-lg") {
 
 function siteBanner() {
   const s = db.settings, parts = [];
-  if (s.maintenance) parts.push(`<div class="bg-rose-600 px-4 py-2 text-center text-sm font-semibold text-white">🛠️ Le site est en maintenance : les connexions Clipper sont temporairement suspendues.</div>`);
+  if (s.maintenance) parts.push(`<div class="bg-rose-600 px-4 py-2 text-center text-sm font-semibold text-white">🛠️ Le site est en maintenance : les connexions des clippers et des agences sont temporairement suspendues.</div>`);
   if (s.announcement) parts.push(`<div class="bg-brand-600 px-4 py-2 text-center text-sm font-medium text-white">📣 ${esc(s.announcement)}</div>`);
   return parts.join("");
 }
+
+// Bouton clair / sombre : géré globalement (voir landing.js), l'icône suit la classe .dark.
+const themeToggle = (cls = "") =>
+  `<button type="button" data-theme-toggle class="grid h-10 w-10 shrink-0 place-items-center rounded-xl ring-1 ring-gray-200 hover:bg-gray-50 ${cls}" aria-label="Changer de thème (clair ou sombre)" title="Mode clair / sombre">
+    <svg viewBox="0 0 24 24" class="theme-moon h-5 w-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+    <svg viewBox="0 0 24 24" class="theme-sun h-5 w-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+  </button>`;
+
+const countrySelect = (name, value, cls = inputCls) =>
+  `<select name="${name}" class="${cls}">${COUNTRIES.map((c) => `<option ${c === value ? "selected" : ""}>${c}</option>`).join("")}</select>`;
+
+// Carte « Compte et connexion » partagée par les espaces Clipper et Agence.
+function accountCard(u) {
+  const pe = state.pwdError;
+  return card(`<p class="font-bold">Compte et connexion</p>
+    <div class="mt-4 flex items-center gap-3 rounded-2xl bg-gray-50 p-4"><span class="grid h-10 w-10 place-items-center rounded-xl bg-white text-brand-600 ring-1 ring-gray-100">${icon("mail")}</span>
+      <div class="min-w-0 flex-1"><p class="truncate font-semibold">${esc(u.email)}</p><p class="text-xs ${u.verified ? "text-emerald-600" : "text-amber-600"}">${u.verified ? "✓ Email vérifié" : "Email non vérifié"}</p></div></div>
+    <form data-form="password" class="mt-5 space-y-3" novalidate>
+      ${pe ? `<p class="rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-700">${pe}</p>` : ""}
+      ${field("Mot de passe actuel", `<input name="current" type="password" autocomplete="current-password" class="${inputCls}"/>`)}
+      ${field("Nouveau mot de passe", `<input name="next" type="password" autocomplete="new-password" class="${inputCls}"/>`, "8 caractères minimum.")}
+      <button class="w-full rounded-xl bg-ink py-2.5 text-sm font-semibold text-white hover:bg-black">Changer le mot de passe</button>
+    </form>
+    <button type="button" data-action="logout" class="mt-3 flex w-full items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-semibold text-rose-600 ring-1 ring-rose-100 hover:bg-rose-50">${icon("logout", "h-4 w-4")} Se déconnecter</button>`);
+}
+
+function handlePasswordSubmit(data) {
+  const u = userById(state.session);
+  if (data.current !== u.password) state.pwdError = "Le mot de passe actuel est incorrect.";
+  else if ((data.next || "").length < 8) state.pwdError = "Le nouveau mot de passe doit faire au moins 8 caractères.";
+  else { u.password = data.next; state.pwdError = ""; render(); return toast("Mot de passe modifié ✓"); }
+  render();
+}
+
+const homeOf = (u) => ({ admin: "#/admin/apercu", agence: "#/agence/apercu", clipper: "#/clipper/accueil" }[u.role]);

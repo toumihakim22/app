@@ -1,5 +1,5 @@
 // Routeur, coquilles (navigation) et gestion des événements de tout le site.
-// Routes : #/ (accueil), #/connexion, #/inscription, #/clipper/<page>, #/admin/<page>.
+// Routes : #/ (accueil), #/connexion, #/inscription, #/clipper/<page>, #/agence/<page>, #/admin/<page>.
 
 const state = {
   route: { area: "landing", view: "" },
@@ -12,7 +12,8 @@ const state = {
   tx: { type: "tous" },
   period: 30,
   settings: { email: true, push: true, weekly: false, newCampaigns: true },
-  adm: { userQ: "", userStatus: "Tous", campStatus: "Toutes", modStatus: "En attente" },
+  adm: { userQ: "", userStatus: "Tous", userRole: "Tous les rôles", campQ: "", campStatus: "Toutes", modStatus: "En attente" },
+  ag: { q: "", status: "Toutes", clipStatus: "Toutes" },
   pwdError: "",
   auth: null,
 };
@@ -26,6 +27,8 @@ function parseRoute() {
   if (!h.startsWith("#/") || h === "#/") return { area: "landing", view: "" };
   const [area, view] = h.slice(2).split("/");
   if (area === "connexion" || area === "inscription") return { area: "auth", view: area };
+  if (area === "inscription-agence") return { area: "auth", view: "inscription", role: "agence" };
+  if (area === "agence") return { area, view: AGENCY_VIEWS[view] ? view : "apercu" };
   if (area === "clipper") return { area, view: CLIPPER_VIEWS[view] ? view : "accueil" };
   if (area === "admin") return { area, view: ADMIN_VIEWS[view] ? view : "apercu" };
   return { area: "landing", view: "" };
@@ -39,22 +42,28 @@ function navigate(hash) {
 function onRoute() {
   const r = parseRoute(), prev = state.route, u = state.session ? userById(state.session) : null;
   // Protection des espaces : il faut être connecté avec le bon rôle.
-  if (r.area === "clipper" && (!u || u.role !== "clipper")) return navigate(u && u.role === "admin" ? "#/admin/apercu" : "#/connexion");
-  if (r.area === "admin" && (!u || u.role !== "admin")) return navigate(u ? "#/clipper/accueil" : "#/connexion");
-  if (r.area === "auth" && u) return navigate(u.role === "admin" ? "#/admin/apercu" : "#/clipper/accueil");
-  if (r.area === "auth" && prev.view !== r.view) { const keepEmail = state.auth.email; resetAuth(); state.auth.email = keepEmail; }
+  if (["clipper", "agence", "admin"].includes(r.area) && (!u || u.role !== r.area)) return navigate(u ? homeOf(u) : "#/connexion");
+  if (r.area === "auth" && u) return navigate(homeOf(u));
+  if (r.area === "auth" && (prev.view !== r.view || r.role)) { const keepEmail = state.auth.email; resetAuth(); state.auth.email = keepEmail; }
+  if (r.role) { state.auth.form.role = r.role; r.role = undefined; }
   state.route = r; state.drawer = false; state.notifOpen = false; state.modal = null; state.pwdError = "";
   render();
   if (r.area !== "landing" || !location.hash || location.hash === "#/") window.scrollTo(0, 0);
 }
 
-// ---------- Coquille commune aux espaces Clipper et Admin ----------
+// ---------- Coquille commune aux espaces Clipper, Agence et Admin ----------
+
+const AREAS = {
+  clipper: { nav: () => CLIPPER_NAV, views: () => CLIPPER_VIEWS, title: "Espace Clipper", mobile: ["accueil", "campagnes", "publications", "portefeuille"], profile: "profil", modal: () => clipperModal() },
+  agence: { nav: () => AGENCY_NAV, views: () => AGENCY_VIEWS, title: "Espace Agence", mobile: ["apercu", "campagnes", "clips", "budget"], profile: "profil", modal: () => agencyModal() },
+  admin: { nav: () => ADMIN_NAV, views: () => ADMIN_VIEWS, title: "Administration", mobile: ["apercu", "utilisateurs", "campagnes", "moderation"], profile: "parametres", modal: () => adminModal() },
+};
 
 function shellSidebar(area) {
-  const isAdmin = area === "admin", nav = isAdmin ? ADMIN_NAV : CLIPPER_NAV, u = userById(state.session);
+  const isAdmin = area === "admin", nav = AREAS[area].nav(), u = userById(state.session);
   return `<div class="flex h-full flex-col">
     <div class="px-2">${logo(isAdmin)}</div>
-    <p class="mt-8 px-3 text-xs font-semibold uppercase tracking-widest ${isAdmin ? "text-white/40" : "text-gray-400"}">${isAdmin ? "Administration" : "Espace Clipper"}</p>
+    <p class="mt-8 px-3 text-xs font-semibold uppercase tracking-widest ${isAdmin ? "text-white/40" : "text-gray-400"}">${AREAS[area].title}</p>
     <nav class="mt-3 space-y-1" aria-label="Navigation principale">
       ${nav.map((n) => {
         const on = state.route.view === n.id, badge = isAdmin ? adminBadge(n.id) : 0;
@@ -67,7 +76,10 @@ function shellSidebar(area) {
     <div class="mt-auto space-y-3 pt-8">
       ${isAdmin
         ? `<a href="#/" class="flex items-center gap-2 rounded-xl px-3 py-2.5 text-sm font-medium text-white/60 hover:text-white">${icon("globe", "h-4 w-4")} Voir le site public</a>`
-        : `<div class="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-gray-100"><p class="text-xs text-gray-500">Solde disponible</p><p class="mt-1 text-xl font-extrabold">${da(balance())}</p></div>
+        : area === "agence"
+          ? `<div class="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-gray-100"><p class="text-xs text-gray-500">Crédit agence</p><p class="mt-1 text-xl font-extrabold">${da(u.credit)}</p></div>
+             <button type="button" data-action="ag-new" class="w-full rounded-2xl bg-brand-600 py-3.5 font-semibold text-white shadow-lg shadow-brand-600/25 hover:bg-brand-700">+ Nouvelle campagne 🚀</button>`
+          : `<div class="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-gray-100"><p class="text-xs text-gray-500">Solde disponible</p><p class="mt-1 text-xl font-extrabold">${da(balance())}</p></div>
            <button type="button" data-action="invite" class="w-full rounded-2xl bg-brand-600 py-3.5 font-semibold text-white shadow-lg shadow-brand-600/25 hover:bg-brand-700">Inviter un créateur 🙋</button>`}
       <div class="flex items-center gap-3 rounded-2xl px-2 py-2 ${isAdmin ? "text-white" : ""}">${avatar(u)}
         <div class="min-w-0 flex-1"><p class="truncate text-sm font-semibold">${esc(u.name)}</p><p class="truncate text-xs ${isAdmin ? "text-white/50" : "text-gray-500"}">${esc(u.email)}</p></div>
@@ -83,18 +95,19 @@ function shellTopbar(area) {
   return `<header class="sticky top-0 z-30 border-b border-gray-100 bg-white/90 backdrop-blur">
     <div class="flex h-16 items-center gap-3 px-4 sm:px-6 lg:px-8">
       <button type="button" data-action="drawer" class="grid h-10 w-10 place-items-center rounded-xl ring-1 ring-gray-200 lg:hidden" aria-label="Ouvrir le menu">${icon("menu")}</button>
-      <span class="text-xl font-black italic tracking-tight lg:hidden">ClipBoost${isAdmin ? ' <span class="not-italic text-xs font-bold text-brand-600">ADMIN</span>' : ""}</span>
-      ${isAdmin
-        ? `<p class="hidden text-sm text-gray-500 lg:block">Connecté en tant qu'administrateur</p>`
+      <span class="text-xl font-black italic tracking-tight lg:hidden">ClipBoost${area !== "clipper" ? ` <span class="not-italic text-xs font-bold text-brand-600">${isAdmin ? "ADMIN" : "AGENCE"}</span>` : ""}</span>
+      ${area !== "clipper"
+        ? `<p class="hidden text-sm text-gray-500 lg:block">${isAdmin ? "Connecté en tant qu'administrateur" : `Espace agence · ${esc(u.name)}`}</p>`
         : `<label class="relative ml-auto hidden w-full max-w-xs md:block lg:ml-0"><span class="sr-only">Recherche rapide</span>
             <span class="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400">${icon("search", "h-4 w-4")}</span>
             <input data-input="global-q" type="search" placeholder="Rechercher une campagne…" class="w-full rounded-xl border border-gray-200 bg-gray-50 py-2.5 pl-10 pr-3 text-sm outline-none focus:border-brand-500 focus:bg-white focus:ring-4 focus:ring-brand-100"/></label>`}
       <div class="relative ml-auto flex items-center gap-2">
+        ${themeToggle()}
         ${isAdmin ? "" : `<button type="button" data-action="notif" aria-expanded="${state.notifOpen}" aria-label="Notifications${unread ? ` (${unread} non lues)` : ""}" class="relative grid h-10 w-10 place-items-center rounded-xl ring-1 ring-gray-200 hover:bg-gray-50">
           ${icon("bell")}${unread ? `<span class="absolute -right-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full bg-rose-500 px-1 text-[11px] font-bold text-white">${unread}</span>` : ""}</button>`}
         ${state.notifOpen ? notifPanel(notifs) : ""}
-        <a href="#/${area}/${isAdmin ? "parametres" : "profil"}" class="flex items-center gap-2 rounded-xl py-1 pl-1 pr-2 hover:bg-gray-50" aria-label="Mon compte">
-          ${avatar(u)}<span class="hidden text-left sm:block"><span class="block text-sm font-semibold leading-tight">${esc(u.name)}</span><span class="block text-xs text-gray-500">${isAdmin ? "Administrateur" : u.level}</span></span>
+        <a href="#/${area}/${AREAS[area].profile}" class="flex items-center gap-2 rounded-xl py-1 pl-1 pr-2 hover:bg-gray-50" aria-label="Mon compte">
+          ${avatar(u)}<span class="hidden text-left sm:block"><span class="block text-sm font-semibold leading-tight">${esc(u.name)}</span><span class="block text-xs text-gray-500">${isAdmin ? "Administrateur" : area === "agence" ? "Agence" : u.level}</span></span>
         </a>
       </div>
     </div>
@@ -111,8 +124,7 @@ function notifPanel(list) {
 }
 
 function shellMobileNav(area) {
-  const ids = area === "admin" ? ["apercu", "utilisateurs", "campagnes", "moderation"] : ["accueil", "campagnes", "publications", "portefeuille"];
-  const nav = area === "admin" ? ADMIN_NAV : CLIPPER_NAV;
+  const ids = AREAS[area].mobile, nav = AREAS[area].nav();
   return `<nav class="fixed inset-x-0 bottom-0 z-30 border-t border-gray-100 bg-white/95 backdrop-blur lg:hidden" aria-label="Navigation mobile">
     <div class="grid grid-cols-5">
       ${ids.map((id) => { const n = nav.find((x) => x.id === id), on = state.route.view === id; return `<a href="#/${area}/${id}" ${on ? 'aria-current="page"' : ""} class="flex flex-col items-center gap-1 py-2.5 text-[11px] font-semibold ${on ? "text-brand-600" : "text-gray-500"}">${icon(n.icon)}${n.short || n.label}</a>`; }).join("")}
@@ -124,7 +136,7 @@ function shellMobileNav(area) {
 function shell(area) {
   const isAdmin = area === "admin";
   const sideCls = isAdmin ? "bg-ink" : "bg-gray-50 border-r border-gray-100";
-  const view = (isAdmin ? ADMIN_VIEWS : CLIPPER_VIEWS)[state.route.view]();
+  const view = AREAS[area].views()[state.route.view]();
   return `${siteBanner()}
     <div class="flex min-h-screen">
       <aside class="sticky top-0 hidden h-screen w-72 shrink-0 overflow-y-auto p-5 lg:block ${sideCls}">${shellSidebar(area)}</aside>
@@ -138,7 +150,7 @@ function shell(area) {
       <aside class="absolute inset-y-0 left-0 w-72 max-w-[85vw] overflow-y-auto p-5 shadow-2xl ${isAdmin ? "bg-ink" : "bg-gray-50"}">
         <button type="button" data-action="drawer" class="absolute right-4 top-5 z-10 grid h-9 w-9 place-items-center rounded-full bg-white shadow-sm" aria-label="Fermer le menu">${icon("close", "h-4 w-4")}</button>
         ${shellSidebar(area)}</aside></div>` : ""}
-    ${isAdmin ? adminModal() : clipperModal()}`;
+    ${AREAS[area].modal()}`;
 }
 
 // ---------- Rendu ----------
@@ -159,7 +171,7 @@ function render() {
   if (area === "auth") html = state.route.view === "connexion" ? viewConnexion() : viewInscription();
   else html = shell(area);
   root.innerHTML = `${html}<div id="toasts" class="pointer-events-none fixed inset-x-0 bottom-20 z-[60] flex flex-col items-center gap-2 px-4 lg:bottom-6"></div>`;
-  document.title = { auth: state.route.view === "connexion" ? "Connexion — ClipBoost" : "Inscription — ClipBoost", clipper: "Espace Clipper — ClipBoost", admin: "Administration — ClipBoost" }[area];
+  document.title = area === "auth" ? (state.route.view === "connexion" ? "Connexion — ClipBoost" : "Inscription — ClipBoost") : `${AREAS[area].title} — ClipBoost`;
 
   if (focusKey) {
     const el = root.querySelector(`[data-input="${focusKey}"]`);
@@ -201,9 +213,11 @@ root.addEventListener("click", (e) => {
       return;
     }
     case "signup-back": state.auth.step = "form"; state.auth.error = ""; return render();
+    case "signup-role": captureSignupForm(); state.auth.form.role = t.dataset.value; state.auth.fieldErrors = {}; return render();
     case "resend-code": state.auth.code = newCode(); state.auth.error = ""; render(); return toast("Nouveau code envoyé (démonstration)");
   }
   if (state.route.area === "admin") handleAdminAction(action, t);
+  else if (state.route.area === "agence") handleAgencyAction(action, t);
   else if (state.route.area === "clipper") handleClipperAction(action, t);
 });
 
@@ -211,6 +225,8 @@ root.addEventListener("input", (e) => {
   const k = e.target.dataset.input;
   if (k === "camp-q") { state.camp.q = e.target.value; render(); }
   if (k === "adm-user-q") { state.adm.userQ = e.target.value; render(); }
+  if (k === "adm-camp-q") { state.adm.campQ = e.target.value; render(); }
+  if (k === "ag-q") { state.ag.q = e.target.value; render(); }
   if (e.target.hasAttribute("data-strength")) {
     const meter = root.querySelector("[data-strength-meter]");
     if (meter) meter.innerHTML = strengthMeter(e.target.value);
@@ -240,7 +256,9 @@ root.addEventListener("submit", (e) => {
   e.preventDefault();
   const form = e.target.dataset.form, data = Object.fromEntries(new FormData(e.target));
   if (["login", "signup", "verify"].includes(form)) return handleAuthSubmit(form, data);
+  if (form === "password") return handlePasswordSubmit(data);
   if (form.startsWith("adm-")) return handleAdminSubmit(form, data);
+  if (form.startsWith("ag-")) return handleAgencySubmit(form, data);
   handleClipperSubmit(form, data);
 });
 

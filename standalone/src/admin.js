@@ -45,28 +45,32 @@ function aApercu() {
     <div class="mt-4">${publicationsTable(pendingPubs().slice(0, 3), { showUser: true, actions: true })}</div>`;
 }
 
+const roleTag = (u) => ({ agence: `<span class="ml-1 rounded bg-sky-50 px-1.5 py-0.5 text-[10px] font-bold text-sky-600">AGENCE</span>`, admin: `<span class="ml-1 rounded bg-brand-50 px-1.5 py-0.5 text-[10px] font-bold text-brand-700">ADMIN</span>` }[u.role] || "");
+const userMoney = (u) => (u.role === "agence" ? da(db.campaigns.filter((c) => c.ownerId === u.id).reduce((s, c) => s + c.budget, 0)) : da(totalEarned(u)));
+
 function aUtilisateurs() {
   const f = state.adm, q = f.userQ.trim().toLowerCase();
-  const list = db.users.filter((u) => (f.userStatus === "Tous" || u.status === f.userStatus) && (!q || `${u.name} ${u.email} ${u.city}`.toLowerCase().includes(q)));
+  const roleMap = { "Tous les rôles": null, Clippers: "clipper", Agences: "agence", Admins: "admin" };
+  const list = db.users.filter((u) => (f.userStatus === "Tous" || u.status === f.userStatus) && (!roleMap[f.userRole] || u.role === roleMap[f.userRole]) && (!q || `${u.name} ${u.email} ${u.country}`.toLowerCase().includes(q)));
   return `${pageHeader("Utilisateurs", `${db.users.length} comptes · les nouvelles inscriptions apparaissent ici automatiquement.`)}
     <div class="mt-8 flex flex-col gap-3 md:flex-row md:items-center">
       <label class="relative block flex-1 md:max-w-sm"><span class="sr-only">Rechercher un utilisateur</span>
         <span class="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-gray-400">${icon("search")}</span>
         <input data-input="adm-user-q" type="search" value="${esc(f.userQ)}" placeholder="Nom, email ou wilaya" class="w-full rounded-2xl border border-gray-200 bg-white py-3 pl-12 pr-4 text-sm outline-none focus:border-brand-500 focus:ring-4 focus:ring-brand-100"/></label>
-      <div class="md:ml-auto">${pills("adm-user-status", f.userStatus, ["Tous", "Actif", "Suspendu"])}</div>
+      <div class="flex flex-col gap-2 md:ml-auto md:items-end">${pills("adm-user-role", f.userRole, ["Tous les rôles", "Clippers", "Agences", "Admins"])}${pills("adm-user-status", f.userStatus, ["Tous", "Actif", "Suspendu"])}</div>
     </div>
     <div class="mt-5 overflow-hidden rounded-3xl bg-white shadow-sm ring-1 ring-gray-100">
-      <div class="hidden grid-cols-[2fr_1fr_1fr_1fr_1fr_auto] gap-4 border-b border-gray-100 px-6 py-3 text-xs font-semibold uppercase tracking-wide text-gray-400 lg:grid"><span>Utilisateur</span><span>Wilaya</span><span>Inscrit le</span><span>Gains</span><span>Statut</span><span class="w-44 text-right">Actions</span></div>
+      <div class="hidden grid-cols-[2fr_1fr_1fr_1fr_1fr_auto] gap-4 border-b border-gray-100 px-6 py-3 text-xs font-semibold uppercase tracking-wide text-gray-400 lg:grid"><span>Utilisateur</span><span>Pays</span><span>Inscrit le</span><span>Gains / budget</span><span>Statut</span><span class="w-44 text-right">Actions</span></div>
       ${list.length ? list.map((u) => {
         const actions = u.role === "admin" ? `<span class="text-xs text-gray-400">Administrateur</span>`
           : `<button type="button" data-action="adm-user-view" data-id="${u.id}" class="rounded-lg px-3 py-1.5 text-xs font-semibold text-gray-600 ring-1 ring-gray-200 hover:bg-gray-50">Détails</button>
              <button type="button" data-action="adm-user-toggle" data-id="${u.id}" class="rounded-lg px-3 py-1.5 text-xs font-semibold ${u.status === "Actif" ? "bg-rose-50 text-rose-600 hover:bg-rose-100" : "bg-emerald-50 text-emerald-700 hover:bg-emerald-100"}">${u.status === "Actif" ? "Suspendre" : "Réactiver"}</button>`;
         return `<div class="border-b border-gray-50 px-4 py-4 last:border-0 lg:grid lg:grid-cols-[2fr_1fr_1fr_1fr_1fr_auto] lg:items-center lg:gap-4 lg:px-6">
-          <div class="flex min-w-0 items-center gap-3">${avatar(u)}<div class="min-w-0 flex-1"><p class="truncate font-semibold">${esc(u.name)} ${u.verified ? "" : `<span class="ml-1 rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-bold text-amber-600">NON VÉRIFIÉ</span>`}</p><p class="truncate text-xs text-gray-500">${esc(u.email)}</p></div><span class="lg:hidden">${statusBadge(u.status)}</span></div>
-          <p class="mt-2 pl-12 text-xs text-gray-500 lg:hidden">${esc(u.city)} · inscrit le ${date(u.joined)}${u.role === "clipper" ? ` · ${da(totalEarned(u))}` : ""}</p>
-          <span class="hidden text-sm text-gray-700 lg:block">${esc(u.city)}</span>
+          <div class="flex min-w-0 items-center gap-3">${avatar(u)}<div class="min-w-0 flex-1"><p class="truncate font-semibold">${esc(u.name)} ${roleTag(u)} ${u.verified ? "" : `<span class="ml-1 rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-bold text-amber-600">NON VÉRIFIÉ</span>`}</p><p class="truncate text-xs text-gray-500">${esc(u.email)}</p></div><span class="lg:hidden">${statusBadge(u.status)}</span></div>
+          <p class="mt-2 pl-12 text-xs text-gray-500 lg:hidden">${esc(u.country)} · inscrit le ${date(u.joined)}${u.role === "admin" ? "" : ` · ${userMoney(u)}`}</p>
+          <span class="hidden text-sm text-gray-700 lg:block">${esc(u.country)}</span>
           <span class="hidden text-sm text-gray-700 lg:block">${date(u.joined)}</span>
-          <span class="hidden text-sm font-semibold lg:block">${u.role === "clipper" ? da(totalEarned(u)) : "—"}</span>
+          <span class="hidden text-sm font-semibold lg:block">${u.role === "admin" ? "—" : userMoney(u)}</span>
           <span class="hidden lg:block">${statusBadge(u.status)}</span>
           <div class="mt-3 flex gap-2 pl-12 lg:mt-0 lg:w-44 lg:justify-end lg:pl-0">${actions}</div>
         </div>`;
@@ -76,10 +80,18 @@ function aUtilisateurs() {
 
 function aCampagnes() {
   const f = state.adm;
-  const list = db.campaigns.filter((c) => f.campStatus === "Toutes" || c.status === f.campStatus);
+  const q = f.campQ.trim().toLowerCase();
+  const list = db.campaigns.filter((c) => (f.campStatus === "Toutes" || c.status === f.campStatus) &&
+    (!q || `${c.title} ${c.brand} ${c.category} ${c.ownerId ? userById(c.ownerId).name : ""}`.toLowerCase().includes(q)));
   return `${pageHeader("Campagnes", "Approuvez, mettez en pause ou créez des campagnes. Seules les campagnes actives sont visibles par les clippers.", `<button type="button" data-action="adm-new-campaign" class="rounded-2xl bg-brand-600 px-5 py-3 text-sm font-semibold text-white hover:bg-brand-700">+ Nouvelle campagne</button>`)}
-    <div class="mt-8">${pills("adm-camp-status", f.campStatus, ["Toutes", "Active", "En attente", "En pause", "Terminée"])}</div>
-    <div class="mt-5 space-y-3">${list.length ? list.map((c) => {
+    <div class="mt-8 flex flex-col gap-3 lg:flex-row lg:items-center">
+      <label class="relative block flex-1 lg:max-w-sm"><span class="sr-only">Rechercher une campagne</span>
+        <span class="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-gray-400">${icon("search")}</span>
+        <input data-input="adm-camp-q" type="search" value="${esc(f.campQ)}" placeholder="Titre, marque, catégorie ou agence" class="w-full rounded-2xl border border-gray-200 bg-white py-3 pl-12 pr-4 text-sm outline-none focus:border-brand-500 focus:ring-4 focus:ring-brand-100"/></label>
+      <div class="lg:ml-auto">${pills("adm-camp-status", f.campStatus, ["Toutes", "Active", "En attente", "En pause", "Terminée"])}</div>
+    </div>
+    <p class="mt-4 text-sm text-gray-500">${list.length} campagne${list.length > 1 ? "s" : ""}</p>
+    <div class="mt-3 space-y-3">${list.length ? list.map((c) => {
       const pct = Math.min(100, Math.round((c.spent / c.budget) * 100));
       const btn = (action, label, tone) => `<button type="button" data-action="${action}" data-id="${c.id}" class="rounded-lg px-3 py-1.5 text-xs font-semibold ${tone}">${label}</button>`;
       const actions = {
@@ -90,11 +102,11 @@ function aCampagnes() {
       }[c.status];
       return `<div class="flex flex-col gap-4 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-gray-100 md:flex-row md:items-center">
         <div class="flex min-w-0 flex-1 items-center gap-4"><span class="grid h-14 w-14 shrink-0 place-items-center rounded-xl bg-gradient-to-br ${c.gradient} text-2xl">${c.emoji}</span>
-          <div class="min-w-0"><p class="truncate font-semibold">${esc(c.title)} <span class="ml-1 align-middle">${statusBadge(c.status)}</span></p><p class="truncate text-sm text-gray-500">${esc(c.brand)} · ${c.category} · ${c.rate} DA /1K · ${c.clippers} clippers</p></div></div>
+          <div class="min-w-0"><p class="truncate font-semibold">${esc(c.title)} <span class="ml-1 align-middle">${statusBadge(c.status)}</span></p><p class="truncate text-sm text-gray-500">${esc(c.brand)} · ${c.category} · ${c.rate} DA /1K · ${c.clippers} clippers</p><p class="truncate text-xs text-gray-400">${c.ownerId ? `Créée par l'agence ${esc(userById(c.ownerId).name)}` : "Gérée par ClipBoost"}</p></div></div>
         <div class="w-full md:w-48"><div class="flex justify-between text-xs text-gray-500"><span>${da(c.spent)}</span><span>${pct} %</span></div><div class="mt-1 h-1.5 rounded-full bg-gray-100"><div class="h-1.5 rounded-full bg-brand-600" style="width:${pct}%"></div></div><p class="mt-1 text-xs text-gray-400">sur ${da(c.budget)}</p></div>
         <div class="flex shrink-0 gap-2 md:w-56 md:justify-end">${actions}</div>
       </div>`;
-    }).join("") : `<div class="rounded-3xl bg-gray-50 p-10 text-center text-gray-500">Aucune campagne avec ce statut.</div>`}</div>`;
+    }).join("") : `<div class="rounded-3xl bg-gray-50 p-10 text-center text-gray-500">Aucune campagne ne correspond.</div>`}</div>`;
 }
 
 function aModeration() {
@@ -142,9 +154,12 @@ function adminModal() {
   if (!m) return "";
   if (m.type === "user") {
     const u = userById(m.id), pubs = db.publications.filter((p) => p.userId === u.id);
-    return modalShell(`<div class="flex items-center gap-4">${avatar(u, "h-16 w-16 text-xl")}<div><h2 class="text-2xl font-extrabold">${esc(u.name)}</h2><p class="text-gray-500">${esc(u.email)}</p></div></div>
+    return modalShell(`<div class="flex items-center gap-4">${avatar(u, "h-16 w-16 text-xl")}<div><h2 class="text-2xl font-extrabold">${esc(u.name)} ${roleTag(u)}</h2><p class="text-gray-500">${esc(u.email)}</p></div></div>
       <div class="mt-6 grid grid-cols-2 gap-3 text-sm">
-        ${[["Wilaya", esc(u.city)], ["Inscrit le", date(u.joined)], ["Statut", statusBadge(u.status)], ["Email", u.verified ? "✓ Vérifié" : "Non vérifié"], ["Gains totaux", da(totalEarned(u))], ["Solde", da(balance(u))], ["Clips soumis", pubs.length], ["Campagnes", u.joinedCampaigns.size]].map(([k, v]) => `<div class="rounded-2xl bg-gray-50 p-3"><p class="text-xs text-gray-500">${k}</p><p class="mt-0.5 font-semibold">${v}</p></div>`).join("")}
+        ${[["Pays", esc(u.country)], ["Inscrit le", date(u.joined)], ["Statut", statusBadge(u.status)], ["Email", u.verified ? "✓ Vérifié" : "Non vérifié"],
+          ...(u.role === "agence"
+            ? (() => { const cs = db.campaigns.filter((c) => c.ownerId === u.id); return [["Contact", esc(u.contact || "—")], ["Crédit", da(u.credit)], ["Campagnes", cs.length], ["Budget engagé", da(cs.reduce((s, c) => s + c.budget, 0))]]; })()
+            : [["Gains totaux", da(totalEarned(u))], ["Solde", da(balance(u))], ["Clips soumis", pubs.length], ["Campagnes", u.joinedCampaigns.size]])].map(([k, v]) => `<div class="rounded-2xl bg-gray-50 p-3"><p class="text-xs text-gray-500">${k}</p><p class="mt-0.5 font-semibold">${v}</p></div>`).join("")}
       </div>
       <button type="button" data-action="adm-user-toggle" data-id="${u.id}" class="mt-6 w-full rounded-xl py-3 font-semibold ${u.status === "Actif" ? "bg-rose-50 text-rose-600" : "bg-emerald-50 text-emerald-700"}">${u.status === "Actif" ? "Suspendre ce compte" : "Réactiver ce compte"}</button>`);
   }
@@ -156,18 +171,8 @@ function adminModal() {
         <button class="mt-4 w-full rounded-xl bg-rose-600 py-3 font-semibold text-white hover:bg-rose-700">Confirmer le refus</button></form>`);
   }
   if (m.type === "new-campaign") {
-    const emojis = ["🎬", "⚽", "🍔", "📱", "👗", "🎵", "😂", "🚗", "💄", "🏝️"];
-    return modalShell(`<h2 class="text-2xl font-extrabold">Nouvelle campagne</h2><p class="mt-1 text-sm text-gray-500">Elle sera immédiatement visible par les clippers.</p>
-      <form data-form="adm-campaign" class="mt-6 grid gap-4 sm:grid-cols-2">
-        <div class="sm:col-span-2">${field("Titre", `<input name="title" required maxlength="40" placeholder="Ex. Spécial Ramadan" class="${inputCls}"/>`)}</div>
-        ${field("Marque", `<input name="brand" required maxlength="30" class="${inputCls}"/>`)}
-        ${field("Catégorie", `<select name="category" class="${inputCls}">${CATEGORIES.map((c) => `<option>${c}</option>`).join("")}</select>`)}
-        ${field("Tarif pour 1 000 vues (DA)", `<input name="rate" type="number" min="50" max="500" value="120" required class="${inputCls}"/>`)}
-        ${field("Budget (DA)", `<input name="budget" type="number" min="10000" step="1000" value="200000" required class="${inputCls}"/>`)}
-        <div class="sm:col-span-2"><span class="text-sm font-medium text-gray-700">Visuel</span><div class="mt-1.5 flex flex-wrap gap-2">${emojis.map((e, i) => `<label class="cursor-pointer"><input type="radio" name="emoji" value="${e}" ${i === 0 ? "checked" : ""} class="peer sr-only"/><span class="grid h-11 w-11 place-items-center rounded-xl text-xl ring-1 ring-gray-200 peer-checked:bg-brand-50 peer-checked:ring-2 peer-checked:ring-brand-500">${e}</span></label>`).join("")}</div></div>
-        <div class="sm:col-span-2">${field("Règles (une par ligne)", `<textarea name="rules" rows="3" class="${inputCls}">Clip de 15 à 60 secondes\nMentionner la marque</textarea>`)}</div>
-        <button class="w-full rounded-xl bg-brand-600 py-3 font-semibold text-white hover:bg-brand-700 sm:col-span-2">Publier la campagne</button>
-      </form>`, "max-w-xl");
+    return modalShell(`<h2 class="text-2xl font-extrabold">Nouvelle campagne</h2><p class="mt-1 text-sm text-gray-500">Créée par ClipBoost, elle est immédiatement visible par les clippers.</p>
+      ${campaignForm("adm-campaign", "Publier la campagne")}`, "max-w-xl");
   }
   return "";
 }
@@ -178,6 +183,7 @@ function handleAdminAction(action, t) {
   const id = t.dataset.id;
   switch (action) {
     case "adm-user-status": state.adm.userStatus = t.dataset.value; return render();
+    case "adm-user-role": state.adm.userRole = t.dataset.value; return render();
     case "adm-camp-status": state.adm.campStatus = t.dataset.value; return render();
     case "adm-mod-status": state.adm.modStatus = t.dataset.value; return render();
     case "adm-user-view": state.modal = { type: "user", id: +id }; return render();
@@ -193,6 +199,10 @@ function handleAdminAction(action, t) {
       c.status = { "adm-camp-approve": "Active", "adm-camp-pause": "En pause", "adm-camp-end": "Terminée" }[action];
       if (c.status === "Active" && before === "En attente") {
         clippers().forEach((u) => notify(u.id, "🎯", `Nouvelle campagne : ${c.title} (${c.rate} DA /1K).`));
+      }
+      if (c.ownerId) {
+        const msg = { Active: before === "En attente" ? "a été approuvée et publiée" : "est de nouveau active", "En pause": "a été mise en pause par ClipBoost", "Terminée": before === "En attente" ? "a été refusée" : "a été clôturée" }[c.status];
+        notify(c.ownerId, c.status === "Active" ? "✅" : "⚠️", `Votre campagne « ${c.title} » ${msg}.`);
       }
       logActivity("🎯", `Campagne « ${c.title} » : ${before} → ${c.status}.`);
       toast(`« ${c.title} » est maintenant ${c.status.toLowerCase()}`);
@@ -240,12 +250,7 @@ function handleAdminSubmit(form, data) {
     logActivity("🚫", `Clip « ${p.title} » refusé.`);
     state.modal = null; render(); toast("Clip refusé, le clipper est notifié");
   } else if (form === "adm-campaign") {
-    const id = `c${Date.now()}`;
-    db.campaigns.unshift({
-      id, title: data.title.trim(), brand: data.brand.trim(), category: data.category, rate: +data.rate, budget: +data.budget, spent: 0, clippers: 0,
-      createdAt: TODAY, status: "Active", gradient: GRADIENTS[db.campaigns.length % GRADIENTS.length], emoji: data.emoji, platforms: ["TikTok", "Instagram", "YouTube"],
-      rules: data.rules.split("\n").map((r) => r.trim()).filter(Boolean),
-    });
+    db.campaigns.unshift(buildCampaign(data, { brand: data.brand.trim(), ownerId: null, status: "Active" }));
     clippers().forEach((u) => notify(u.id, "🎯", `Nouvelle campagne : ${data.title.trim()} (${data.rate} DA /1K).`));
     logActivity("🎯", `Campagne « ${data.title.trim()} » créée.`);
     state.modal = null; state.adm.campStatus = "Toutes"; render(); toast("Campagne publiée 🎉");

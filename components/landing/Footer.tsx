@@ -8,6 +8,7 @@ const cols = [
       { label: "Devenir Clipper", href: "#inscription", route: "inscription" },
       { label: "Se connecter", href: "#inscription", route: "connexion" },
       { label: "Pour les marques", href: "#marques" },
+      { label: "Créer un compte agence", href: "#inscription", route: "inscription-agence" },
     ],
   },
   {

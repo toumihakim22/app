@@ -25,7 +25,7 @@ const landing = readFileSync(nextHtml, "utf8")
 const cssPath = join(dir, "styles.css");
 const { css } = await postcss([tailwind({ base: dir, optimize: true })]).process(readFileSync(cssPath, "utf8"), { from: cssPath });
 
-const parts = ["data.js", "ui.js", "auth.js", "clipper.js", "admin.js", "main.js"].map((f) => readFileSync(join(dir, "src", f), "utf8"));
+const parts = ["data.js", "ui.js", "auth.js", "clipper.js", "admin.js", "agency.js", "main.js"].map((f) => readFileSync(join(dir, "src", f), "utf8"));
 const js = `${readFileSync(join(dir, "landing.js"), "utf8")}\n(function () {\n"use strict";\n${parts.join("\n")}\n})();`;
 
 const html = readFileSync(join(dir, "index.html"), "utf8")

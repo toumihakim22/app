@@ -1,5 +1,12 @@
 // Interactions de la page d'accueil dans la version HTML autonome (sans React).
 (function () {
+  // Bascule du thème clair / sombre (boutons de la page d'accueil et de l'application)
+  document.addEventListener("click", function (e) {
+    if (!e.target.closest || !e.target.closest("[data-theme-toggle]")) return;
+    var dark = document.documentElement.classList.toggle("dark");
+    try { localStorage.setItem("clipboost-theme", dark ? "dark" : "light"); } catch (err) {}
+  });
+
   // Menu mobile
   var btn = document.querySelector("button[aria-controls='menu-mobile']");
   var menu = document.getElementById("menu-mobile");

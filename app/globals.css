@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "./dark.css";
 
 @theme {
   --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;

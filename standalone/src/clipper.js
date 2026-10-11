@@ -237,30 +237,20 @@ function cStatistiques() {
 function cProfil() {
   const u = me();
   const accounts = [["TikTok", u.handle, u.viewsFactor ? "18,4 K abonnés" : "Non connecté", !!u.viewsFactor], ["Instagram", u.handle, u.viewsFactor ? "6,1 K abonnés" : "Non connecté", !!u.viewsFactor], ["YouTube", u.name, "Non connecté", false]];
-  const pe = state.pwdError;
   return `${pageHeader("Profil", "Vos informations et votre compte.")}
     <div class="mt-8 grid gap-6 lg:grid-cols-[1fr_1.5fr]">
       <div class="space-y-6">
         ${card(`<div class="flex flex-col items-center text-center">${avatar(u, "h-24 w-24 text-3xl")}
-          <p class="mt-4 text-xl font-extrabold">${esc(u.name)}</p><p class="text-gray-500">${esc(u.handle)} · ${esc(u.city)}</p>
+          <p class="mt-4 text-xl font-extrabold">${esc(u.name)}</p><p class="text-gray-500">${esc(u.handle)} · ${esc(u.country)}</p>
           <span class="mt-3 rounded-full bg-amber-50 px-3 py-1 text-sm font-semibold text-amber-700">🥈 ${u.level}</span>
           ${u.bio ? `<p class="mt-5 text-sm leading-relaxed text-gray-600">${esc(u.bio)}</p>` : ""}
           <p class="mt-4 text-xs text-gray-400">Membre depuis le ${date(u.joined)}</p></div>`)}
-        ${card(`<p class="font-bold">Compte et connexion</p>
-          <div class="mt-4 flex items-center gap-3 rounded-2xl bg-gray-50 p-4"><span class="grid h-10 w-10 place-items-center rounded-xl bg-white text-brand-600 ring-1 ring-gray-100">${icon("mail")}</span>
-            <div class="min-w-0 flex-1"><p class="truncate font-semibold">${esc(u.email)}</p><p class="text-xs ${u.verified ? "text-emerald-600" : "text-amber-600"}">${u.verified ? "✓ Email vérifié" : "Email non vérifié"}</p></div></div>
-          <form data-form="password" class="mt-5 space-y-3" novalidate>
-            ${pe ? `<p class="rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-700">${pe}</p>` : ""}
-            ${field("Mot de passe actuel", `<input name="current" type="password" autocomplete="current-password" class="${inputCls}"/>`)}
-            ${field("Nouveau mot de passe", `<input name="next" type="password" autocomplete="new-password" class="${inputCls}"/>`, "8 caractères minimum.")}
-            <button class="w-full rounded-xl bg-ink py-2.5 text-sm font-semibold text-white hover:bg-black">Changer le mot de passe</button>
-          </form>
-          <button type="button" data-action="logout" class="mt-3 flex w-full items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-semibold text-rose-600 ring-1 ring-rose-100 hover:bg-rose-50">${icon("logout", "h-4 w-4")} Se déconnecter</button>`)}
+        ${accountCard(u)}
       </div>
       <div class="space-y-6">
         ${card(`<p class="font-bold">Informations publiques</p><form data-form="profile" class="mt-5 grid gap-4 sm:grid-cols-2">
           ${field("Nom complet", `<input name="name" value="${esc(u.name)}" class="${inputCls}"/>`)}
-          <label class="block text-sm"><span class="font-medium text-gray-700">Wilaya</span><select name="city" class="${inputCls}">${WILAYAS.map((w) => `<option ${w === u.city ? "selected" : ""}>${w}</option>`).join("")}</select></label>
+          <label class="block text-sm"><span class="font-medium text-gray-700">Pays</span><select name="country" class="${inputCls}">${COUNTRIES.map((w) => `<option ${w === u.country ? "selected" : ""}>${w}</option>`).join("")}</select></label>
           <div class="sm:col-span-2">${field("Bio", `<textarea name="bio" rows="3" placeholder="Présentez votre style de clips aux marques…" class="${inputCls}">${esc(u.bio)}</textarea>`)}</div>
           <div class="sm:col-span-2"><button class="rounded-xl bg-ink px-5 py-2.5 text-sm font-semibold text-white hover:bg-black">Enregistrer</button></div></form>`)}
         ${card(`<p class="font-bold">Comptes connectés</p><div class="mt-4 divide-y divide-gray-100">${accounts.map(([pl, h, f, on]) => `<div class="flex items-center justify-between gap-3 py-3"><div><p class="font-semibold">${pl}</p><p class="text-sm text-gray-500">${on ? `${esc(h)} · ${f}` : f}</p></div>
@@ -386,12 +376,7 @@ function handleClipperSubmit(form, data) {
     logActivity("💸", `${u.name} a demandé un retrait de ${da(amount)}.`);
     state.modal = null; render(); toast(`Demande de retrait de ${da(amount)} envoyée`);
   } else if (form === "profile") {
-    u.name = data.name.trim() || u.name; u.city = data.city || u.city; u.bio = data.bio.trim();
+    u.name = data.name.trim() || u.name; u.country = data.country || u.country; u.bio = data.bio.trim();
     render(); toast("Profil mis à jour ✓");
-  } else if (form === "password") {
-    if (data.current !== u.password) state.pwdError = "Le mot de passe actuel est incorrect.";
-    else if ((data.next || "").length < 8) state.pwdError = "Le nouveau mot de passe doit faire au moins 8 caractères.";
-    else { u.password = data.next; state.pwdError = ""; render(); return toast("Mot de passe modifié ✓"); }
-    render();
   }
 }

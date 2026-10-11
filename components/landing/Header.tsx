@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Logo from "./Logo";
+import ThemeToggle from "./ThemeToggle";
 
 const links = [
   { href: "#comment-ca-marche", label: "Comment ça marche", icon: "🧭" },
@@ -32,6 +33,7 @@ export default function Header() {
         </nav>
 
         <div className="hidden items-center gap-3 lg:flex">
+          <ThemeToggle />
           <a href="#inscription" data-route="connexion" className="rounded-xl px-4 py-2.5 text-sm font-semibold text-ink transition hover:bg-gray-100">
             Se connecter
           </a>
@@ -44,9 +46,11 @@ export default function Header() {
           </a>
         </div>
 
+        <div className="flex items-center gap-2 lg:hidden">
+        <ThemeToggle />
         <button
           type="button"
-          className="grid h-10 w-10 place-items-center rounded-xl border border-gray-200 text-ink lg:hidden"
+          className="grid h-10 w-10 place-items-center rounded-xl border border-gray-200 text-ink"
           aria-expanded={open}
           aria-controls="menu-mobile"
           aria-label={open ? "Fermer le menu" : "Ouvrir le menu"}
@@ -56,6 +60,7 @@ export default function Header() {
             {open ? <path d="M6 6l12 12M18 6L6 18" /> : <path d="M4 7h16M4 12h16M4 17h16" />}
           </svg>
         </button>
+        </div>
       </div>
 
       <div id="menu-mobile" className={`${open ? "" : "hidden "}border-t border-gray-100 bg-white px-4 pb-5 pt-2 lg:hidden`}>
