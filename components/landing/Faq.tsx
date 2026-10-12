@@ -1,21 +1,35 @@
 import { faqs } from "@/data/landing";
 import SectionTitle from "./SectionTitle";
 
+const FOCUS = "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus";
+
+// FAQ (§7.10) : liste à filets (pas de cartes), <details> natif, chevron qui pivote à l'ouverture.
 export default function Faq() {
   return (
-    <section id="faq" className="scroll-mt-20 bg-gray-50 py-20 lg:py-28">
-      <div className="mx-auto max-w-3xl px-4 sm:px-6 lg:px-8">
-        <SectionTitle center eyebrow="FAQ" title="Questions fréquentes" />
-        <div className="mt-12 space-y-3">
+    <section id="faq" className="scroll-mt-20 bg-canvas py-20 lg:py-28">
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        <SectionTitle eyebrow="FAQ" title="Questions fréquentes" />
+        <div className="mx-auto mt-12 max-w-3xl divide-y divide-line border-y border-line">
           {faqs.map((f) => (
-            <details key={f.q} className="group rounded-2xl bg-white p-6 shadow-sm ring-1 ring-gray-100 open:ring-brand-100">
-              <summary className="flex cursor-pointer list-none items-center justify-between gap-4 font-semibold text-ink [&::-webkit-details-marker]:hidden">
+            <details key={f.q} className="group py-5">
+              <summary
+                className={`flex cursor-pointer list-none items-center justify-between gap-4 rounded-sm text-base font-medium text-fg ${FOCUS} [&::-webkit-details-marker]:hidden`}
+              >
                 {f.q}
-                <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-gray-50 text-gray-500 transition group-open:rotate-45 group-open:bg-brand-50 group-open:text-brand-600" aria-hidden="true">
-                  +
-                </span>
+                <svg
+                  viewBox="0 0 24 24"
+                  className="size-5 shrink-0 text-fg-subtle transition-transform duration-200 group-open:rotate-180"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.75"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M6 9l6 6 6-6" />
+                </svg>
               </summary>
-              <p className="mt-4 leading-relaxed text-gray-600">{f.a}</p>
+              <p className="mt-3 pr-10 text-[15px] leading-7 text-fg-muted">{f.a}</p>
             </details>
           ))}
         </div>

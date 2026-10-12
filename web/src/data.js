@@ -66,7 +66,7 @@ async function act(method, path, body, success, after) {
     return res;
   } catch (e) {
     if (e.status === 401) { await refresh().catch(() => {}); state.modal = null; navigate("#/connexion"); }
-    toast(e.message);
+    toast(e.message, "danger");
     return null;
   } finally {
     busy = false;

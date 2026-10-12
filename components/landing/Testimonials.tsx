@@ -1,25 +1,32 @@
 import { testimonials } from "@/data/landing";
 import SectionTitle from "./SectionTitle";
 
-const avatarColors = ["bg-rose-400", "bg-amber-400", "bg-brand-600"];
+// Fonds d'avatars (palette AA, texte blanc ≥ 5:1) : classes complètes, Tailwind ne détecte pas une classe concaténée.
+const avatarColors = ["bg-avatar-1", "bg-avatar-2", "bg-avatar-3"];
 
+// Témoignages (§7.9) : sans étoiles, mention « Témoignages illustratifs » (honnêteté, §9).
 export default function Testimonials() {
   return (
-    <section className="py-20 lg:py-28">
+    <section className="bg-surface py-20 lg:py-28">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <SectionTitle center eyebrow="Témoignages" title="Ils utilisent déjà ClipBoost" />
-        <div className="mt-14 grid gap-6 md:grid-cols-3">
+        <SectionTitle eyebrow="Témoignages" title="Ils utilisent déjà ClipBoost" />
+        <div className="mt-12 grid gap-4 md:grid-cols-3 lg:mt-14">
           {testimonials.map((t, i) => (
-            <figure key={t.name} className="flex flex-col rounded-3xl bg-white p-7 shadow-sm ring-1 ring-gray-100">
-              <div className="text-amber-400" aria-label="5 étoiles sur 5">★★★★★</div>
-              <blockquote className="mt-4 flex-1 leading-relaxed text-gray-700">« {t.quote} »</blockquote>
+            <figure key={t.name} className="flex flex-col rounded-card border border-line bg-surface p-6 shadow-card">
+              <span className="block h-5 font-display text-4xl leading-none text-brand-fg" aria-hidden="true">
+                &ldquo;
+              </span>
+              <blockquote className="mt-3 flex-1 text-[15px] leading-7 text-fg">{t.quote}</blockquote>
               <figcaption className="mt-6 flex items-center gap-3">
-                <span className={`grid h-11 w-11 place-items-center rounded-full text-sm font-bold text-white ${avatarColors[i % avatarColors.length]}`} aria-hidden="true">
+                <span
+                  className={`grid size-10 shrink-0 place-items-center rounded-full text-xs font-semibold text-on-brand ${avatarColors[i % avatarColors.length]}`}
+                  aria-hidden="true"
+                >
                   {t.initials}
                 </span>
-                <div>
-                  <p className="font-semibold text-ink">{t.name}</p>
-                  <p className="text-sm text-gray-500">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-fg">{t.name}</p>
+                  <p className="text-small text-fg-subtle">
                     {t.role} · {t.city}
                   </p>
                 </div>
@@ -27,7 +34,7 @@ export default function Testimonials() {
             </figure>
           ))}
         </div>
-        <p className="mt-6 text-center text-xs text-gray-400">Témoignages fictifs, à titre d&apos;illustration.</p>
+        <p className="mt-6 text-center text-xs text-fg-subtle">Témoignages illustratifs</p>
       </div>
     </section>
   );

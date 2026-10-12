@@ -48,6 +48,18 @@ Sans clé `RESEND_API_KEY`, les codes de vérification sont affichés dans le te
    ```
 3. Déployer (Vercel ou tout hébergeur Node.js) avec `DATABASE_URL`, `RESEND_API_KEY` et `EMAIL_FROM`, puis `npm run build` et `npm start`.
 
+## Fichier HTML autonome
+
+```bash
+npm run build:offline        # next build, puis web/dist/clipboost-site.html
+```
+
+Produit un seul fichier HTML (accueil, connexion, espaces Clipper, Agence et Admin) qui s'ouvre directement depuis le disque, sans serveur ni connexion internet : pratique pour une démonstration. L'API y est simulée dans le navigateur (`web/offline/`) avec les mêmes règles (`lib/server/rules.ts`) et les mêmes contrôles (`lib/server/validation.ts`) que le serveur ; les données sont enregistrées dans le `localStorage` du navigateur.
+
+Au premier lancement, le fichier contient les données d'exemple de `db:seed:demo` et le compte `admin@clipboost.dz` (mot de passe `AdminClip2026`). Les codes de vérification sont affichés à l'écran. « Réinitialiser la démo », dans les réglages de l'administration, efface les données du navigateur.
+
+Si l'accueil a déjà été construit (`.next/`), `node web/build.mjs --offline [fichier]` suffit.
+
 ## Règles métier
 
 Les réglages sont modifiables par l'administrateur (page « Réglages du site »). Valeurs par défaut :
@@ -78,7 +90,7 @@ components/landing/  sections de la page d'accueil
 lib/server/          base de données, authentification, règles et services
 drizzle/             migrations SQL
 scripts/             migrate et seed
-web/                 application /espace (JavaScript, sans framework)
+web/                 application /espace (JavaScript, sans framework) et version autonome (web/offline/)
 tests/               tests des règles et du parcours API
 ```
 
