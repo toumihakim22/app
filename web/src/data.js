@@ -15,7 +15,10 @@ let db = emptyDb();
 async function api(method, path, body) {
   let res;
   try {
-    res = await fetch(path, { method, credentials: "same-origin", headers: body ? { "Content-Type": "application/json" } : {}, body: body ? JSON.stringify(body) : undefined });
+    const init = { method, credentials: "same-origin", headers: body ? { "Content-Type": "application/json" } : {}, body: body ? JSON.stringify(body) : undefined };
+    // Version autonome (fichier HTML unique) : l'API tourne dans le navigateur, voir web/offline/server.ts.
+    const offline = window.__CLIPBOOST_OFFLINE__;
+    res = await (offline ? offline.fetch(path, init) : fetch(path, init));
   } catch (e) {
     throw new Error("Connexion au serveur impossible. Vérifiez votre connexion internet.");
   }
