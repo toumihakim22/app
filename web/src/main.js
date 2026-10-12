@@ -1,8 +1,9 @@
-// Routeur, coquilles (navigation) et gestion des événements de tout le site.
-// Routes : #/ (accueil), #/connexion, #/inscription, #/clipper/<page>, #/agence/<page>, #/admin/<page>.
+// Routeur, coquilles (navigation) et gestion des événements de l'application (/espace).
+// Routes : #/connexion, #/inscription, #/inscription-agence, #/mot-de-passe, #/clipper/<page>, #/agence/<page>, #/admin/<page>.
+// La page d'accueil publique est servie par Next.js à l'adresse /.
 
 const state = {
-  route: { area: "landing", view: "" },
+  route: { area: "auth", view: "connexion" },
   session: null,
   drawer: false,
   notifOpen: false,
@@ -11,7 +12,6 @@ const state = {
   pub: { status: "Toutes" },
   tx: { type: "tous" },
   period: 30,
-  settings: { email: true, push: true, weekly: false, newCampaigns: true },
   adm: { userQ: "", userStatus: "Tous", userRole: "Tous les rôles", campQ: "", campStatus: "Toutes", modStatus: "En attente" },
   ag: { q: "", status: "Toutes", clipStatus: "Toutes" },
   pwdError: "",
@@ -20,18 +20,17 @@ const state = {
 resetAuth();
 
 const root = document.getElementById("app");
-const landing = document.getElementById("landing");
 
 function parseRoute() {
   const h = location.hash;
-  if (!h.startsWith("#/") || h === "#/") return { area: "landing", view: "" };
+  if (!h.startsWith("#/") || h === "#/") return { area: "home", view: "" };
   const [area, view] = h.slice(2).split("/");
-  if (area === "connexion" || area === "inscription") return { area: "auth", view: area };
+  if (area === "connexion" || area === "inscription" || area === "mot-de-passe") return { area: "auth", view: area };
   if (area === "inscription-agence") return { area: "auth", view: "inscription", role: "agence" };
   if (area === "agence") return { area, view: AGENCY_VIEWS[view] ? view : "apercu" };
   if (area === "clipper") return { area, view: CLIPPER_VIEWS[view] ? view : "accueil" };
   if (area === "admin") return { area, view: ADMIN_VIEWS[view] ? view : "apercu" };
-  return { area: "landing", view: "" };
+  return { area: "home", view: "" };
 }
 
 function navigate(hash) {
@@ -40,7 +39,9 @@ function navigate(hash) {
 }
 
 function onRoute() {
-  const r = parseRoute(), prev = state.route, u = state.session ? userById(state.session) : null;
+  const r = parseRoute(), prev = state.route, u = state.session ? me() : null;
+  // Sans route précise : l'espace de l'utilisateur connecté, sinon la connexion.
+  if (r.area === "home") return navigate(u ? homeOf(u) : "#/connexion");
   // Protection des espaces : il faut être connecté avec le bon rôle.
   if (["clipper", "agence", "admin"].includes(r.area) && (!u || u.role !== r.area)) return navigate(u ? homeOf(u) : "#/connexion");
   if (r.area === "auth" && u) return navigate(homeOf(u));
@@ -48,7 +49,7 @@ function onRoute() {
   if (r.role) { state.auth.form.role = r.role; r.role = undefined; }
   state.route = r; state.drawer = false; state.notifOpen = false; state.modal = null; state.pwdError = "";
   render();
-  if (r.area !== "landing" || !location.hash || location.hash === "#/") window.scrollTo(0, 0);
+  window.scrollTo(0, 0);
 }
 
 // ---------- Coquille commune aux espaces Clipper, Agence et Admin ----------
@@ -75,12 +76,12 @@ function shellSidebar(area) {
     </nav>
     <div class="mt-auto space-y-3 pt-8">
       ${isAdmin
-        ? `<a href="#/" class="flex items-center gap-2 rounded-xl px-3 py-2.5 text-sm font-medium text-white/60 hover:text-white">${icon("globe", "h-4 w-4")} Voir le site public</a>`
+        ? `<a href="/" class="flex items-center gap-2 rounded-xl px-3 py-2.5 text-sm font-medium text-white/60 hover:text-white">${icon("globe", "h-4 w-4")} Voir le site public</a>`
         : area === "agence"
           ? `<div class="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-gray-100"><p class="text-xs text-gray-500">Crédit agence</p><p class="mt-1 text-xl font-extrabold">${da(u.credit)}</p></div>
              <button type="button" data-action="ag-new" class="w-full rounded-2xl bg-brand-600 py-3.5 font-semibold text-white shadow-lg shadow-brand-600/25 hover:bg-brand-700">+ Nouvelle campagne 🚀</button>`
           : `<div class="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-gray-100"><p class="text-xs text-gray-500">Solde disponible</p><p class="mt-1 text-xl font-extrabold">${da(balance())}</p></div>
-           <button type="button" data-action="invite" class="w-full rounded-2xl bg-brand-600 py-3.5 font-semibold text-white shadow-lg shadow-brand-600/25 hover:bg-brand-700">Inviter un créateur 🙋</button>`}
+           <button type="button" data-action="submit-clip" class="w-full rounded-2xl bg-brand-600 py-3.5 font-semibold text-white shadow-lg shadow-brand-600/25 hover:bg-brand-700">+ Soumettre un clip 🎬</button>`}
       <div class="flex items-center gap-3 rounded-2xl px-2 py-2 ${isAdmin ? "text-white" : ""}">${avatar(u)}
         <div class="min-w-0 flex-1"><p class="truncate text-sm font-semibold">${esc(u.name)}</p><p class="truncate text-xs ${isAdmin ? "text-white/50" : "text-gray-500"}">${esc(u.email)}</p></div>
         <button type="button" data-action="logout" class="grid h-9 w-9 place-items-center rounded-xl ${isAdmin ? "text-white/60 hover:bg-white/10 hover:text-white" : "text-gray-400 hover:bg-white hover:text-rose-600"}" aria-label="Se déconnecter" title="Se déconnecter">${icon("logout", "h-4 w-4")}</button>
@@ -91,7 +92,7 @@ function shellSidebar(area) {
 
 function shellTopbar(area) {
   const u = userById(state.session), isAdmin = area === "admin";
-  const notifs = isAdmin ? [] : myNotifs(), unread = notifs.filter((n) => n.unread).length;
+  const notifs = myNotifs(), unread = notifs.filter((n) => n.unread).length;
   return `<header class="sticky top-0 z-30 border-b border-gray-100 bg-white/90 backdrop-blur">
     <div class="flex h-16 items-center gap-3 px-4 sm:px-6 lg:px-8">
       <button type="button" data-action="drawer" class="grid h-10 w-10 place-items-center rounded-xl ring-1 ring-gray-200 lg:hidden" aria-label="Ouvrir le menu">${icon("menu")}</button>
@@ -103,7 +104,7 @@ function shellTopbar(area) {
             <input data-input="global-q" type="search" placeholder="Rechercher une campagne…" class="w-full rounded-xl border border-gray-200 bg-gray-50 py-2.5 pl-10 pr-3 text-sm outline-none focus:border-brand-500 focus:bg-white focus:ring-4 focus:ring-brand-100"/></label>`}
       <div class="relative ml-auto flex items-center gap-2">
         ${themeToggle()}
-        ${isAdmin ? "" : `<button type="button" data-action="notif" aria-expanded="${state.notifOpen}" aria-label="Notifications${unread ? ` (${unread} non lues)` : ""}" class="relative grid h-10 w-10 place-items-center rounded-xl ring-1 ring-gray-200 hover:bg-gray-50">
+        ${`<button type="button" data-action="notif" aria-expanded="${state.notifOpen}" aria-label="Notifications${unread ? ` (${unread} non lues)` : ""}" class="relative grid h-10 w-10 place-items-center rounded-xl ring-1 ring-gray-200 hover:bg-gray-50">
           ${icon("bell")}${unread ? `<span class="absolute -right-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full bg-rose-500 px-1 text-[11px] font-bold text-white">${unread}</span>` : ""}</button>`}
         ${state.notifOpen ? notifPanel(notifs) : ""}
         <a href="#/${area}/${AREAS[area].profile}" class="flex items-center gap-2 rounded-xl py-1 pl-1 pr-2 hover:bg-gray-50" aria-label="Mon compte">
@@ -118,7 +119,7 @@ function notifPanel(list) {
   return `<div class="absolute right-0 top-12 z-40 w-[min(22rem,calc(100vw-2rem))] rounded-2xl bg-white p-2 shadow-xl ring-1 ring-gray-100" role="dialog" aria-label="Notifications">
     <div class="flex items-center justify-between px-3 py-2"><p class="font-bold">Notifications</p><button type="button" data-action="read-all" class="text-xs font-semibold text-brand-700 hover:underline">Tout marquer comme lu</button></div>
     <div class="max-h-96 overflow-y-auto">${list.length ? list.map((n) => `<button type="button" data-action="read-one" data-id="${n.id}" class="flex w-full gap-3 rounded-xl p-3 text-left hover:bg-gray-50 ${n.unread ? "bg-brand-50/60" : ""}">
-      <span class="text-lg">${n.icon}</span><span class="flex-1"><span class="block text-sm ${n.unread ? "font-semibold" : "text-gray-600"}">${esc(n.text)}</span><span class="text-xs text-gray-400">${n.time}</span></span>
+      <span class="text-lg">${n.icon}</span><span class="flex-1"><span class="block text-sm ${n.unread ? "font-semibold" : "text-gray-600"}">${esc(n.text)}</span><span class="text-xs text-gray-400">${ago(n.at)}</span></span>
       ${n.unread ? '<span class="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-brand-600"></span>' : ""}</button>`).join("") : `<p class="p-6 text-center text-sm text-gray-500">Aucune notification.</p>`}</div>
   </div>`;
 }
@@ -157,21 +158,17 @@ function shell(area) {
 
 function render() {
   const area = state.route.area;
-  landing.hidden = area !== "landing";
-  root.hidden = area === "landing";
-  const banner = document.getElementById("landing-banner");
-  if (banner) banner.innerHTML = siteBanner();
-  if (area === "landing") { document.title = "ClipBoost — Transformez vos clips en revenus"; return; }
+  if (area === "home") return;
 
   const active = document.activeElement;
   const focusKey = active && active.dataset ? active.dataset.input : null;
   const caret = focusKey && "selectionStart" in active ? active.selectionStart : null;
 
   let html;
-  if (area === "auth") html = state.route.view === "connexion" ? viewConnexion() : viewInscription();
+  if (area === "auth") html = { connexion: viewConnexion, inscription: viewInscription, "mot-de-passe": viewMotDePasse }[state.route.view]();
   else html = shell(area);
   root.innerHTML = `${html}<div id="toasts" class="pointer-events-none fixed inset-x-0 bottom-20 z-[60] flex flex-col items-center gap-2 px-4 lg:bottom-6"></div>`;
-  document.title = area === "auth" ? (state.route.view === "connexion" ? "Connexion — ClipBoost" : "Inscription — ClipBoost") : `${AREAS[area].title} — ClipBoost`;
+  document.title = area === "auth" ? `${{ connexion: "Connexion", inscription: "Inscription", "mot-de-passe": "Mot de passe oublié" }[state.route.view]} — ClipBoost` : `${AREAS[area].title} — ClipBoost`;
 
   if (focusKey) {
     const el = root.querySelector(`[data-input="${focusKey}"]`);
@@ -180,12 +177,6 @@ function render() {
 }
 
 // ---------- Événements ----------
-
-// Liens de la page d'accueil vers l'inscription et la connexion.
-document.addEventListener("click", (e) => {
-  const link = e.target.closest("[data-route]");
-  if (link && landing.contains(link)) { e.preventDefault(); navigate(`#/${link.dataset.route}`); }
-});
 
 root.addEventListener("click", (e) => {
   const t = e.target.closest("[data-action]");
@@ -199,22 +190,15 @@ root.addEventListener("click", (e) => {
   switch (action) {
     case "drawer": state.drawer = !state.drawer; state.notifOpen = false; return render();
     case "notif": state.notifOpen = !state.notifOpen; return render();
-    case "read-all": myNotifs().forEach((n) => (n.unread = false)); return render();
-    case "read-one": { const n = db.notifications.find((x) => String(x.id) === t.dataset.id); if (n) n.unread = false; return render(); }
+    case "read-all": return act("POST", "/api/notifications/read", {});
+    case "read-one": return act("POST", "/api/notifications/read", { ids: [t.dataset.id] });
     case "close-modal": state.modal = null; return render();
     case "logout": return logout();
     case "toast": return toast(t.dataset.msg);
     case "toggle-pwd": state.auth.showPwd = !state.auth.showPwd; return render();
-    case "forgot": return toast("Si un compte existe, un lien de réinitialisation a été envoyé par email.");
-    case "demo-login": {
-      const u = db.users.find((x) => x.email === t.dataset.email);
-      const form = root.querySelector('[data-form="login"]');
-      form.email.value = u.email; form.password.value = u.password;
-      return;
-    }
     case "signup-back": state.auth.step = "form"; state.auth.error = ""; return render();
     case "signup-role": captureSignupForm(); state.auth.form.role = t.dataset.value; state.auth.fieldErrors = {}; return render();
-    case "resend-code": state.auth.code = newCode(); state.auth.error = ""; render(); return toast("Nouveau code envoyé");
+    case "resend-code": return resendCode();
   }
   if (state.route.area === "admin") handleAdminAction(action, t);
   else if (state.route.area === "agence") handleAgencyAction(action, t);
@@ -255,7 +239,7 @@ document.addEventListener("keydown", (e) => {
 root.addEventListener("submit", (e) => {
   e.preventDefault();
   const form = e.target.dataset.form, data = Object.fromEntries(new FormData(e.target));
-  if (["login", "signup", "verify"].includes(form)) return handleAuthSubmit(form, data);
+  if (["login", "signup", "verify", "forgot", "reset"].includes(form)) return handleAuthSubmit(form, data);
   if (form === "password") return handlePasswordSubmit(data);
   if (form.startsWith("adm-")) return handleAdminSubmit(form, data);
   if (form.startsWith("ag-")) return handleAgencySubmit(form, data);
@@ -263,4 +247,10 @@ root.addEventListener("submit", (e) => {
 });
 
 window.addEventListener("hashchange", onRoute);
-onRoute();
+
+// Démarrage : on récupère la session éventuelle avant d'afficher la première page.
+refresh()
+  .then(onRoute)
+  .catch((e) => {
+    root.innerHTML = `<div class="grid min-h-screen place-items-center p-6 text-center"><div><p class="text-4xl">⚠️</p><p class="mt-3 font-semibold">${esc(e.message)}</p><button type="button" onclick="location.reload()" class="mt-5 rounded-xl bg-ink px-5 py-2.5 font-semibold text-white">Réessayer</button></div></div>`;
+  });

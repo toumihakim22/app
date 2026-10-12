@@ -1,16 +1,17 @@
 // Espace Clipper : tableau de bord, campagnes, publications, portefeuille, statistiques, profil, paramètres.
 
-const me = () => userById(state.session);
+const me = () => db.me;
 const myPubs = () => db.publications.filter((p) => p.userId === state.session);
 const myTx = () => db.transactions.filter((t) => t.userId === state.session);
-const myNotifs = () => db.notifications.filter((n) => n.userId === state.session);
+const myNotifs = () => db.notifications;
 const activeCampaigns = () => db.campaigns.filter((c) => c.status === "Active");
 
-const totalEarned = (u = me()) => db.publications.filter((p) => p.userId === u.id).reduce((s, p) => s + earningsOf(p), 0) + u.baseEarned;
-const pendingAmount = (u = me()) => db.transactions.filter((t) => t.userId === u.id && t.type === "gain" && t.status === "En cours").reduce((s, t) => s + t.amount, 0);
-// Un retrait en cours est déjà déduit du solde ; un retrait refusé est rendu.
-const balance = (u = me()) => db.transactions.filter((t) => t.userId === u.id && (t.status === "Validé" || (t.type === "retrait" && t.status === "En cours"))).reduce((s, t) => s + t.amount, 0) + u.baseBalance;
-const userViews = () => views30.map((v) => +(v * me().viewsFactor).toFixed(1));
+// Soldes calculés par le serveur : gains validés, gains encore en rétention, solde retirable.
+const totalEarned = (u = me()) => u.earned || 0;
+const pendingAmount = (u = me()) => u.pending || 0;
+const balance = (u = me()) => u.available || 0;
+const dailySeries = () => (state.period === 7 ? db.series.daily.slice(-7) : db.series.daily);
+const maskAccount = (a) => (a ? `•••• ${esc(a.slice(-4))}` : "");
 
 const CLIPPER_NAV = [
   { id: "accueil", label: "Vue d'ensemble", short: "Accueil", icon: "home" },
@@ -29,11 +30,11 @@ function incomeCard() {
       <div>
         <p class="text-sm font-medium text-gray-700">Revenus</p>
         <p class="mt-2 whitespace-nowrap text-3xl font-extrabold tracking-tight">${da(totalEarned())}</p>
-        <p class="mt-2 text-sm text-gray-600">${u.viewsFactor ? `${icon("trend", "mr-1 inline h-4 w-4 align-[-2px]")}<span class="font-semibold text-ink">+8,2 %</span> par rapport au mois dernier` : "Vos premiers gains apparaîtront ici."}</p>
+        <p class="mt-2 text-sm text-gray-600">${totalEarned() ? `${icon("trend", "mr-1 inline h-4 w-4 align-[-2px]")}<span class="font-semibold text-ink">${da(db.series.daily.reduce((s, v) => s + v, 0))}</span> sur les 30 derniers jours` : "Vos premiers gains apparaîtront ici."}</p>
       </div>
       <span class="grid h-14 w-14 shrink-0 place-items-center rounded-full bg-income text-white shadow-md">${icon("arrowUp", "h-6 w-6")}</span>
     </div>
-    <div class="h-32">${areaChart(u.viewsFactor ? income12 : income12.map(() => 0.01))}</div>
+    <div class="h-32">${areaChart(db.series.daily.length ? db.series.daily : [0, 0])}</div>
   </div>`;
 }
 
@@ -69,7 +70,7 @@ function campaignCard(c, compact = false) {
       </ul>
       ${compact ? "" : `<div class="mt-3"><div class="flex justify-between text-xs text-gray-500"><span>Budget utilisé</span><span>${pct} %</span></div><div class="mt-1 h-1.5 rounded-full bg-gray-100"><div class="h-1.5 rounded-full bg-brand-600" style="width:${pct}%"></div></div></div>`}
       ${joined
-        ? `<button type="button" data-action="copy" data-id="${c.id}" class="mt-4 rounded-xl bg-brand-50 py-2 text-sm font-semibold text-brand-700 hover:bg-brand-100">Copier le lien</button>`
+        ? `<button type="button" data-action="submit-clip" data-id="${c.id}" class="mt-4 rounded-xl bg-brand-50 py-2 text-sm font-semibold text-brand-700 hover:bg-brand-100">Soumettre un clip</button>`
         : `<button type="button" data-action="join" data-id="${c.id}" class="mt-4 rounded-xl bg-ink py-2 text-sm font-semibold text-white hover:bg-black">Rejoindre</button>`}
     </div>
   </article>`;
@@ -83,7 +84,7 @@ function campaignRow(c) {
     <span class="hidden rounded-lg bg-ink px-2 py-1 text-sm font-bold text-white sm:inline">${c.rate} DA /1K</span>
     <button type="button" data-action="toggle-fav" data-id="${c.id}" aria-pressed="${fav}" aria-label="${fav ? "Retirer des favoris" : "Ajouter aux favoris"}" class="grid h-9 w-9 place-items-center rounded-full ${fav ? "text-rose-500" : "text-gray-400 hover:text-rose-500"}">${icon("heart", "h-4 w-4", fav)}</button>
     ${joined
-      ? `<button type="button" data-action="copy" data-id="${c.id}" class="rounded-xl bg-brand-50 px-3 py-2 text-sm font-semibold text-brand-700 hover:bg-brand-100">Copier</button>`
+      ? `<button type="button" data-action="submit-clip" data-id="${c.id}" class="rounded-xl bg-brand-50 px-3 py-2 text-sm font-semibold text-brand-700 hover:bg-brand-100">Soumettre</button>`
       : `<button type="button" data-action="join" data-id="${c.id}" class="rounded-xl bg-ink px-3 py-2 text-sm font-semibold text-white hover:bg-black">Rejoindre</button>`}
   </div>`;
 }
@@ -100,14 +101,17 @@ function publicationsTable(list, { showUser = false, actions = false } = {}) {
       const gain = p.status === "Validée" ? `${da(earningsOf(p))}${isCapped(p) ? `<span class="block text-xs font-medium text-amber-600">Plafond atteint</span>` : ""}`
         : p.status === "En attente" && belowMin(p) ? `<span class="text-xs font-medium text-gray-500">Sous le seuil<span class="block">${fmt(p.views)} / ${fmt(viewsFor(c, c.minPayout))} vues</span></span>` : "—";
       const sub = showUser ? `${esc(owner.name)} · ${esc(c.title)}` : `${esc(c.title)} · ${date(p.date)}`;
+      const viewsBtn = `<button type="button" data-action="adm-views" data-id="${p.id}" class="rounded-lg px-3 py-1.5 text-xs font-semibold text-gray-600 ring-1 ring-gray-200 hover:bg-gray-50">Vues</button>`;
       const decision = actions && p.status === "En attente" && belowMin(p)
-        ? `<span class="flex flex-wrap items-center gap-2"><span class="rounded-lg bg-gray-100 px-3 py-1.5 text-xs font-semibold text-gray-500" title="Le clip n'a pas encore atteint le seuil minimum de la campagne">Seuil non atteint</span><button type="button" data-action="adm-reject" data-id="${p.id}" class="rounded-lg bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-600 hover:bg-rose-100">Refuser</button></span>`
+        ? `<span class="flex flex-wrap items-center gap-2">${viewsBtn}<span class="rounded-lg bg-gray-100 px-3 py-1.5 text-xs font-semibold text-gray-500" title="Le clip n'a pas encore atteint le seuil minimum de la campagne">Seuil non atteint</span><button type="button" data-action="adm-reject" data-id="${p.id}" class="rounded-lg bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-600 hover:bg-rose-100">Refuser</button></span>`
         : actions && p.status === "En attente"
-        ? `<span class="flex gap-2"><button type="button" data-action="adm-validate" data-id="${p.id}" class="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700">Valider</button><button type="button" data-action="adm-reject" data-id="${p.id}" class="rounded-lg bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-600 hover:bg-rose-100">Refuser</button></span>`
+        ? `<span class="flex flex-wrap gap-2">${viewsBtn}<button type="button" data-action="adm-validate" data-id="${p.id}" class="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700">Valider</button><button type="button" data-action="adm-reject" data-id="${p.id}" class="rounded-lg bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-600 hover:bg-rose-100">Refuser</button></span>`
+        : actions && p.status === "Validée"
+        ? `<span class="flex flex-wrap items-center gap-2">${statusBadge(p.status)}${viewsBtn}</span>`
         : `${statusBadge(p.status)}${p.reason ? `<span class="mt-1 block text-xs text-rose-500">${esc(p.reason)}</span>` : ""}`;
       return `<div class="border-b border-gray-50 px-4 py-4 last:border-0 md:grid md:grid-cols-[2fr_1fr_1fr_1fr_1fr] md:items-center md:gap-4 md:px-6">
         <div class="flex min-w-0 items-center gap-3">${thumb}
-          <div class="min-w-0 flex-1"><p class="truncate font-semibold">${esc(p.title)}</p><p class="truncate text-xs text-gray-500">${sub}</p></div>
+          <div class="min-w-0 flex-1"><p class="truncate font-semibold">${p.url ? `<a href="${esc(p.url)}" target="_blank" rel="noopener noreferrer" class="hover:underline">${esc(p.title)}</a>` : esc(p.title)}</p><p class="truncate text-xs text-gray-500">${sub}</p></div>
           ${actions ? "" : `<span class="md:hidden">${statusBadge(p.status)}</span>`}
         </div>
         <div class="mt-3 flex items-center gap-3 pl-14 text-sm text-gray-700 md:hidden">${platform}<span>${fmt(p.views)} vues</span><span class="ml-auto font-semibold text-ink">${gain}</span></div>
@@ -126,13 +130,13 @@ function cAccueil() {
   const u = me(), pubs = myPubs();
   const totalViews = pubs.reduce((s, p) => s + p.views, 0), validated = pubs.filter((p) => p.status === "Validée").length;
   const stats = [
-    { label: "Gains du mois", value: da(pubs.reduce((s, p) => s + earningsOf(p), 0)), delta: u.viewsFactor ? "+8,2 %" : "Ce mois-ci", icon: "wallet", tone: "bg-emerald-50 text-income" },
-    { label: "Vues totales", value: fmt(totalViews), delta: u.viewsFactor ? "+12,4 %" : "Ce mois-ci", icon: "chart", tone: "bg-brand-50 text-brand-600" },
+    { label: "Gains totaux", value: da(totalEarned()), delta: `${da(pendingAmount())} en rétention`, icon: "wallet", tone: "bg-emerald-50 text-income" },
+    { label: "Vues totales", value: fmt(totalViews), delta: "Tous clips confondus", icon: "chart", tone: "bg-brand-50 text-brand-600" },
     { label: "Clips publiés", value: String(pubs.length), delta: "Depuis l'inscription", icon: "film", tone: "bg-amber-50 text-amber-600" },
     { label: "Taux de validation", value: pubs.length ? `${Math.round((validated / pubs.length) * 100)} %` : "—", delta: "Objectif 80 %", icon: "check", tone: "bg-sky-50 text-sky-600" },
   ];
   const recommended = activeCampaigns().filter((c) => !u.joinedCampaigns.has(c.id)).slice(0, 3);
-  const views = state.period === 7 ? userViews().slice(-7) : userViews();
+
   const onboarding = !u.joinedCampaigns.size
     ? `<div class="mt-8 flex flex-col gap-4 rounded-3xl bg-brand-600 p-6 text-white sm:flex-row sm:items-center sm:justify-between"><div><p class="text-lg font-bold">Bienvenue ${esc(u.name.split(" ")[0])} ! Prêt pour votre premier clip ?</p><p class="mt-1 text-white/80">1. Rejoignez une campagne · 2. Publiez votre clip · 3. Soumettez le lien pour validation.</p></div><a href="#/clipper/campagnes" class="shrink-0 rounded-2xl bg-white px-5 py-3 text-center font-semibold text-brand-700">Voir les campagnes</a></div>` : "";
   return `${pageHeader(`Bonjour ${esc(u.name.split(" ")[0])} 👋`, "Voici le résumé de votre activité de clipping.", `<button type="button" data-action="submit-clip" class="rounded-2xl bg-ink px-5 py-3 text-sm font-semibold text-white hover:bg-black">+ Soumettre un clip</button>`)}
@@ -142,9 +146,9 @@ function cAccueil() {
         <p class="mt-3 whitespace-nowrap text-lg font-extrabold sm:text-2xl">${s.value}</p><p class="mt-1 text-xs font-medium text-gray-500">${s.delta}</p>`, "p-4 sm:p-5")).join("")}
     </div>
     <div class="mt-6 grid gap-6 xl:grid-cols-[1.6fr_1fr]">
-      ${card(`<div class="flex flex-wrap items-center justify-between gap-3"><div><p class="font-bold">Vues de vos clips</p><p class="text-sm text-gray-500">${state.period} derniers jours, en milliers</p></div>
+      ${card(`<div class="flex flex-wrap items-center justify-between gap-3"><div><p class="font-bold">Vos gains</p><p class="text-sm text-gray-500">${state.period} derniers jours, en DA</p></div>
         ${pills("period", `${state.period} jours`, ["7 jours", "30 jours"])}</div>
-        ${u.viewsFactor ? `<div class="mt-6 h-56">${areaChart(views, { h: 200, color: "#7c3aed" })}</div>` : `<div class="mt-6 grid h-56 place-items-center rounded-2xl bg-gray-50 text-center text-sm text-gray-500">Pas encore de vues.<br/>Vos statistiques apparaîtront après votre premier clip validé.</div>`}`)}
+        ${totalEarned() ? `<div class="mt-6 h-56">${areaChart(dailySeries(), { h: 200, color: "#7c3aed" })}</div>` : `<div class="mt-6 grid h-56 place-items-center rounded-2xl bg-gray-50 text-center text-sm text-gray-500">Pas encore de vues.<br/>Vos statistiques apparaîtront après votre premier clip validé.</div>`}`)}
       <div class="space-y-3">${incomeCard()}${myTx().slice(0, 2).map(txRow).join("")}</div>
     </div>
     ${recommended.length ? `<div class="mt-10 flex items-center justify-between"><h2 class="text-xl font-extrabold">Campagnes recommandées</h2><a href="#/clipper/campagnes" class="text-sm font-semibold text-brand-700 hover:underline">Tout voir</a></div>
@@ -198,13 +202,13 @@ function cPortefeuille() {
     <div class="mt-8 grid gap-6 lg:grid-cols-[1fr_1.4fr]">
       <div class="space-y-4 rounded-[2rem] bg-gray-50 p-4 ring-1 ring-gray-100 sm:p-5">
         <div class="flex items-center justify-between rounded-2xl bg-white px-5 py-4 shadow-sm ring-1 ring-gray-100">
-          <div><span class="flex"><span class="h-6 w-6 rounded-full bg-brand-600"></span><span class="-ml-2.5 h-6 w-6 rounded-full bg-amber-400/90"></span></span><p class="mt-2 text-sm text-gray-700">CCP •••• •••• 5678</p></div>
-          <span class="text-gray-400">${icon("dots")}</span>
+          <div><span class="flex"><span class="h-6 w-6 rounded-full bg-brand-600"></span><span class="-ml-2.5 h-6 w-6 rounded-full bg-amber-400/90"></span></span><p class="mt-2 text-sm text-gray-700">${me().payoutMethod ? `${esc(me().payoutMethod)} ${maskAccount(me().payoutAccount)}` : "Aucun moyen de retrait"}</p></div>
+          <a href="#/clipper/parametres" class="text-sm font-semibold text-brand-700 hover:underline">${me().payoutMethod ? "Modifier" : "Ajouter"}</a>
         </div>
         ${incomeCard()}
         <div class="grid grid-cols-2 gap-3">
           ${card(`<p class="text-xs text-gray-500">Solde disponible</p><p class="mt-1 whitespace-nowrap text-lg font-extrabold">${da(balance())}</p>`, "p-4")}
-          ${card(`<p class="text-xs text-gray-500">En attente</p><p class="mt-1 whitespace-nowrap text-lg font-extrabold text-amber-600">${da(pendingAmount())}</p>`, "p-4")}
+          ${card(`<p class="text-xs text-gray-500">En rétention (${db.settings.holdDays} j)</p><p class="mt-1 whitespace-nowrap text-lg font-extrabold text-amber-600">${da(pendingAmount())}</p>`, "p-4")}
         </div>
       </div>
       <div>
@@ -212,7 +216,7 @@ function cPortefeuille() {
           ${pills("tx-type", { tous: "Tous", gain: "Gains", retrait: "Retraits" }[state.tx.type], ["Tous", "Gains", "Retraits"])}</div>
         <div class="mt-4 space-y-3">${list.length ? list.map((t) => `<div class="flex items-center gap-4 rounded-2xl bg-white px-4 py-3.5 shadow-sm ring-1 ring-gray-100">
           <span class="grid h-10 w-10 shrink-0 place-items-center rounded-xl ${t.type === "retrait" ? "bg-gray-100 text-gray-600" : "bg-emerald-50 text-income"}">${icon(t.type === "retrait" ? "wallet" : "arrowUp", "h-4 w-4")}</span>
-          <div class="min-w-0 flex-1"><p class="truncate text-sm font-semibold">${esc(t.label)}</p><p class="text-xs text-gray-500">${date(t.date)} · ${t.time} · ${t.id}</p></div>
+          <div class="min-w-0 flex-1"><p class="truncate text-sm font-semibold">${esc(t.label)}</p><p class="text-xs text-gray-500">${date(t.date)} · ${t.time} · ${t.ref}${t.fee ? ` · frais ${da(t.fee)}` : ""}</p></div>
           <p class="whitespace-nowrap text-sm font-semibold ${t.amount < 0 ? "text-gray-500" : "text-income"}">${t.amount < 0 ? "" : "+ "}${da(t.amount)}</p>
           <span class="hidden sm:inline">${statusBadge(t.status)}</span></div>`).join("") : `<div class="rounded-3xl bg-gray-50 p-10 text-center text-gray-500">Aucune opération pour le moment.</div>`}</div>
       </div>
@@ -229,7 +233,7 @@ function cStatistiques() {
   const top = pubs.slice().sort((a, b) => b.views - a.views).slice(0, 3);
   const colors = { TikTok: "bg-ink", Instagram: "bg-pink-500", YouTube: "bg-red-500" };
   return `${pageHeader("Statistiques", "Comprenez ce qui fait performer vos clips.", pills("period", `${state.period} jours`, ["7 jours", "30 jours"]))}
-    <div class="mt-8">${card(`<p class="font-bold">Vues quotidiennes (milliers)</p><div class="mt-6 h-64">${areaChart(state.period === 7 ? userViews().slice(-7) : userViews(), { h: 220, color: "#7c3aed" })}</div>`)}</div>
+    <div class="mt-8">${card(`<p class="font-bold">Gains par jour (DA)</p><div class="mt-6 h-64">${areaChart(dailySeries(), { h: 220, color: "#7c3aed" })}</div>`)}</div>
     <div class="mt-6 grid gap-6 lg:grid-cols-2">
       ${card(`<p class="font-bold">Vues par plateforme</p><div class="mt-6 space-y-5">${byPlatform.map((b) => `<div><div class="flex justify-between text-sm"><span class="font-medium">${b.pl}</span><span class="text-gray-500">${fmt(b.views)} vues</span></div><div class="mt-2 h-3 rounded-full bg-gray-100"><div class="h-3 rounded-full ${colors[b.pl]}" style="width:${(b.views / maxP) * 100}%"></div></div></div>`).join("")}</div>`)}
       ${card(`<p class="font-bold">Gains par campagne</p><div class="mt-6 space-y-5">${byCampaign.length ? byCampaign.map((x) => `<div><div class="flex justify-between text-sm"><span class="font-medium">${x.c.emoji} ${esc(x.c.title)}</span><span class="text-gray-500">${da(x.earn)}</span></div><div class="mt-2 h-3 rounded-full bg-gray-100"><div class="h-3 rounded-full bg-income" style="width:${(x.earn / maxC) * 100}%"></div></div></div>`).join("") : `<p class="text-sm text-gray-500">Aucun gain validé pour l'instant.</p>`}</div>`)}
@@ -239,47 +243,46 @@ function cStatistiques() {
 }
 
 function cProfil() {
-  const u = me();
-  const accounts = [["TikTok", u.handle, u.viewsFactor ? "18,4 K abonnés" : "Non connecté", !!u.viewsFactor], ["Instagram", u.handle, u.viewsFactor ? "6,1 K abonnés" : "Non connecté", !!u.viewsFactor], ["YouTube", u.name, "Non connecté", false]];
+  const u = me(), h = u.handles || {};
   return `${pageHeader("Profil", "Vos informations et votre compte.")}
     <div class="mt-8 grid gap-6 lg:grid-cols-[1fr_1.5fr]">
       <div class="space-y-6">
         ${card(`<div class="flex flex-col items-center text-center">${avatar(u, "h-24 w-24 text-3xl")}
-          <p class="mt-4 text-xl font-extrabold">${esc(u.name)}</p><p class="text-gray-500">${esc(u.handle)} · ${esc(u.country)}</p>
-          <span class="mt-3 rounded-full bg-amber-50 px-3 py-1 text-sm font-semibold text-amber-700">🥈 ${u.level}</span>
+          <p class="mt-4 text-xl font-extrabold">${esc(u.name)}</p><p class="text-gray-500">${u.handle ? `${esc(u.handle)} · ` : ""}${esc(u.country)}</p>
+          <span class="mt-3 rounded-full bg-amber-50 px-3 py-1 text-sm font-semibold text-amber-700">🥈 ${esc(u.level)}</span>
           ${u.bio ? `<p class="mt-5 text-sm leading-relaxed text-gray-600">${esc(u.bio)}</p>` : ""}
           <p class="mt-4 text-xs text-gray-400">Membre depuis le ${date(u.joined)}</p></div>`)}
         ${accountCard(u)}
       </div>
       <div class="space-y-6">
         ${card(`<p class="font-bold">Informations publiques</p><form data-form="profile" class="mt-5 grid gap-4 sm:grid-cols-2">
-          ${field("Nom complet", `<input name="name" value="${esc(u.name)}" class="${inputCls}"/>`)}
-          <label class="block text-sm"><span class="font-medium text-gray-700">Pays</span><select name="country" class="${inputCls}">${COUNTRIES.map((w) => `<option ${w === u.country ? "selected" : ""}>${w}</option>`).join("")}</select></label>
-          <div class="sm:col-span-2">${field("Bio", `<textarea name="bio" rows="3" placeholder="Présentez votre style de clips aux marques…" class="${inputCls}">${esc(u.bio)}</textarea>`)}</div>
+          ${field("Nom complet", `<input name="name" required maxlength="80" value="${esc(u.name)}" class="${inputCls}"/>`)}
+          <label class="block text-sm"><span class="font-medium text-gray-700">Pays</span>${countrySelect("country", u.country)}</label>
+          <div class="sm:col-span-2">${field("Bio", `<textarea name="bio" rows="3" maxlength="300" placeholder="Présentez votre style de clips aux marques…" class="${inputCls}">${esc(u.bio || "")}</textarea>`)}</div>
+          <p class="text-sm font-bold sm:col-span-2">Vos comptes</p>
+          ${field("TikTok", `<input name="tiktok" maxlength="60" value="${esc(h.tiktok || "")}" placeholder="@votrecompte" class="${inputCls}"/>`)}
+          ${field("Instagram", `<input name="instagram" maxlength="60" value="${esc(h.instagram || "")}" placeholder="@votrecompte" class="${inputCls}"/>`)}
+          ${field("YouTube", `<input name="youtube" maxlength="60" value="${esc(h.youtube || "")}" placeholder="@votrechaine" class="${inputCls}"/>`)}
           <div class="sm:col-span-2"><button class="rounded-xl bg-ink px-5 py-2.5 text-sm font-semibold text-white hover:bg-black">Enregistrer</button></div></form>`)}
-        ${card(`<p class="font-bold">Comptes connectés</p><div class="mt-4 divide-y divide-gray-100">${accounts.map(([pl, h, f, on]) => `<div class="flex items-center justify-between gap-3 py-3"><div><p class="font-semibold">${pl}</p><p class="text-sm text-gray-500">${on ? `${esc(h)} · ${f}` : f}</p></div>
-          <button type="button" data-action="toast" data-msg="${on ? `Compte ${pl} déjà connecté` : `Redirection vers ${pl} pour autoriser ClipBoost…`}" class="rounded-xl px-3 py-2 text-sm font-semibold ${on ? "bg-emerald-50 text-emerald-700" : "bg-brand-50 text-brand-700"}">${on ? "Connecté" : "Connecter"}</button></div>`).join("")}</div>`)}
       </div>
     </div>`;
 }
 
 function cParametres() {
-  const row = (key, title, text) => `<div class="flex items-center justify-between gap-4 py-4"><div><p class="font-semibold">${title}</p><p class="text-sm text-gray-500">${text}</p></div>${switchBtn(state.settings[key], "setting", key, title)}</div>`;
-  return `${pageHeader("Paramètres", "Gérez vos préférences.")}
+  const u = me();
+  return `${pageHeader("Paramètres", "Votre moyen de retrait et vos préférences.")}
     <div class="mt-8 grid gap-6 lg:grid-cols-2">
-      ${card(`<p class="font-bold">Notifications</p><div class="mt-2 divide-y divide-gray-100">
-        ${row("email", "E-mails", "Validations, refus et versements.")}
-        ${row("push", "Notifications navigateur", "Alertes en temps réel.")}
-        ${row("newCampaigns", "Nouvelles campagnes", "Être prévenu dès qu'une campagne correspond à vos catégories.")}
-        ${row("weekly", "Résumé hebdomadaire", "Un bilan de vos vues et gains chaque dimanche.")}</div>`)}
-      <div class="space-y-6">
-        ${card(`<p class="font-bold">Langue et région</p><div class="mt-4 grid gap-4 sm:grid-cols-2">
-          ${field("Langue", `<select class="${inputCls}"><option>Français</option></select>`)}
-          ${field("Devise", `<select class="${inputCls}"><option>Dinar algérien (DA)</option></select>`)}</div>`)}
-        ${card(`<p class="font-bold">Moyen de retrait</p><p class="mt-1 text-sm text-gray-500">Utilisé pour vos demandes de retrait.</p>
-          <div class="mt-4 space-y-2">${["CCP •••• 5678", "BaridiMob"].map((m, i) => `<label class="flex cursor-pointer items-center gap-3 rounded-xl p-3 ring-1 ring-gray-200 has-[:checked]:bg-brand-50 has-[:checked]:ring-brand-500"><input type="radio" name="payout" ${i === 0 ? "checked" : ""} class="accent-brand-600"/> <span class="font-medium">${m}</span></label>`).join("")}</div>`)}
-        <button type="button" data-action="toast" data-msg="Préférences enregistrées" class="w-full rounded-2xl bg-ink py-3.5 font-semibold text-white hover:bg-black">Enregistrer les préférences</button>
-      </div>
+      ${card(`<p class="font-bold">Moyen de retrait</p><p class="mt-1 text-sm text-gray-500">Vos gains sont versés sur ce compte, après validation de chaque demande par l'équipe ClipBoost.</p>
+        <form data-form="payout" class="mt-5 space-y-4">
+          <div class="grid grid-cols-3 gap-2">${PAYOUT_METHODS.map((m, i) => `<label class="cursor-pointer"><input type="radio" name="payoutMethod" value="${m}" ${(u.payoutMethod || PAYOUT_METHODS[0]) === m ? "checked" : ""} class="peer sr-only"/><span class="block rounded-xl py-3 text-center text-sm font-semibold ring-1 ring-gray-200 peer-checked:bg-brand-50 peer-checked:text-brand-700 peer-checked:ring-brand-500">${m}</span></label>`).join("")}</div>
+          ${field("Numéro de compte", `<input name="payoutAccount" required maxlength="60" value="${esc(u.payoutAccount || "")}" placeholder="RIP, numéro CCP ou RIB" class="${inputCls}"/>`, "Vérifiez bien ce numéro : les virements sont envoyés tels quels.")}
+          <button class="w-full rounded-xl bg-ink py-3 font-semibold text-white hover:bg-black">Enregistrer</button>
+        </form>`)}
+      ${card(`<p class="font-bold">Comment vous êtes payé</p><ul class="mt-4 space-y-3 text-sm text-gray-600">
+        <li class="flex gap-2"><span class="text-income">${icon("check", "h-4 w-4")}</span>Un clip doit atteindre le seuil minimum de sa campagne pour être examiné.</li>
+        <li class="flex gap-2"><span class="text-income">${icon("check", "h-4 w-4")}</span>Une fois validé, il continue de rapporter pendant ${db.settings.earningDays} jours, jusqu'au plafond par clip.</li>
+        <li class="flex gap-2"><span class="text-income">${icon("check", "h-4 w-4")}</span>Chaque gain reste ${db.settings.holdDays} jours en rétention (contrôle anti-fraude), puis devient retirable.</li>
+        <li class="flex gap-2"><span class="text-income">${icon("check", "h-4 w-4")}</span>Retrait minimum : ${da(db.settings.minWithdraw)}. Retrait instantané : ${db.settings.instantFeePercent} % de frais (minimum ${da(db.settings.instantMinFee)}).</li></ul>`)}
     </div>`;
 }
 
@@ -304,7 +307,7 @@ function clipperModal() {
       <ul class="mt-2 space-y-2">${c.rules.map((r) => `<li class="flex gap-2 text-sm text-gray-700"><span class="text-income">${icon("check", "h-4 w-4")}</span>${esc(r)}</li>`).join("")}</ul>
       <p class="mt-4 text-sm text-gray-500">Plateformes : ${c.platforms.join(", ")}</p>
       <div class="mt-6 flex gap-3">${joined
-        ? `<button type="button" data-action="copy" data-id="${c.id}" class="flex-1 rounded-xl bg-brand-50 py-3 font-semibold text-brand-700">Copier le lien</button><button type="button" data-action="submit-clip" data-id="${c.id}" class="flex-1 rounded-xl bg-ink py-3 font-semibold text-white">Soumettre un clip</button>`
+        ? `<button type="button" data-action="submit-clip" data-id="${c.id}" class="flex-1 rounded-xl bg-ink py-3 font-semibold text-white">Soumettre un clip</button>`
         : `<button type="button" data-action="join" data-id="${c.id}" class="flex-1 rounded-xl bg-ink py-3 font-semibold text-white">Rejoindre la campagne</button>`}</div>`);
   }
   if (m.type === "submit") {
@@ -320,19 +323,18 @@ function clipperModal() {
       </form>`);
   }
   if (m.type === "withdraw") {
-    const min = db.settings.minWithdraw, bal = Math.floor(balance());
-    if (bal < min) return modalShell(`<h2 class="text-2xl font-extrabold">Demander un retrait</h2><p class="mt-3 text-gray-600">Votre solde disponible (${da(bal)}) est inférieur au minimum de retrait fixé à <b>${da(min)}</b>.</p>`);
-    return modalShell(`<h2 class="text-2xl font-extrabold">Demander un retrait</h2><p class="mt-1 text-sm text-gray-500">Solde disponible : <b>${da(bal)}</b>. Le virement est traité sous 48 h ouvrées.</p>
+    const set = db.settings, min = set.minWithdraw, bal = Math.floor(balance());
+    if (!u.payoutMethod) return modalShell(`<h2 class="text-2xl font-extrabold">Demander un retrait</h2><p class="mt-3 text-gray-600">Ajoutez d'abord le compte sur lequel vous voulez être payé (BaridiMob, CCP ou RIB).</p><a href="#/clipper/parametres" class="mt-6 block rounded-xl bg-ink py-3 text-center font-semibold text-white">Ajouter un moyen de retrait</a>`);
+    if (bal < min) return modalShell(`<h2 class="text-2xl font-extrabold">Demander un retrait</h2><p class="mt-3 text-gray-600">Votre solde disponible (${da(bal)}) est inférieur au minimum de retrait fixé à <b>${da(min)}</b>.${pendingAmount() ? ` ${da(pendingAmount())} deviendront retirables à la fin de leur période de rétention.` : ""}</p>`);
+    return modalShell(`<h2 class="text-2xl font-extrabold">Demander un retrait</h2><p class="mt-1 text-sm text-gray-500">Solde disponible : <b>${da(bal)}</b> · vers ${esc(u.payoutMethod)} ${maskAccount(u.payoutAccount)}</p>
       <form data-form="withdraw" class="mt-6 space-y-4">
-        ${field("Montant (DA)", `<input name="amount" type="number" min="${min}" max="${bal}" step="100" required value="${Math.min(10000, bal)}" class="${inputCls}"/>`, `Minimum ${da(min)} · validé par l'équipe ClipBoost.`)}
-        ${field("Vers", `<select name="to" class="${inputCls}"><option>CCP •••• 5678</option><option>BaridiMob</option></select>`)}
+        ${field("Montant (DA)", `<input name="amount" type="number" min="${min}" max="${bal}" step="100" required value="${Math.min(10000, bal)}" class="${inputCls}"/>`, `Minimum ${da(min)}.`)}
+        <div class="space-y-2">
+          <label class="flex cursor-pointer items-start gap-3 rounded-xl p-3 ring-1 ring-gray-200 has-[:checked]:bg-brand-50 has-[:checked]:ring-brand-500"><input type="radio" name="speed" value="standard" checked class="mt-1 accent-brand-600"/><span><b>Standard, gratuit</b><span class="block text-sm text-gray-500">Traité sous 48 h ouvrées.</span></span></label>
+          <label class="flex cursor-pointer items-start gap-3 rounded-xl p-3 ring-1 ring-gray-200 has-[:checked]:bg-brand-50 has-[:checked]:ring-brand-500"><input type="radio" name="speed" value="instant" class="mt-1 accent-brand-600"/><span><b>Instantané</b><span class="block text-sm text-gray-500">Traité en priorité · ${set.instantFeePercent} % de frais (minimum ${da(set.instantMinFee)}).</span></span></label>
+        </div>
         <button class="w-full rounded-xl bg-brand-600 py-3 font-semibold text-white hover:bg-brand-700">Confirmer la demande</button>
       </form>`);
-  }
-  if (m.type === "invite") {
-    const code = u.handle.replace("@", "").replace(/[^a-z0-9]/gi, "") || "ami";
-    return modalShell(`<h2 class="text-2xl font-extrabold">Inviter un créateur 🙋</h2><p class="mt-1 text-sm text-gray-500">Partagez votre lien de parrainage : 500 DA par créateur actif (offre fictive).</p>
-      <div class="mt-6 flex gap-2"><input readonly value="https://clipboost.dz/invite/${esc(code)}" class="min-w-0 flex-1 rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm"/><button type="button" data-action="copy-invite" data-code="${esc(code)}" class="rounded-xl bg-brand-600 px-4 font-semibold text-white">Copier</button></div>`);
   }
   return "";
 }
@@ -340,50 +342,42 @@ function clipperModal() {
 function handleClipperAction(action, t) {
   const u = me(), { id, value } = t.dataset;
   switch (action) {
-    case "toggle-fav":
-      u.favorites.has(id) ? u.favorites.delete(id) : u.favorites.add(id);
-      toast(u.favorites.has(id) ? "Ajoutée aux favoris ❤️" : "Retirée des favoris");
-      return render();
+    case "toggle-fav": {
+      const fav = !u.favorites.has(id);
+      return act("POST", `/api/campaigns/${id}/membership`, { favorite: fav }, fav ? "Ajoutée aux favoris ❤️" : "Retirée des favoris");
+    }
     case "join": {
       const c = campaignById(id);
-      u.joinedCampaigns.add(id); c.clippers++;
-      toast(`Vous avez rejoint « ${c.title} » 🎉`);
-      logActivity("🎯", `${u.name} a rejoint « ${c.title} ».`);
-      if (state.modal) state.modal = { type: "campaign", id };
-      return render();
+      return act("POST", `/api/campaigns/${id}/membership`, { joined: true }, `Vous avez rejoint « ${c.title} » 🎉`);
     }
-    case "copy": return copy(`https://clipboost.dz/c/${id}?ref=${u.id}`, "Lien de suivi copié ✓");
-    case "copy-invite": return copy(`https://clipboost.dz/invite/${t.dataset.code}`, "Lien d'invitation copié ✓");
     case "open-campaign": state.modal = { type: "campaign", id }; return render();
-    case "submit-clip": state.modal = { type: "submit", id }; state.notifOpen = false; return render();
+    case "submit-clip": state.modal = { type: "submit", id }; state.notifOpen = false; state.drawer = false; return render();
     case "withdraw": state.modal = { type: "withdraw" }; return render();
-    case "invite": state.modal = { type: "invite" }; state.drawer = false; return render();
     case "fav-only": state.camp.favOnly = !state.camp.favOnly; return render();
     case "layout": state.camp.layout = value; return render();
     case "reset-filters": state.camp = { ...state.camp, q: "", category: "Toutes", favOnly: false }; return render();
     case "pub-status": state.pub.status = value; return render();
     case "tx-type": state.tx.type = { Tous: "tous", Gains: "gain", Retraits: "retrait" }[value]; return render();
     case "period": state.period = parseInt(value, 10); return render();
-    case "setting": state.settings[t.dataset.key] = !state.settings[t.dataset.key]; return render();
   }
   return false;
 }
 
 function handleClipperSubmit(form, data) {
-  const u = me();
   if (form === "submit") {
-    db.publications.unshift({ id: Date.now(), userId: u.id, campaign: data.campaign, title: data.title.trim(), platform: data.platform, date: TODAY, views: 0, status: "En attente" });
-    logActivity("🎬", `${u.name} a soumis le clip « ${data.title.trim()} ».`);
-    state.modal = null; state.pub.status = "Toutes";
-    navigate("#/clipper/publications");
-    toast("Clip envoyé pour validation ✓");
-  } else if (form === "withdraw") {
+    return act("POST", "/api/clips", { campaignId: data.campaign, title: data.title, platform: data.platform, url: data.url }, "Clip envoyé pour validation ✓", () => {
+      state.modal = null; state.pub.status = "Toutes";
+      navigate("#/clipper/publications");
+    });
+  }
+  if (form === "withdraw") {
     const amount = Math.floor(Number(data.amount));
-    db.transactions.unshift({ id: `T-${1046 + db.transactions.length}`, userId: u.id, date: TODAY, time: nowTime(), label: `Retrait vers ${data.to}`, amount: -amount, type: "retrait", status: "En cours" });
-    logActivity("💸", `${u.name} a demandé un retrait de ${da(amount)}.`);
-    state.modal = null; render(); toast(`Demande de retrait de ${da(amount)} envoyée`);
-  } else if (form === "profile") {
-    u.name = data.name.trim() || u.name; u.country = data.country || u.country; u.bio = data.bio.trim();
-    render(); toast("Profil mis à jour ✓");
+    return act("POST", "/api/withdrawals", { amount, instant: data.speed === "instant" }, `Demande de retrait de ${da(amount)} envoyée`, () => { state.modal = null; });
+  }
+  if (form === "profile") {
+    return act("PATCH", "/api/me", { name: data.name, country: data.country, bio: data.bio, handles: { tiktok: data.tiktok, instagram: data.instagram, youtube: data.youtube } }, "Profil mis à jour ✓");
+  }
+  if (form === "payout") {
+    return act("PATCH", "/api/me", { payoutMethod: data.payoutMethod, payoutAccount: data.payoutAccount }, "Moyen de retrait enregistré ✓");
   }
 }

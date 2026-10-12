@@ -1,5 +1,4 @@
-// Inscription par email (avec code de vérification) et connexion.
-// Aucune donnée ne quitte le navigateur : les comptes vivent en mémoire le temps de la visite.
+// Inscription par email (avec code de vérification envoyé par le serveur), connexion et mot de passe oublié.
 
 function authLayout(content) {
   return `${siteBanner()}
@@ -15,13 +14,13 @@ function authLayout(content) {
           <div class="flex items-start justify-between"><div><p class="text-sm font-medium text-gray-600">Revenus</p><p class="mt-1 text-3xl font-extrabold">998 500 DA</p>
           <p class="mt-1 text-sm text-gray-600">${icon("trend", "mr-1 inline h-4 w-4")}<b>+8,2 %</b> ce mois-ci</p></div>
           <span class="grid h-12 w-12 place-items-center rounded-full bg-income text-white">${icon("arrowUp")}</span></div>
-          <div class="mt-3 h-20">${areaChart(income12)}</div>
+          <div class="mt-3 h-20">${areaChart([8, 9, 12, 18, 24, 27, 27, 26, 29, 33, 35, 33, 27])}</div>
         </div>
       </div>
       <p class="relative text-sm text-white/50">© 2026 ClipBoost · Fait en Algérie 🇩🇿</p>
     </div>
     <div class="flex flex-col px-4 py-8 sm:px-10">
-      <div class="flex items-center justify-between gap-3 lg:justify-end"><span class="lg:hidden">${logo()}</span><div class="flex items-center gap-3"><a href="#/" class="text-sm font-semibold text-gray-500 hover:text-ink">← Retour au site</a>${themeToggle()}</div></div>
+      <div class="flex items-center justify-between gap-3 lg:justify-end"><span class="lg:hidden">${logo()}</span><div class="flex items-center gap-3"><a href="/" class="text-sm font-semibold text-gray-500 hover:text-ink">← Retour au site</a>${themeToggle()}</div></div>
       <div class="mx-auto my-auto w-full max-w-md py-10">${content}</div>
     </div>
   </div>`;
@@ -39,8 +38,7 @@ function viewConnexion() {
         ${field("Adresse email", `<input name="email" type="email" autocomplete="email" value="${esc(a.email)}" placeholder="vous@exemple.dz" class="${inputCls}"/>`)}
         ${field("Mot de passe", `<div class="relative"><input name="password" type="${a.showPwd ? "text" : "password"}" autocomplete="current-password" placeholder="••••••••" class="${inputCls} pr-12"/>
           <button type="button" data-action="toggle-pwd" class="absolute right-3 top-1/2 mt-0.5 -translate-y-1/2 text-gray-400 hover:text-ink" aria-label="${a.showPwd ? "Masquer" : "Afficher"} le mot de passe">${icon("eye", "h-5 w-5")}</button></div>`)}
-        <div class="flex items-center justify-between text-sm"><label class="flex items-center gap-2 text-gray-600"><input type="checkbox" checked class="accent-brand-600"/> Se souvenir de moi</label>
-          <button type="button" data-action="forgot" class="font-semibold text-brand-700 hover:underline">Mot de passe oublié ?</button></div>
+        <div class="text-right text-sm"><a href="#/mot-de-passe" class="font-semibold text-brand-700 hover:underline">Mot de passe oublié ?</a></div>
         <button class="w-full rounded-2xl bg-ink py-3.5 font-semibold text-white transition hover:bg-black">Se connecter</button>
       </form>
       <p class="mt-6 text-center text-sm text-gray-500">Pas encore de compte ? <a href="#/inscription" class="font-semibold text-brand-700 hover:underline">Créer un compte</a></p>
@@ -60,7 +58,7 @@ const STRENGTH = [["Trop court", "bg-rose-500"], ["Faible", "bg-rose-500"], ["Mo
 function strengthMeter(pwd) {
   const s = pwd ? passwordStrength(pwd) : 0, [label, color] = STRENGTH[s];
   return `<div class="mt-2 flex items-center gap-3"><div class="grid flex-1 grid-cols-4 gap-1">${[1, 2, 3, 4].map((i) => `<span class="h-1.5 rounded-full ${i <= s ? color : "bg-gray-200"}"></span>`).join("")}</div>
-    <span class="w-20 text-right text-xs font-medium text-gray-500">${pwd ? label : "8 caractères min."}</span></div>`;
+    <span class="w-20 text-right text-xs font-medium text-gray-500">${pwd ? label : "8 car. min."}</span></div>`;
 }
 
 function viewInscription() {
@@ -76,10 +74,7 @@ function viewInscription() {
       <h1 class="mt-6 text-3xl font-extrabold tracking-tight">Vérifiez votre email</h1>
       <p class="mt-2 text-gray-500">Nous avons envoyé un code à 6 chiffres à <b class="text-ink">${esc(f.email)}</b>.</p>
       <p class="mt-3 text-sm text-gray-500">Pensez à vérifier vos spams. Le code expire dans 10 minutes.</p>
-      <div role="status" class="toast-in fixed bottom-4 right-4 z-50 w-[calc(100%-2rem)] max-w-sm rounded-2xl bg-white p-4 shadow-2xl ring-1 ring-gray-200">
-        <div class="flex items-start gap-3"><span class="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-brand-600 text-white">${icon("mail", "h-5 w-5")}</span>
-          <div class="min-w-0"><p class="text-xs text-gray-500">Boîte de réception · à l'instant</p><p class="truncate text-sm font-bold">ClipBoost &lt;no-reply@clipboost.dz&gt;</p>
-          <p class="text-sm text-gray-700">Votre code de vérification : <b class="tracking-widest">${a.code}</b></p></div></div></div>
+      ${a.devCode ? devCodeNotice(a.devCode) : ""}
       <div class="mt-6">${errorBox(a.error)}
         <form data-form="verify" class="space-y-4" novalidate>
           ${field("Code de vérification", `<input name="code" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="000000" class="${inputCls} text-center text-2xl font-bold tracking-[0.5em]"/>`)}
@@ -133,80 +128,127 @@ function captureSignupForm() {
   f.terms = !!d.terms;
 }
 
-function newCode() {
-  return String(Math.floor(100000 + Math.random() * 900000));
+// En développement (aucun service d'email configuré), le serveur renvoie le code pour pouvoir tester.
+const devCodeNotice = (code) => `<div role="status" class="mt-5 rounded-2xl bg-amber-50 px-4 py-3 text-sm text-amber-800 ring-1 ring-amber-100">Mode développement : aucun email n'est envoyé. Code : <b class="tracking-widest">${code}</b></div>`;
+
+function viewMotDePasse() {
+  const a = state.auth;
+  if (a.step === "code") {
+    return authLayout(`
+      <h1 class="text-3xl font-extrabold tracking-tight">Nouveau mot de passe</h1>
+      <p class="mt-2 text-gray-500">Si un compte existe pour <b class="text-ink">${esc(a.email)}</b>, un code à 6 chiffres vient d'y être envoyé.</p>
+      ${a.devCode ? devCodeNotice(a.devCode) : ""}
+      <div class="mt-6">${errorBox(a.error)}
+        <form data-form="reset" class="space-y-4" novalidate>
+          ${field("Code reçu par email", `<input name="code" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="000000" class="${inputCls} text-center text-2xl font-bold tracking-[0.5em]"/>`)}
+          <label class="block text-sm"><span class="font-medium text-gray-700">Nouveau mot de passe</span><input name="password" type="password" data-strength autocomplete="new-password" class="${inputCls}"/><span data-strength-meter>${strengthMeter("")}</span></label>
+          <button class="w-full rounded-2xl bg-ink py-3.5 font-semibold text-white hover:bg-black">Changer le mot de passe</button>
+        </form>
+      </div>`);
+  }
+  return authLayout(`
+    <h1 class="text-3xl font-extrabold tracking-tight">Mot de passe oublié</h1>
+    <p class="mt-2 text-gray-500">Indiquez votre email : nous vous enverrons un code pour choisir un nouveau mot de passe.</p>
+    <div class="mt-8">${errorBox(a.error)}
+      <form data-form="forgot" class="space-y-4" novalidate>
+        ${field("Adresse email", `<input name="email" type="email" autocomplete="email" value="${esc(a.email)}" class="${inputCls}"/>`)}
+        <button class="w-full rounded-2xl bg-ink py-3.5 font-semibold text-white hover:bg-black">Recevoir un code</button>
+      </form>
+      <p class="mt-6 text-center text-sm"><a href="#/connexion" class="font-semibold text-brand-700 hover:underline">← Retour à la connexion</a></p>
+    </div>`);
 }
 
-function handleAuthSubmit(form, data) {
+function signupPayload() {
+  const f = state.auth.form;
+  return {
+    role: f.role, email: f.email, country: f.country, password: state.auth.pendingPassword, terms: true,
+    name: f.role === "agence" ? f.agency : `${f.first} ${f.last}`,
+    contact: f.role === "agence" ? f.contact : undefined,
+  };
+}
+
+async function handleAuthSubmit(form, data) {
   const a = state.auth;
-  if (form === "login") {
-    const email = (data.email || "").trim().toLowerCase();
-    a.email = email;
-    const u = db.users.find((x) => x.email === email);
-    if (!isEmail(email)) a.error = "Saisissez une adresse email valide.";
-    else if (!u || u.password !== data.password) a.error = "Email ou mot de passe incorrect.";
-    else if (u.status === "Suspendu") a.error = "Ce compte est suspendu. Contactez le support ClipBoost.";
-    else if (db.settings.maintenance && u.role !== "admin") a.error = "Le site est en maintenance : les connexions sont temporairement suspendues.";
-    else return login(u);
-    return render();
-  }
-  if (form === "signup") {
-    const f = { ...a.form, first: (data.first || "").trim(), last: (data.last || "").trim(), agency: (data.agency || "").trim(), contact: (data.contact || "").trim(), email: (data.email || "").trim().toLowerCase(), country: data.country || "", terms: !!data.terms };
-    const err = {};
-    if (f.role === "agence") {
-      if (!f.agency) err.agency = "Nom de l'agence requis.";
-      if (!f.contact) err.contact = "Nom du contact requis.";
-    } else {
-      if (!f.first) err.first = "Prénom requis.";
-      if (!f.last) err.last = "Nom requis.";
+  a.error = "";
+  try {
+    if (form === "login") {
+      a.email = (data.email || "").trim().toLowerCase();
+      if (!isEmail(a.email)) { a.error = "Saisissez une adresse email valide."; return render(); }
+      await api("POST", "/api/auth/login", { email: a.email, password: data.password || "" });
+      return enter();
     }
-    if (!isEmail(f.email)) err.email = "Adresse email invalide.";
-    else if (db.users.some((u) => u.email === f.email)) err.email = "Un compte existe déjà avec cet email.";
-    if (!f.country) err.country = "Choisissez votre pays.";
-    if ((data.password || "").length < 8) err.password = "8 caractères minimum.";
-    else if (data.confirm !== data.password) err.confirm = "Les mots de passe ne correspondent pas.";
-    if (!f.terms) err.terms = " Vous devez accepter les conditions.";
-    a.form = f; a.fieldErrors = err; a.error = "";
-    if (Object.keys(err).length === 0) {
-      a.pendingPassword = data.password;
-      a.code = newCode();
-      a.step = "code";
+    if (form === "signup") {
+      const f = { ...a.form, first: (data.first || "").trim(), last: (data.last || "").trim(), agency: (data.agency || "").trim(), contact: (data.contact || "").trim(), email: (data.email || "").trim().toLowerCase(), country: data.country || "", terms: !!data.terms };
+      const err = {};
+      if (f.role === "agence") {
+        if (!f.agency) err.agency = "Nom de l'agence requis.";
+        if (!f.contact) err.contact = "Nom du contact requis.";
+      } else {
+        if (!f.first) err.first = "Prénom requis.";
+        if (!f.last) err.last = "Nom requis.";
+      }
+      if (!isEmail(f.email)) err.email = "Adresse email invalide.";
+      if (!f.country) err.country = "Choisissez votre pays.";
+      const pwd = data.password || "";
+      if (pwd.length < 8 || !/[a-zA-Z]/.test(pwd) || !/\d/.test(pwd)) err.password = "8 caractères minimum, avec une lettre et un chiffre.";
+      else if (data.confirm !== pwd) err.confirm = "Les mots de passe ne correspondent pas.";
+      if (!f.terms) err.terms = " Vous devez accepter les conditions.";
+      a.form = f; a.fieldErrors = err;
+      if (Object.keys(err).length) return render();
+      a.pendingPassword = pwd;
+      const res = await api("POST", "/api/auth/signup", signupPayload());
+      a.devCode = res.devCode || ""; a.step = "code";
+      return render();
     }
-    return render();
+    if (form === "verify") {
+      await api("POST", "/api/auth/verify", { email: a.form.email, code: (data.code || "").trim() });
+      const welcome = a.form.role === "agence" ? a.form.contact.split(" ")[0] : a.form.first;
+      return enter(`Compte créé, bienvenue ${welcome} 🎉`);
+    }
+    if (form === "forgot") {
+      a.email = (data.email || "").trim().toLowerCase();
+      if (!isEmail(a.email)) { a.error = "Saisissez une adresse email valide."; return render(); }
+      const res = await api("POST", "/api/auth/forgot", { email: a.email });
+      a.devCode = res.devCode || ""; a.step = "code";
+      return render();
+    }
+    if (form === "reset") {
+      await api("POST", "/api/auth/reset", { email: a.email, code: (data.code || "").trim(), password: data.password || "" });
+      return enter("Mot de passe modifié ✓");
+    }
+  } catch (e) {
+    a.error = e.message;
+    render();
   }
-  if (form === "verify") {
-    if ((data.code || "").trim() !== a.code) { a.error = "Code incorrect. Vérifiez les 6 chiffres."; return render(); }
-    const f = a.form, id = Math.max(...db.users.map((x) => x.id)) + 1;
-    const u = f.role === "agence"
-      ? { id, role: "agence", name: f.agency, contact: f.contact, email: f.email, password: a.pendingPassword, country: f.country, status: "Actif", joined: TODAY, verified: true, credit: 0 }
-      : {
-          id, role: "clipper", name: `${f.first} ${f.last}`, email: f.email, password: a.pendingPassword,
-          country: f.country, status: "Actif", joined: TODAY, verified: true, level: "Nouveau", bio: "", handle: `@${f.first.toLowerCase().replace(/[^a-z0-9]/g, "")}`,
-          baseEarned: 0, baseBalance: 0, viewsFactor: 0, favorites: new Set(), joinedCampaigns: new Set(),
-        };
-    db.users.push(u);
-    signups30[signups30.length - 1]++;
-    notify(u.id, "🎉", u.role === "agence" ? "Bienvenue sur ClipBoost ! Créez votre première campagne pour toucher nos clippers." : "Bienvenue sur ClipBoost ! Rejoignez une première campagne pour commencer.");
-    logActivity(u.role === "agence" ? "🏢" : "👤", `${u.name} s'est inscrit${u.role === "agence" ? " (agence)" : ""} : ${u.email}.`);
-    const welcome = u.role === "agence" ? f.contact.split(" ")[0] : f.first;
-    resetAuth();
-    login(u, "Compte créé, bienvenue " + welcome + " 🎉");
+}
+
+async function resendCode() {
+  try {
+    const res = await api("POST", "/api/auth/signup", signupPayload());
+    state.auth.devCode = res.devCode || ""; state.auth.error = "";
+    render();
+    toast("Nouveau code envoyé");
+  } catch (e) {
+    toast(e.message);
   }
 }
 
 function resetAuth() {
-  state.auth = { email: "", error: "", showPwd: false, step: "form", form: { role: "clipper", first: "", last: "", agency: "", contact: "", email: "", country: "Algérie", terms: false }, fieldErrors: {}, code: "", pendingPassword: "" };
+  state.auth = { email: "", error: "", showPwd: false, step: "form", form: { role: "clipper", first: "", last: "", agency: "", contact: "", email: "", country: "Algérie", terms: false }, fieldErrors: {}, devCode: "", pendingPassword: "" };
 }
 
-function login(u, message) {
-  state.session = u.id;
+// Après connexion ou inscription : charge les données du compte et ouvre son espace.
+async function enter(message) {
+  await refresh();
+  const u = me();
   resetAuth();
   navigate(homeOf(u));
   toast(message || `Connecté en tant que ${u.name}`);
 }
 
-function logout() {
-  state.session = null;
+async function logout() {
+  try { await api("POST", "/api/auth/logout"); } catch (e) {}
+  await refresh().catch(() => {});
   state.modal = null;
   navigate("#/connexion");
   toast("Vous êtes déconnecté.");

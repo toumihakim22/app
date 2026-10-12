@@ -1,7 +1,6 @@
 @import "tailwindcss" source(none);
 @source "./src/*.js";
 @source "./index.html";
-@source "../components/landing/*.tsx";
 @import "../app/dark.css";
 
 @theme {

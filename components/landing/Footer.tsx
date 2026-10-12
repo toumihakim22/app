@@ -5,10 +5,10 @@ const cols = [
     title: "Plateforme",
     links: [
       { label: "Campagnes", href: "#campagnes" },
-      { label: "Devenir Clipper", href: "#inscription", route: "inscription" },
-      { label: "Se connecter", href: "#inscription", route: "connexion" },
+      { label: "Devenir Clipper", href: "/espace#/inscription" },
+      { label: "Se connecter", href: "/espace#/connexion" },
       { label: "Pour les marques", href: "#marques" },
-      { label: "Créer un compte agence", href: "#inscription", route: "inscription-agence" },
+      { label: "Créer un compte agence", href: "/espace#/inscription-agence" },
     ],
   },
   {
@@ -16,7 +16,7 @@ const cols = [
     links: [
       { label: "Comment ça marche", href: "#comment-ca-marche" },
       { label: "FAQ", href: "#faq" },
-      { label: "Administration", href: "#inscription", route: "connexion" },
+      { label: "Administration", href: "/espace#/connexion" },
     ],
   },
   {
@@ -45,7 +45,7 @@ export default function Footer() {
             <ul className="mt-4 space-y-3">
               {c.links.map((l) => (
                 <li key={l.label}>
-                  <a href={l.href} data-route={"route" in l ? l.route : undefined} className="text-sm text-gray-500 transition hover:text-ink">
+                  <a href={l.href} className="text-sm text-gray-500 transition hover:text-ink">
                     {l.label}
                   </a>
                 </li>

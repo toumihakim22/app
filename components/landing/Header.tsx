@@ -34,12 +34,11 @@ export default function Header() {
 
         <div className="hidden items-center gap-3 lg:flex">
           <ThemeToggle />
-          <a href="#inscription" data-route="connexion" className="rounded-xl px-4 py-2.5 text-sm font-semibold text-ink transition hover:bg-gray-100">
+          <a href="/espace#/connexion" className="rounded-xl px-4 py-2.5 text-sm font-semibold text-ink transition hover:bg-gray-100">
             Se connecter
           </a>
           <a
-            href="#inscription"
-            data-route="inscription"
+            href="/espace#/inscription"
             className="rounded-xl bg-brand-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm shadow-brand-600/30 transition hover:bg-brand-700"
           >
             Commencer gratuitement
@@ -78,10 +77,10 @@ export default function Header() {
             ))}
           </nav>
           <div className="mt-3 grid gap-2">
-            <a href="#inscription" data-route="connexion" onClick={() => setOpen(false)} className="rounded-xl border border-gray-200 px-4 py-3 text-center text-sm font-semibold text-ink">
+            <a href="/espace#/connexion" onClick={() => setOpen(false)} className="rounded-xl border border-gray-200 px-4 py-3 text-center text-sm font-semibold text-ink">
               Se connecter
             </a>
-            <a href="#inscription" data-route="inscription" onClick={() => setOpen(false)} className="rounded-xl bg-brand-600 px-4 py-3 text-center text-sm font-semibold text-white">
+            <a href="/espace#/inscription" onClick={() => setOpen(false)} className="rounded-xl bg-brand-600 px-4 py-3 text-center text-sm font-semibold text-white">
               Commencer gratuitement
             </a>
           </div>

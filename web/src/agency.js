@@ -11,8 +11,10 @@ const AGENCY_NAV = [
 
 const myCampaigns = () => db.campaigns.filter((c) => c.ownerId === state.session);
 const clipsOf = (ids) => db.publications.filter((p) => ids.includes(p.campaign));
-// Vues payées estimées à partir du budget consommé.
-const campaignViews = (c) => Math.round((c.spent / c.rate) * 1000);
+// Vues cumulées des clips validés de la campagne.
+const campaignViews = (c) => clipsOf([c.id]).filter((p) => p.status === "Validée").reduce((s, p) => s + p.views, 0);
+// Montant prélevé sur le crédit : budget + commission ClipBoost.
+const withCommission = (amount, rate = db.settings.commissionRate) => amount + Math.round((amount * rate) / 100);
 
 function agencyStatusHint(c) {
   return {
@@ -20,6 +22,7 @@ function agencyStatusHint(c) {
     "Active": "Visible par les clippers.",
     "En pause": "Masquée aux clippers, aucun nouveau clip.",
     "Terminée": "Campagne archivée.",
+    "Refusée": "Refusée par l'équipe ClipBoost.",
   }[c.status];
 }
 
@@ -40,8 +43,8 @@ function gApercu() {
         <p class="mt-3 whitespace-nowrap text-lg font-extrabold sm:text-2xl">${k.value}</p><p class="mt-1 text-xs font-medium text-gray-500">${k.sub}</p>`, "p-4 sm:p-5")).join("")}
     </div>
     <div class="mt-6 grid gap-6 xl:grid-cols-[1.6fr_1fr]">
-      ${card(`<div><p class="font-bold">Vues de vos campagnes</p><p class="text-sm text-gray-500">30 derniers jours, en milliers</p></div>
-        ${hasData ? `<div class="mt-6 h-56">${areaChart(views30.map((v) => +(v * 2.4).toFixed(1)), { h: 200, color: "#0f766e" })}</div>` : `<div class="mt-6 grid h-56 place-items-center rounded-2xl bg-gray-50 text-center text-sm text-gray-500">Les vues apparaîtront dès que vos premiers clips seront validés.</div>`}`)}
+      ${card(`<div><p class="font-bold">Budget consommé</p><p class="text-sm text-gray-500">30 derniers jours, en DA</p></div>
+        ${hasData ? `<div class="mt-6 h-56">${areaChart(db.series.daily, { h: 200, color: "#0f766e" })}</div>` : `<div class="mt-6 grid h-56 place-items-center rounded-2xl bg-gray-50 text-center text-sm text-gray-500">Les vues apparaîtront dès que vos premiers clips seront validés.</div>`}`)}
       ${card(`<p class="font-bold">Vos campagnes</p><div class="mt-4 space-y-3">${list.length ? list.slice(0, 4).map((c) => `<button type="button" data-action="ag-open" data-id="${c.id}" class="flex w-full items-center gap-3 rounded-2xl p-2 text-left hover:bg-gray-50">
         <span class="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-gradient-to-br ${c.gradient} text-xl">${c.emoji}</span>
         <span class="min-w-0 flex-1"><span class="block truncate font-semibold">${esc(c.title)}</span><span class="block text-xs text-gray-500">${c.rate} DA /1K · ${c.clippers} clippers</span></span>${statusBadge(c.status)}</button>`).join("") : `<p class="text-sm text-gray-500">Aucune campagne pour l'instant.</p>`}</div>`)}
@@ -102,13 +105,17 @@ function gBudget() {
       ${card(`<p class="text-sm text-gray-500">Budget engagé</p><p class="mt-2 text-2xl font-extrabold">${da(total)}</p><p class="mt-1 text-xs text-gray-500">sur ${list.length} campagne(s)</p>`, "p-5")}
       ${card(`<p class="text-sm text-gray-500">Budget consommé</p><p class="mt-2 text-2xl font-extrabold text-income">${da(spent)}</p><p class="mt-1 text-xs text-gray-500">${total ? Math.round((spent / total) * 100) : 0} % du budget engagé</p>`, "p-5")}
     </div>
+    ${myTx().some((t) => t.type === "recharge") ? `<h2 class="mt-10 text-xl font-extrabold">Recharges</h2>
+    <div class="mt-4 space-y-3">${myTx().filter((t) => t.type === "recharge").map((t) => `<div class="flex items-center gap-4 rounded-2xl bg-white px-4 py-3.5 shadow-sm ring-1 ring-gray-100">
+      <div class="min-w-0 flex-1"><p class="truncate text-sm font-semibold">${esc(t.label)}</p><p class="text-xs text-gray-500">${date(t.date)} · ${t.time} · réf. ${t.ref}</p></div>
+      <p class="whitespace-nowrap text-sm font-semibold text-income">+ ${da(t.amount)}</p>${statusBadge(t.status === "En cours" ? "En attente" : t.status)}</div>`).join("")}</div>` : ""}
     <h2 class="mt-10 text-xl font-extrabold">Par campagne</h2>
     <div class="mt-4 space-y-3">${list.length ? list.map((c) => {
       const pct = Math.min(100, Math.round((c.spent / c.budget) * 100));
       return `<div class="flex flex-col gap-4 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-gray-100 md:flex-row md:items-center">
         <div class="flex min-w-0 flex-1 items-center gap-3"><span class="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-gradient-to-br ${c.gradient} text-2xl">${c.emoji}</span><div class="min-w-0"><p class="truncate font-semibold">${esc(c.title)} <span class="ml-1 align-middle">${statusBadge(c.status)}</span></p><p class="text-xs text-gray-500">${c.rate} DA pour 1 000 vues</p></div></div>
         <div class="w-full md:w-72"><div class="flex justify-between text-xs text-gray-500"><span>${da(c.spent)} consommés</span><span>${pct} %</span></div><div class="mt-1 h-2 rounded-full bg-gray-100"><div class="h-2 rounded-full ${pct > 85 ? "bg-rose-500" : "bg-brand-600"}" style="width:${pct}%"></div></div><p class="mt-1 text-xs text-gray-400">Reste ${da(c.budget - c.spent)} sur ${da(c.budget)}</p></div>
-        ${c.status === "Terminée" ? `<span class="text-xs text-gray-400 md:w-36 md:text-right">Archivée</span>` : `<button type="button" data-action="ag-topup" data-id="${c.id}" class="rounded-xl px-4 py-2 text-sm font-semibold text-brand-700 ring-1 ring-brand-100 hover:bg-brand-50 md:w-36">+ Ajouter du budget</button>`}
+        ${c.status === "Terminée" || c.status === "Refusée" ? `<span class="text-xs text-gray-400 md:w-36 md:text-right">Archivée</span>` : `<button type="button" data-action="ag-topup" data-id="${c.id}" class="rounded-xl px-4 py-2 text-sm font-semibold text-brand-700 ring-1 ring-brand-100 hover:bg-brand-50 md:w-36">+ Ajouter du budget</button>`}
       </div>`;
     }).join("") : `<div class="rounded-3xl bg-gray-50 p-10 text-center text-gray-500">Aucune campagne pour l'instant.</div>`}</div>`;
 }
@@ -122,7 +129,6 @@ function gProfil() {
           ${field("Nom de l'agence ou de la marque", `<input name="name" value="${esc(u.name)}" class="${inputCls}"/>`)}
           ${field("Nom du contact", `<input name="contact" value="${esc(u.contact || "")}" class="${inputCls}"/>`)}
           <label class="block text-sm"><span class="font-medium text-gray-700">Pays</span>${countrySelect("country", u.country)}</label>
-          ${field("Site web", `<input name="website" value="${esc(u.website || "")}" placeholder="https://" class="${inputCls}"/>`)}
           <div class="sm:col-span-2"><button class="rounded-xl bg-ink px-5 py-2.5 text-sm font-semibold text-white hover:bg-black">Enregistrer</button></div>
         </form>`)}
       ${accountCard(u)}
@@ -137,8 +143,8 @@ function campaignForm(formName, submitLabel, note) {
     <div class="sm:col-span-2">${field("Titre de la campagne", `<input name="title" required maxlength="40" placeholder="Ex. Spécial Ramadan" class="${inputCls}"/>`)}</div>
     ${formName === "adm-campaign" ? field("Marque", `<input name="brand" required maxlength="30" class="${inputCls}"/>`) : ""}
     ${field("Catégorie", `<select name="category" class="${inputCls}">${CATEGORIES.map((c) => `<option>${c}</option>`).join("")}</select>`)}
-    ${field("Tarif pour 1 000 vues (DA)", `<input name="rate" type="number" min="50" max="500" value="120" required class="${inputCls}"/>`)}
-    ${field("Budget (DA)", `<input name="budget" type="number" min="10000" step="1000" value="200000" required class="${inputCls}"/>`)}
+    ${field("Tarif pour 1 000 vues (DA)", `<input name="rate" type="number" min="20" max="2000" value="120" required class="${inputCls}"/>`)}
+    ${field("Budget (DA)", `<input name="budget" type="number" min="${db.settings.minBudget}" step="1000" value="${Math.max(200000, db.settings.minBudget)}" required class="${inputCls}"/>`, `Minimum ${da(db.settings.minBudget)}.`)}
     ${field("Seuil minimum par clip (DA)", `<input name="minPayout" type="number" min="0" step="10" value="240" required class="${inputCls}"/><span class="mt-1 block text-xs text-gray-500">Gain à atteindre avant que le clip soit examiné.</span>`)}
     ${field("Plafond par clip (DA)", `<input name="maxPayout" type="number" min="100" step="100" value="24000" required class="${inputCls}"/><span class="mt-1 block text-xs text-gray-500">Un clip viral ne peut pas dépasser ce montant.</span>`)}
     <div class="sm:col-span-2"><span class="text-sm font-medium text-gray-700">Visuel</span><div class="mt-1.5 flex flex-wrap gap-2">${emojis.map((e, i) => `<label class="cursor-pointer"><input type="radio" name="emoji" value="${e}" ${i === 0 ? "checked" : ""} class="peer sr-only"/><span class="grid h-11 w-11 place-items-center rounded-xl text-xl ring-1 ring-gray-200 peer-checked:bg-brand-50 peer-checked:ring-2 peer-checked:ring-brand-500">${e}</span></label>`).join("")}</div></div>
@@ -149,18 +155,12 @@ function campaignForm(formName, submitLabel, note) {
   </form>`;
 }
 
-function payoutError(data) {
-  if (+data.maxPayout <= +data.minPayout) return "Le plafond doit être supérieur au seuil minimum";
-  if (+data.maxPayout > +data.budget) return "Le plafond par clip ne peut pas dépasser le budget";
-  return "";
-}
-
-function buildCampaign(data, extra) {
-  const platforms = ["TikTok", "Instagram", "YouTube"].filter((pl) => data[`pf-${pl}`]);
+// Données du formulaire de campagne au format attendu par l'API.
+function campaignPayload(data) {
   return {
-    id: `c${Date.now()}`, title: data.title.trim(), category: data.category, rate: +data.rate, budget: +data.budget, minPayout: +data.minPayout, maxPayout: +data.maxPayout, spent: 0, clippers: 0,
-    createdAt: TODAY, gradient: GRADIENTS[db.campaigns.length % GRADIENTS.length], emoji: data.emoji, platforms: platforms.length ? platforms : ["TikTok"],
-    rules: data.rules.split("\n").map((r) => r.trim()).filter(Boolean), ...extra,
+    title: data.title, brand: data.brand, category: data.category, rate: +data.rate, budget: +data.budget, minPayout: +data.minPayout, maxPayout: +data.maxPayout,
+    emoji: data.emoji, platforms: ["TikTok", "Instagram", "YouTube"].filter((pl) => data[`pf-${pl}`]),
+    rules: (data.rules || "").split("\n").map((r) => r.trim()).filter(Boolean),
   };
 }
 
@@ -169,7 +169,7 @@ function agencyModal() {
   if (!m) return "";
   if (m.type === "ag-new") {
     return modalShell(`<h2 class="text-2xl font-extrabold">Nouvelle campagne</h2><p class="mt-1 text-sm text-gray-500">Elle sera publiée après vérification par l'équipe ClipBoost.</p>
-      ${campaignForm("ag-campaign", "Envoyer pour validation", "Le budget est réservé sur votre crédit dès l'approbation de la campagne.")}`, "max-w-xl");
+      ${campaignForm("ag-campaign", "Envoyer pour validation", `À l'approbation, le budget et la commission ClipBoost de ${db.settings.commissionRate} % sont prélevés sur votre crédit (crédit actuel : ${da(me().credit)}). Le budget non consommé vous est rendu à la fin de la campagne.`)}`, "max-w-xl");
   }
   if (m.type === "ag-open") {
     const c = campaignById(m.id), clips = clipsOf([c.id]), pct = Math.min(100, Math.round((c.spent / c.budget) * 100));
@@ -190,65 +190,53 @@ function agencyModal() {
       </div>`);
   }
   if (m.type === "ag-topup") {
-    const c = campaignById(m.id), u = me();
+    const c = campaignById(m.id), u = me(), funded = c.status !== "En attente";
     return modalShell(`<h2 class="text-2xl font-extrabold">Ajouter du budget</h2><p class="mt-1 text-sm text-gray-500">« ${esc(c.title)} » · crédit disponible : <b>${da(u.credit)}</b>.</p>
-      ${u.credit < 10000 ? `<p class="mt-5 rounded-2xl bg-amber-50 px-4 py-3 text-sm text-amber-800">Crédit insuffisant. <button type="button" data-action="ag-credit" class="font-semibold underline">Recharger le crédit</button></p>` : `<form data-form="ag-topup" class="mt-6 space-y-4">
-        ${field("Montant (DA)", `<input name="amount" type="number" min="10000" max="${u.credit}" step="1000" value="${Math.min(50000, u.credit)}" required class="${inputCls}"/>`, "Prélevé sur votre crédit agence.")}
-        <button class="w-full rounded-xl bg-brand-600 py-3 font-semibold text-white hover:bg-brand-700">Ajouter au budget</button></form>`}`);
+      <form data-form="ag-topup" class="mt-6 space-y-4">
+        ${field("Montant ajouté au budget (DA)", `<input name="amount" type="number" min="1000" step="1000" value="50000" required class="${inputCls}"/>`,
+          funded ? `Prélevé sur votre crédit avec la commission de ${c.commissionRate} % (50 000 DA ajoutés = ${da(withCommission(50000, c.commissionRate))}).` : "La campagne n'est pas encore approuvée : rien n'est prélevé pour l'instant.")}
+        <button class="w-full rounded-xl bg-brand-600 py-3 font-semibold text-white hover:bg-brand-700">Ajouter au budget</button></form>
+      ${funded && u.credit < withCommission(1000, c.commissionRate) ? `<p class="mt-4 rounded-2xl bg-amber-50 px-4 py-3 text-sm text-amber-800">Crédit insuffisant. <button type="button" data-action="ag-credit" class="font-semibold underline">Recharger le crédit</button></p>` : ""}`);
   }
   if (m.type === "ag-credit") {
-    return modalShell(`<h2 class="text-2xl font-extrabold">Recharger le crédit</h2><p class="mt-1 text-sm text-gray-500">Paiement sécurisé par carte Edahabia ou CIB.</p>
+    return modalShell(`<h2 class="text-2xl font-extrabold">Recharger le crédit</h2><p class="mt-1 text-sm text-gray-500">Le crédit est ajouté dès que l'équipe ClipBoost confirme la réception de votre paiement.</p>
       <form data-form="ag-credit" class="mt-6 space-y-4">
-        <div class="grid grid-cols-3 gap-2">${[50000, 100000, 250000].map((v, i) => `<label class="cursor-pointer"><input type="radio" name="amount" value="${v}" ${i === 1 ? "checked" : ""} class="peer sr-only"/><span class="block rounded-xl py-3 text-center text-sm font-bold ring-1 ring-gray-200 peer-checked:bg-brand-50 peer-checked:text-brand-700 peer-checked:ring-2 peer-checked:ring-brand-500">${da(v)}</span></label>`).join("")}</div>
-        <button class="w-full rounded-xl bg-brand-600 py-3 font-semibold text-white hover:bg-brand-700">Payer et recharger</button></form>`);
+        ${field("Montant (DA)", `<input name="amount" type="number" min="10000" step="1000" value="250000" required class="${inputCls}"/>`, "Minimum 10 000 DA.")}
+        <div class="space-y-2">${["virement bancaire", "carte Edahabia", "carte CIB"].map((v, i) => `<label class="flex cursor-pointer items-center gap-3 rounded-xl p-3 ring-1 ring-gray-200 has-[:checked]:bg-brand-50 has-[:checked]:ring-brand-500"><input type="radio" name="method" value="${v}" ${i === 0 ? "checked" : ""} class="accent-brand-600"/> <span class="font-semibold">${v[0].toUpperCase()}${v.slice(1)}</span></label>`).join("")}</div>
+        <button class="w-full rounded-xl bg-brand-600 py-3 font-semibold text-white hover:bg-brand-700">Envoyer la demande de recharge</button></form>`);
   }
   return "";
 }
 
 function handleAgencyAction(action, t) {
-  const id = t.dataset.id, u = me();
+  const id = t.dataset.id;
   switch (action) {
     case "ag-status": state.ag.status = t.dataset.value; return render();
     case "ag-clip-status": state.ag.clipStatus = t.dataset.value; return render();
     case "ag-new": state.modal = { type: "ag-new" }; state.drawer = false; return render();
     case "ag-open": state.modal = { type: "ag-open", id }; return render();
     case "ag-topup": state.modal = { type: "ag-topup", id }; return render();
-    case "ag-credit": state.modal = { type: "ag-credit" }; return render();
-    case "ag-pause": case "ag-resume": {
-      const c = campaignById(id);
-      c.status = action === "ag-pause" ? "En pause" : "Active";
-      logActivity("🏢", `${u.name} a ${action === "ag-pause" ? "mis en pause" : "relancé"} « ${c.title} ».`);
-      toast(action === "ag-pause" ? "Campagne mise en pause" : "Campagne relancée");
-      return render();
-    }
+    case "ag-credit": state.modal = { type: "ag-credit" }; state.drawer = false; return render();
+    case "ag-pause": case "ag-resume":
+      return act("PATCH", `/api/campaigns/${id}`, { status: action === "ag-pause" ? "En pause" : "Active" }, action === "ag-pause" ? "Campagne mise en pause" : "Campagne relancée");
   }
 }
 
 function handleAgencySubmit(form, data) {
-  const u = me();
   if (form === "ag-campaign") {
-    const err = payoutError(data);
-    if (err) return toast(err);
-    const c = buildCampaign(data, { brand: u.name, ownerId: u.id, status: "En attente" });
-    db.campaigns.unshift(c);
-    notify(u.id, "⏳", `Votre campagne « ${c.title} » est en cours de vérification.`);
-    logActivity("🏢", `${u.name} a soumis la campagne « ${c.title} ».`);
-    state.modal = null; state.ag.status = "Toutes";
-    navigate("#/agence/campagnes");
-    toast("Campagne envoyée pour validation ✓");
-  } else if (form === "ag-topup") {
-    const c = campaignById(state.modal.id), amount = Math.floor(+data.amount);
-    if (amount > u.credit) return toast("Crédit insuffisant");
-    u.credit -= amount; c.budget += amount;
-    logActivity("💰", `${u.name} a ajouté ${da(amount)} au budget de « ${c.title} ».`);
-    state.modal = null; render(); toast(`${da(amount)} ajoutés au budget`);
-  } else if (form === "ag-credit") {
-    u.credit += +data.amount;
-    state.modal = null; render(); toast(`Crédit rechargé de ${da(+data.amount)}`);
-  } else if (form === "ag-profile") {
-    const old = u.name;
-    u.name = data.name.trim() || u.name; u.contact = data.contact.trim(); u.country = data.country; u.website = data.website.trim();
-    if (old !== u.name) db.campaigns.filter((c) => c.ownerId === u.id).forEach((c) => (c.brand = u.name));
-    render(); toast("Profil de l'agence mis à jour ✓");
+    return act("POST", "/api/campaigns", campaignPayload(data), "Campagne envoyée pour validation ✓", () => {
+      state.modal = null; state.ag.status = "Toutes";
+      navigate("#/agence/campagnes");
+    });
+  }
+  if (form === "ag-topup") {
+    const amount = Math.floor(+data.amount);
+    return act("POST", `/api/campaigns/${state.modal.id}/budget`, { amount }, `${da(amount)} ajoutés au budget`, () => { state.modal = null; });
+  }
+  if (form === "ag-credit") {
+    return act("POST", "/api/credit", { amount: Math.floor(+data.amount), method: data.method }, (r) => `Demande envoyée · référence ${r.ref} à indiquer dans votre paiement`, () => { state.modal = null; });
+  }
+  if (form === "ag-profile") {
+    return act("PATCH", "/api/me", { name: data.name, contact: data.contact, country: data.country }, "Profil de l'agence mis à jour ✓");
   }
 }

@@ -4,8 +4,17 @@ const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&
 const fmt = (n) => String(Math.round(Math.abs(n))).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
 const da = (n) => `${n < 0 ? "− " : ""}${fmt(n)} DA`;
 const MONTHS = ["janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc."];
-const date = (iso) => { const [y, m, d] = iso.split("-"); return `${d} ${MONTHS[+m - 1]} ${y}`; };
-const nowTime = () => { const d = new Date(); return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`; };
+const date = (iso) => { const [y, m, d] = iso.slice(0, 10).split("-"); return `${d} ${MONTHS[+m - 1]} ${y}`; };
+// Temps écoulé depuis une date ISO : « À l'instant », « Il y a 5 min », « Hier »…
+function ago(iso) {
+  const s = (Date.now() - new Date(iso).getTime()) / 1000;
+  if (s < 60) return "À l'instant";
+  if (s < 3600) return `Il y a ${Math.floor(s / 60)} min`;
+  if (s < 86400) return `Il y a ${Math.floor(s / 3600)} h`;
+  if (s < 172800) return "Hier";
+  if (s < 604800) return `Il y a ${Math.floor(s / 86400)} j`;
+  return date(iso);
+}
 const initials = (name) => name.split(/\s+/).filter(Boolean).map((w) => w[0]).join("").slice(0, 2).toUpperCase();
 const campaignById = (id) => db.campaigns.find((c) => c.id === id);
 const userById = (id) => db.users.find((u) => u.id === id);
@@ -14,7 +23,8 @@ const rawEarnings = (p) => (p.views / 1000) * campaignById(p.campaign).rate;
 const belowMin = (p) => rawEarnings(p) < (campaignById(p.campaign).minPayout || 0);
 const isCapped = (p) => rawEarnings(p) >= (campaignById(p.campaign).maxPayout || Infinity);
 const payoutOf = (p) => (belowMin(p) ? 0 : Math.min(rawEarnings(p), campaignById(p.campaign).maxPayout || Infinity));
-const earningsOf = (p) => (p.status === "Validée" ? payoutOf(p) : 0);
+// Montant réellement crédité par le serveur pour un clip validé.
+const earningsOf = (p) => (p.status === "Validée" ? p.paid : 0);
 const viewsFor = (c, amount) => Math.ceil((amount / c.rate) * 1000);
 const isEmail = (s) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(s);
 
@@ -49,7 +59,7 @@ const icons = {
 const icon = (name, cls = "h-5 w-5", fill = false) =>
   `<svg viewBox="0 0 24 24" class="${cls}" ${fill ? 'fill="currentColor"' : 'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"'} aria-hidden="true">${icons[name]}</svg>`;
 
-const logo = (dark = false) => `<a href="#/" class="flex items-center gap-2" aria-label="ClipBoost, retour au site">
+const logo = (dark = false) => `<a href="/" class="flex items-center gap-2" aria-label="ClipBoost, retour au site">
   <span class="grid h-9 w-9 place-items-center rounded-xl bg-brand-600 text-white">${icon("play", "h-5 w-5", true)}</span>
   <span class="text-2xl font-black italic tracking-tight ${dark ? "text-white" : "text-ink"}">ClipBoost</span></a>`;
 
@@ -101,7 +111,7 @@ const switchBtn = (on, action, key, label) =>
 
 function avatar(u, size = "h-9 w-9 text-sm") {
   const colors = ["bg-brand-600", "bg-rose-400", "bg-amber-400", "bg-emerald-500", "bg-sky-500", "bg-fuchsia-500"];
-  return `<span class="grid ${size} shrink-0 place-items-center rounded-full font-bold text-white ${u.role === "admin" ? "bg-brand-700" : colors[u.id % colors.length]}">${initials(u.name)}</span>`;
+  return `<span class="grid ${size} shrink-0 place-items-center rounded-full font-bold text-white ${u.role === "admin" ? "bg-brand-700" : colors[[...String(u.id)].reduce((h, ch) => h + ch.charCodeAt(0), 0) % colors.length]}">${initials(u.name)}</span>`;
 }
 
 function toast(msg) {
@@ -111,20 +121,12 @@ function toast(msg) {
   el.className = "toast-in pointer-events-auto rounded-2xl bg-ink px-5 py-3 text-sm font-semibold text-white shadow-xl";
   el.textContent = msg;
   box.appendChild(el);
-  setTimeout(() => el.remove(), 2800);
+  setTimeout(() => el.remove(), Math.max(2800, msg.length * 70));
 }
 
 function copy(text, msg) {
   try { navigator.clipboard && navigator.clipboard.writeText(text).catch(() => {}); } catch (e) {}
   toast(msg);
-}
-
-function notify(userId, icon, text) {
-  db.notifications.unshift({ id: Date.now() + Math.random(), userId, icon, text, time: "À l'instant", unread: true });
-}
-
-function logActivity(icon, text) {
-  db.activity.unshift({ icon, text, time: `Aujourd'hui, ${nowTime()}` });
 }
 
 function modalShell(body, size = "max-w-lg") {
@@ -142,7 +144,7 @@ function siteBanner() {
   return parts.join("");
 }
 
-// Bouton clair / sombre : géré globalement (voir landing.js), l'icône suit la classe .dark.
+// Bouton clair / sombre : géré globalement (voir theme.js), l'icône suit la classe .dark.
 const themeToggle = (cls = "") =>
   `<button type="button" data-theme-toggle class="grid h-10 w-10 shrink-0 place-items-center rounded-xl ring-1 ring-gray-200 hover:bg-gray-50 ${cls}" aria-label="Changer de thème (clair ou sombre)" title="Mode clair / sombre">
     <svg viewBox="0 0 24 24" class="theme-moon h-5 w-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
@@ -157,22 +159,26 @@ function accountCard(u) {
   const pe = state.pwdError;
   return card(`<p class="font-bold">Compte et connexion</p>
     <div class="mt-4 flex items-center gap-3 rounded-2xl bg-gray-50 p-4"><span class="grid h-10 w-10 place-items-center rounded-xl bg-white text-brand-600 ring-1 ring-gray-100">${icon("mail")}</span>
-      <div class="min-w-0 flex-1"><p class="truncate font-semibold">${esc(u.email)}</p><p class="text-xs ${u.verified ? "text-emerald-600" : "text-amber-600"}">${u.verified ? "✓ Email vérifié" : "Email non vérifié"}</p></div></div>
+      <div class="min-w-0 flex-1"><p class="truncate font-semibold">${esc(u.email)}</p><p class="text-xs text-emerald-600">✓ Email vérifié</p></div></div>
     <form data-form="password" class="mt-5 space-y-3" novalidate>
       ${pe ? `<p class="rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-700">${pe}</p>` : ""}
       ${field("Mot de passe actuel", `<input name="current" type="password" autocomplete="current-password" class="${inputCls}"/>`)}
-      ${field("Nouveau mot de passe", `<input name="next" type="password" autocomplete="new-password" class="${inputCls}"/>`, "8 caractères minimum.")}
+      ${field("Nouveau mot de passe", `<input name="next" type="password" autocomplete="new-password" class="${inputCls}"/>`, "8 caractères minimum, avec au moins une lettre et un chiffre.")}
       <button class="w-full rounded-xl bg-ink py-2.5 text-sm font-semibold text-white hover:bg-black">Changer le mot de passe</button>
     </form>
     <button type="button" data-action="logout" class="mt-3 flex w-full items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-semibold text-rose-600 ring-1 ring-rose-100 hover:bg-rose-50">${icon("logout", "h-4 w-4")} Se déconnecter</button>`);
 }
 
-function handlePasswordSubmit(data) {
-  const u = userById(state.session);
-  if (data.current !== u.password) state.pwdError = "Le mot de passe actuel est incorrect.";
-  else if ((data.next || "").length < 8) state.pwdError = "Le nouveau mot de passe doit faire au moins 8 caractères.";
-  else { u.password = data.next; state.pwdError = ""; render(); return toast("Mot de passe modifié ✓"); }
-  render();
+async function handlePasswordSubmit(data) {
+  try {
+    await api("POST", "/api/auth/password", { current: data.current || "", next: data.next || "" });
+    state.pwdError = "";
+    render();
+    toast("Mot de passe modifié ✓");
+  } catch (e) {
+    state.pwdError = e.message;
+    render();
+  }
 }
 
 const homeOf = (u) => ({ admin: "#/admin/apercu", agence: "#/agence/apercu", clipper: "#/clipper/accueil" }[u.role]);

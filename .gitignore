@@ -2,8 +2,10 @@ node_modules
 .next
 out
 .env*
+!.env.example
 .DS_Store
 next-env.d.ts
-standalone/dist/
+web/dist/
+public/espace.html
 *.tsbuildinfo
 .data/
