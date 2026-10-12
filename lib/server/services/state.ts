@@ -1,0 +1,101 @@
+import { and, desc, eq, gte, inArray, ne, or, sql } from "drizzle-orm";
+import { getDb, schema } from "../db";
+import type { User } from "../auth";
+import { getSettings } from "../settings";
+import { balances } from "./money";
+
+const day = (d: Date) => d.toISOString().slice(0, 10);
+const time = (d: Date) => d.toISOString().slice(11, 16);
+
+function publicUser(u: typeof schema.users.$inferSelect) {
+  return { id: u.id, role: u.role, name: u.name, country: u.country, status: u.status, level: u.level, joined: day(u.createdAt), handle: u.handles.tiktok ?? u.handles.instagram ?? u.handles.youtube ?? "" };
+}
+
+function fullUser(u: typeof schema.users.$inferSelect) {
+  return { ...publicUser(u), email: u.email, contact: u.contact, credit: u.credit, bio: u.bio, handles: u.handles, payoutMethod: u.payoutMethod, payoutAccount: u.payoutAccount, verified: true };
+}
+
+/** Série quotidienne sur 30 jours à partir de lignes { d: 'YYYY-MM-DD', v }. */
+function daily30(rows: { d: string; v: number }[]) {
+  const map = new Map(rows.map((r) => [r.d, Number(r.v)]));
+  return Array.from({ length: 30 }, (_, i) => map.get(day(new Date(Date.now() - (29 - i) * 86_400_000))) ?? 0);
+}
+
+/**
+ * Tout ce que l'interface affiche pour l'utilisateur connecté, filtré selon son rôle.
+ * Un clipper ne voit que ses données, une agence ses campagnes et les clips reçus, l'admin tout.
+ */
+export async function stateFor(user: User) {
+  const db = await getDb();
+  const settings = await getSettings();
+  const isAdmin = user.role === "admin", isAgency = user.role === "agence";
+  const C = schema.campaigns, P = schema.publications, T = schema.transactions, M = schema.campaignMembers;
+
+  const campaignRows = await db.select().from(C).where(
+    isAdmin ? undefined : isAgency ? eq(C.ownerId, user.id) : inArray(C.status, ["Active", "En pause", "Terminée"]),
+  ).orderBy(desc(C.createdAt));
+  const campaignIds = campaignRows.map((c) => c.id);
+
+  const memberCounts = campaignIds.length
+    ? await db.select({ id: M.campaignId, n: sql<number>`count(*)` }).from(M).where(and(inArray(M.campaignId, campaignIds), eq(M.joined, true))).groupBy(M.campaignId)
+    : [];
+  const clippersOf = new Map(memberCounts.map((r) => [r.id, Number(r.n)]));
+
+  const pubRows = await db.select().from(P).where(
+    isAdmin ? undefined : isAgency ? (campaignIds.length ? inArray(P.campaignId, campaignIds) : sql`false`) : eq(P.userId, user.id),
+  ).orderBy(desc(P.createdAt));
+
+  // Utilisateurs visibles : tous pour l'admin, les auteurs des clips pour une agence, soi-même pour un clipper.
+  const userRows = isAdmin
+    ? await db.select().from(schema.users).orderBy(desc(schema.users.createdAt))
+    : await db.select().from(schema.users).where(or(eq(schema.users.id, user.id), pubRows.length ? inArray(schema.users.id, [...new Set(pubRows.map((p) => p.userId))]) : sql`false`));
+
+  const txRows = await db.select().from(T).where(isAdmin ? ne(T.type, "gain") : eq(T.userId, user.id)).orderBy(desc(T.createdAt)).limit(isAdmin ? 500 : 200);
+  const notifRows = await db.select().from(schema.notifications).where(eq(schema.notifications.userId, user.id)).orderBy(desc(schema.notifications.createdAt)).limit(30);
+  const activityRows = isAdmin ? await db.select().from(schema.activity).orderBy(desc(schema.activity.createdAt)).limit(30) : [];
+
+  const mine = user.role === "clipper" ? await db.select().from(M).where(eq(M.userId, user.id)) : [];
+  const since = new Date(Date.now() - 30 * 86_400_000);
+
+  // Séries des graphiques.
+  let series: { daily: number[]; label: string };
+  if (isAdmin) {
+    const rows = await db.select({ d: sql<string>`to_char(${schema.users.createdAt}, 'YYYY-MM-DD')`, v: sql<number>`count(*)` }).from(schema.users).where(gte(schema.users.createdAt, since)).groupBy(sql`1`);
+    series = { daily: daily30(rows), label: "Inscriptions par jour" };
+  } else {
+    const rows = await db.select({ d: sql<string>`to_char(${T.createdAt}, 'YYYY-MM-DD')`, v: sql<number>`sum(${T.amount})` }).from(T)
+      .where(and(eq(T.type, "gain"), gte(T.createdAt, since), isAgency ? (campaignIds.length ? inArray(T.publicationId, pubRows.map((p) => p.id).concat("_")) : sql`false`) : eq(T.userId, user.id)))
+      .groupBy(sql`1`);
+    series = { daily: daily30(rows), label: isAgency ? "Budget consommé par jour (DA)" : "Gains par jour (DA)" };
+  }
+
+  // Soldes : pour chaque clipper visible par l'admin, et pour soi-même.
+  const balanceTargets = isAdmin ? userRows.filter((u) => u.role === "clipper") : user.role === "clipper" ? [user] : [];
+  const balanceOf = new Map<string, Awaited<ReturnType<typeof balances>>>();
+  for (const u of balanceTargets) balanceOf.set(u.id, await balances(db, u.id));
+
+  return {
+    me: { ...fullUser(user), favorites: mine.filter((m) => m.favorite).map((m) => m.campaignId), joinedCampaigns: mine.filter((m) => m.joined).map((m) => m.campaignId), ...(balanceOf.get(user.id) ?? {}) },
+    settings: { maintenance: settings.maintenance, signupsOpen: settings.signupsOpen, announcement: settings.announcement, minWithdraw: settings.minWithdraw, commissionRate: settings.commissionRate, minBudget: settings.minBudget, holdDays: settings.holdDays, earningDays: settings.earningDays, instantFeePercent: settings.instantFeePercent, instantMinFee: settings.instantMinFee },
+    users: userRows.map((u) => ({ ...(isAdmin ? fullUser(u) : u.id === user.id ? fullUser(u) : publicUser(u)), ...(balanceOf.get(u.id) ?? {}) })),
+    campaigns: campaignRows.map((c) => ({ ...c, createdAt: day(c.createdAt), clippers: clippersOf.get(c.id) ?? 0 })),
+    publications: pubRows.map((p) => ({ id: p.id, userId: p.userId, campaign: p.campaignId, title: p.title, platform: p.platform, url: p.url, views: p.views, status: p.status, reason: p.reason, paid: p.paid, date: day(p.createdAt) })),
+    transactions: txRows.map((t) => ({ id: t.id, ref: t.ref, userId: t.userId, type: t.type, label: t.label, amount: t.amount, fee: t.fee, status: t.status, method: t.method, date: day(t.createdAt), time: time(t.createdAt), availableAt: t.availableAt?.toISOString() ?? null })),
+    notifications: notifRows.map((n) => ({ id: n.id, icon: n.icon, text: n.text, unread: !n.read, at: n.createdAt.toISOString() })),
+    activity: activityRows.map((a) => ({ icon: a.icon, text: a.text, at: a.createdAt.toISOString() })),
+    series,
+  };
+}
+
+/** Données publiques de la page d'accueil (aucune connexion requise). */
+export async function publicState() {
+  const db = await getDb();
+  const settings = await getSettings();
+  const C = schema.campaigns;
+  const campaigns = await db.select({ id: C.id, title: C.title, brand: C.brand, category: C.category, rate: C.rate, budget: C.budget, spent: C.spent, minPayout: C.minPayout, maxPayout: C.maxPayout, emoji: C.emoji, gradient: C.gradient, top: C.top, platforms: C.platforms, createdAt: C.createdAt })
+    .from(C).where(eq(C.status, "Active")).orderBy(desc(C.top), desc(C.createdAt)).limit(12);
+  return {
+    settings: { maintenance: settings.maintenance, signupsOpen: settings.signupsOpen, announcement: settings.announcement },
+    campaigns: campaigns.map((c) => ({ ...c, createdAt: day(c.createdAt) })),
+  };
+}

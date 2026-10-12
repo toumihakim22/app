@@ -1,0 +1,110 @@
+import { createHash, randomInt } from "node:crypto";
+import { and, eq } from "drizzle-orm";
+import { getDb, schema } from "../db";
+import type { SignupPayload } from "../db/schema";
+import { createSession } from "../auth";
+import { sendEmail } from "../email";
+import { logActivity } from "../events";
+import { badRequest, forbidden } from "../http";
+import { newId } from "../ids";
+import { hashPassword, strongEnough, verifyPassword } from "../password";
+import { getSettings } from "../settings";
+
+const CODE_MINUTES = 10;
+const MAX_ATTEMPTS = 5;
+const hashCode = (email: string, code: string) => createHash("sha256").update(`${email}:${code}`).digest("hex");
+export const normalizeEmail = (email: string) => email.trim().toLowerCase();
+
+async function issueCode(email: string, purpose: "signup" | "reset", payload: SignupPayload | null) {
+  const db = await getDb();
+  const code = String(randomInt(0, 1_000_000)).padStart(6, "0");
+  const values = { email, purpose, codeHash: hashCode(email, code), payload, attempts: 0, expiresAt: new Date(Date.now() + CODE_MINUTES * 60_000) };
+  await db.insert(schema.emailCodes).values(values).onConflictDoUpdate({ target: [schema.emailCodes.email, schema.emailCodes.purpose], set: values });
+  const subject = purpose === "signup" ? "Votre code de vérification ClipBoost" : "Réinitialisation de votre mot de passe ClipBoost";
+  await sendEmail(email, subject, `Votre code : ${code}\n\nIl expire dans ${CODE_MINUTES} minutes. Si vous n'êtes pas à l'origine de cette demande, ignorez cet email.`);
+  // En développement uniquement, le code est renvoyé à l'interface pour pouvoir tester sans boîte mail.
+  return process.env.NODE_ENV !== "production" && !process.env.RESEND_API_KEY ? code : undefined;
+}
+
+async function consumeCode(email: string, purpose: "signup" | "reset", code: string) {
+  const db = await getDb();
+  const where = and(eq(schema.emailCodes.email, email), eq(schema.emailCodes.purpose, purpose));
+  const [row] = await db.select().from(schema.emailCodes).where(where);
+  if (!row || row.expiresAt < new Date()) throw badRequest("Code expiré, demandez-en un nouveau");
+  if (row.attempts >= MAX_ATTEMPTS) throw badRequest("Trop d'essais, demandez un nouveau code");
+  if (row.codeHash !== hashCode(email, code)) {
+    await db.update(schema.emailCodes).set({ attempts: row.attempts + 1 }).where(where);
+    throw badRequest("Code incorrect");
+  }
+  await db.delete(schema.emailCodes).where(where);
+  return row;
+}
+
+async function emailTaken(email: string) {
+  const db = await getDb();
+  const [row] = await db.select({ id: schema.users.id }).from(schema.users).where(eq(schema.users.email, email));
+  return Boolean(row);
+}
+
+export async function requestSignup(input: { role: "clipper" | "agence"; name: string; contact?: string; email: string; country: string; password: string }) {
+  const settings = await getSettings();
+  if (!settings.signupsOpen || settings.maintenance) throw forbidden("Les inscriptions sont momentanément fermées");
+  const email = normalizeEmail(input.email);
+  if (await emailTaken(email)) throw badRequest("Un compte existe déjà avec cet email");
+  if (!strongEnough(input.password)) throw badRequest("Le mot de passe doit contenir au moins 8 caractères, dont une lettre et un chiffre");
+  const payload: SignupPayload = { role: input.role, name: input.name.trim(), contact: input.contact?.trim() || null, country: input.country, passwordHash: await hashPassword(input.password) };
+  const devCode = await issueCode(email, "signup", payload);
+  return { email, devCode };
+}
+
+export async function verifySignup(emailInput: string, code: string) {
+  const email = normalizeEmail(emailInput);
+  const row = await consumeCode(email, "signup", code);
+  const p = row.payload as SignupPayload;
+  if (await emailTaken(email)) throw badRequest("Un compte existe déjà avec cet email");
+  const db = await getDb();
+  const id = newId();
+  await db.insert(schema.users).values({ id, role: p.role, email, passwordHash: p.passwordHash, name: p.name, contact: p.contact, country: p.country });
+  await logActivity(db, p.role === "agence" ? "🏢" : "👤", `${p.name} s'est inscrit${p.role === "agence" ? " (agence)" : ""}.`);
+  await createSession(id);
+  return id;
+}
+
+export async function login(emailInput: string, password: string) {
+  const db = await getDb();
+  const email = normalizeEmail(emailInput);
+  const [user] = await db.select().from(schema.users).where(eq(schema.users.email, email));
+  // On vérifie un mot de passe même si le compte n'existe pas, pour ne pas révéler les emails inscrits.
+  const ok = await verifyPassword(password, user?.passwordHash ?? "scrypt$AAAAAAAAAAAAAAAAAAAAAA==$AAAA");
+  if (!user || !ok) throw badRequest("Email ou mot de passe incorrect");
+  if (user.status === "Suspendu") throw forbidden("Votre compte est suspendu. Contactez le support.");
+  const settings = await getSettings();
+  if (settings.maintenance && user.role !== "admin") throw forbidden("ClipBoost est en maintenance, réessayez plus tard");
+  await createSession(user.id);
+  return user;
+}
+
+export async function requestPasswordReset(emailInput: string) {
+  const email = normalizeEmail(emailInput);
+  // Réponse identique que le compte existe ou non.
+  if (!(await emailTaken(email))) return { devCode: undefined };
+  return { devCode: await issueCode(email, "reset", null) };
+}
+
+export async function resetPassword(emailInput: string, code: string, password: string) {
+  const email = normalizeEmail(emailInput);
+  if (!strongEnough(password)) throw badRequest("Le mot de passe doit contenir au moins 8 caractères, dont une lettre et un chiffre");
+  await consumeCode(email, "reset", code);
+  const db = await getDb();
+  const [user] = await db.update(schema.users).set({ passwordHash: await hashPassword(password) }).where(eq(schema.users.email, email)).returning();
+  await db.delete(schema.sessions).where(eq(schema.sessions.userId, user.id));
+  await createSession(user.id);
+}
+
+export async function changePassword(userId: string, current: string, next: string) {
+  const db = await getDb();
+  const [user] = await db.select().from(schema.users).where(eq(schema.users.id, userId));
+  if (!(await verifyPassword(current, user.passwordHash))) throw badRequest("Mot de passe actuel incorrect");
+  if (!strongEnough(next)) throw badRequest("Le nouveau mot de passe doit contenir au moins 8 caractères, dont une lettre et un chiffre");
+  await db.update(schema.users).set({ passwordHash: await hashPassword(next) }).where(eq(schema.users.id, userId));
+}
