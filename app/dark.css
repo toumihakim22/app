@@ -1,0 +1,75 @@
+/*
+ * Mode sombre ClipBoost, partagé par le site Next.js et la version HTML autonome.
+ * Plutôt que d'ajouter une variante dark: à chaque élément, on redéfinit sous html.dark
+ * les quelques utilitaires de couleur utilisés par l'interface.
+ */
+
+.theme-sun { display: none; }
+html.dark .theme-sun { display: block; }
+html.dark .theme-moon { display: none; }
+
+html.dark {
+  color-scheme: dark;
+  --dk-bg: #0e1117;
+  --dk-surface: #171b24;
+  --dk-surface-2: #1d2230;
+  --dk-muted: #12151d;
+  --dk-line: #2a3040;
+  --dk-text: #eef0f4;
+}
+
+html.dark body { background: var(--dk-bg); color: #e5e7eb; }
+
+/* Surfaces */
+html.dark .bg-white { background-color: var(--dk-surface); }
+html.dark .bg-white\/85, html.dark .bg-white\/90, html.dark .bg-white\/95 { background-color: rgb(23 27 36 / 0.9); }
+html.dark .bg-white\/70 { background-color: rgb(23 27 36 / 0.7); }
+html.dark .bg-gray-50 { background-color: var(--dk-muted); }
+html.dark .bg-gray-100 { background-color: var(--dk-surface-2); }
+html.dark .bg-gray-200 { background-color: var(--dk-line); }
+html.dark .bg-ink { background-color: #2b3142; }
+html.dark aside.bg-ink, html.dark section .bg-ink.rounded-\[2\.5rem\] { background-color: #0a0c11; }
+html.dark .bg-ink\/90 { background-color: rgb(10 12 17 / 0.9); }
+html.dark .bg-ink\/40 { background-color: rgb(0 0 0 / 0.6); }
+html.dark .hover\:bg-black:hover { background-color: #3a4256; }
+html.dark .hover\:bg-gray-50:hover, html.dark .hover\:bg-gray-100:hover, html.dark .hover\:bg-white:hover, html.dark .hover\:bg-white\/70:hover { background-color: var(--dk-surface-2); }
+html.dark .focus\:bg-white:focus { background-color: var(--dk-surface); }
+
+/* Textes */
+html.dark .text-ink { color: var(--dk-text); }
+html.dark .hover\:text-ink:hover { color: #fff; }
+html.dark .text-gray-800, html.dark .text-gray-700 { color: #d4d7de; }
+html.dark .text-gray-600, html.dark .text-gray-500 { color: #9aa1b0; }
+html.dark .text-gray-400 { color: #7a8292; }
+html.dark .text-gray-200 { color: #2a3040; }
+
+/* Bordures et contours */
+html.dark .border-gray-50, html.dark .border-gray-100, html.dark .border-gray-200, html.dark .divide-gray-100 > * + * { border-color: var(--dk-line); }
+html.dark .ring-gray-100, html.dark .ring-gray-200 { --tw-ring-color: var(--dk-line); }
+html.dark .ring-white\/20 { --tw-ring-color: rgb(255 255 255 / 0.15); }
+
+/* Teintes d'accent (fonds pâles → transparents) */
+html.dark .bg-brand-50, html.dark .bg-brand-50\/60 { background-color: rgb(124 58 237 / 0.16); }
+html.dark .bg-brand-100, html.dark .hover\:bg-brand-100:hover, html.dark .hover\:bg-brand-50:hover { background-color: rgb(124 58 237 / 0.26); }
+html.dark .bg-brand-100\/60 { background-color: rgb(124 58 237 / 0.18); }
+html.dark .text-brand-700 { color: #c4b5fd; }
+html.dark .text-brand-600 { color: #a78bfa; }
+html.dark .ring-brand-100, html.dark .focus\:ring-brand-100:focus { --tw-ring-color: rgb(124 58 237 / 0.35); }
+html.dark .bg-emerald-50 { background-color: rgb(16 185 129 / 0.14); }
+html.dark .hover\:bg-emerald-100:hover { background-color: rgb(16 185 129 / 0.24); }
+html.dark .text-emerald-600, html.dark .text-emerald-700, html.dark .text-income { color: #34d399; }
+html.dark .bg-amber-50 { background-color: rgb(245 158 11 / 0.14); }
+html.dark .hover\:bg-amber-100:hover { background-color: rgb(245 158 11 / 0.24); }
+html.dark .text-amber-600, html.dark .text-amber-700, html.dark .text-amber-800 { color: #fbbf24; }
+html.dark .ring-amber-100 { --tw-ring-color: rgb(245 158 11 / 0.3); }
+html.dark .bg-rose-50 { background-color: rgb(244 63 94 / 0.14); }
+html.dark .hover\:bg-rose-50:hover, html.dark .hover\:bg-rose-100:hover { background-color: rgb(244 63 94 / 0.24); }
+html.dark .text-rose-600, html.dark .text-rose-700 { color: #fb7185; }
+html.dark .ring-rose-100 { --tw-ring-color: rgb(244 63 94 / 0.3); }
+html.dark .bg-sky-50 { background-color: rgb(14 165 233 / 0.14); }
+html.dark .text-sky-600 { color: #38bdf8; }
+html.dark .bg-pink-100 { background-color: rgb(236 72 153 / 0.18); }
+html.dark .text-pink-700 { color: #f9a8d4; }
+html.dark .bg-red-100 { background-color: rgb(239 68 68 / 0.18); }
+html.dark .text-red-700 { color: #fca5a5; }
+html.dark .shadow-sm, html.dark .shadow-md, html.dark .shadow-xl { --tw-shadow-color: rgb(0 0 0 / 0.4); }
