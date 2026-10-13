@@ -2,6 +2,7 @@
 // données d'exemple que `scripts/seed.mts --demo`, datées par rapport au premier lancement.
 import type { CampaignStatus, PublicationStatus } from "../../lib/server/db/schema";
 import { payoutFor } from "../../lib/server/rules";
+import { DEFAULT_SETTINGS } from "../../lib/server/settings";
 import { emptyStore, insertCampaign, insertPublication, insertTransaction, insertUser, newId, newRef, type CampaignRow, type Store, type UserRow } from "./db";
 import { hashPassword } from "./password";
 
@@ -44,6 +45,22 @@ export async function seed(): Promise<Store> {
     { u: yacine, c: derby, title: "Les supporters chantent", platform: "YouTube", views: 1600, status: "En attente", days: 0 },
     { u: lina, c: rire, title: "Sketch du marché", platform: "YouTube", views: 4100, status: "Refusée", days: 9, reason: "Musique protégée" },
   ];
+  // Journal d'activité et notifications des événements ci-dessus (mêmes textes que les services, lib/server/services/*).
+  const fmt = (n: number) => `${n.toLocaleString("fr-FR").replace(/\u202f|\xa0/g, " ")} DA`;
+  const acts: [number, string, string][] = [];
+  const notes: [UserRow, number, string, string][] = [];
+  const launched = (c: CampaignRow, days: number) => {
+    for (const u of [yacine, amira, lina]) if (u.createdAt < daysAgo(days)) notes.push([u, days, "🎯", `Nouvelle campagne : ${c.title} (${c.rate} DA /1K).`]);
+  };
+  launched(rire, 20); launched(kahwa, 14);
+  notes.push([tassili, 10, "⏳", `Votre campagne « ${derby.title} » est en cours de vérification.`], [tassili, 9.9, "✅", `Votre campagne « ${derby.title} » a été approuvée et est en ligne.`]);
+  acts.push([9.9, "🎯", `Campagne « ${derby.title} » : En attente → Active.`]);
+  launched(derby, 9.9);
+  acts.push([3, "🏢", `${hoggar.name} s'est inscrit (agence).`]);
+  const soirees = db.campaigns.find((c) => c.ownerId === hoggar.id)!;
+  acts.push([2, "🏢", `${hoggar.name} a soumis la campagne « ${soirees.title} ».`]);
+  notes.push([hoggar, 2, "⏳", `Votre campagne « ${soirees.title} » est en cours de vérification.`]);
+
   let i = 0;
   for (const p of pubs) {
     const id = newId(), host = p.platform === "TikTok" ? "www.tiktok.com/@clip/video/" : p.platform === "Instagram" ? "www.instagram.com/reel/" : "youtu.be/";
@@ -53,8 +70,24 @@ export async function seed(): Promise<Store> {
       insertTransaction(db, { id: newId(), ref: newRef(), userId: p.u.id, type: "gain", label: p.c.title, amount: paid, status: "Validé", availableAt: daysAgo(p.days - 3), publicationId: id, createdAt: daysAgo(p.days) });
       p.c.spent += paid;
     }
+    acts.push([p.days + 1, "🎬", `${p.u.name} a soumis le clip « ${p.title} » (${p.c.title}).`]);
+    if (paid) {
+      acts.push([p.days, "✅", `Clip « ${p.title} » validé (${fmt(paid)}).`]);
+      notes.push([p.u, p.days, "💸", `+${fmt(paid)} pour « ${p.title} ». Retirable dans ${DEFAULT_SETTINGS.holdDays} jours.`]);
+    } else if (p.status === "Refusée") {
+      acts.push([p.days, "🚫", `Clip « ${p.title} » refusé par Équipe ClipBoost.`]);
+      notes.push([p.u, p.days, "⚠️", `Clip « ${p.title} » refusé : ${p.reason}.`]);
+    }
   }
   insertTransaction(db, { id: newId(), ref: newRef(), userId: amira.id, type: "retrait", label: "Retrait vers BaridiMob", amount: -2000, status: "En cours", method: "BaridiMob", createdAt: daysAgo(1) });
-  insertTransaction(db, { id: newId(), ref: newRef(), userId: hoggar.id, type: "recharge", label: "Recharge par virement bancaire", amount: 600000, status: "En cours", method: "virement bancaire", createdAt: daysAgo(1) });
+  const rechargeRef = newRef();
+  insertTransaction(db, { id: newId(), ref: rechargeRef, userId: hoggar.id, type: "recharge", label: "Recharge par virement bancaire", amount: 600000, status: "En cours", method: "virement bancaire", createdAt: daysAgo(1) });
+  const admin = db.users[0];
+  acts.push([1, "💸", `${amira.name} a demandé un retrait de ${fmt(2000)}.`]);
+  notes.push([admin, 2, "🏢", `${hoggar.name} a soumis la campagne « ${soirees.title} ».`], [admin, 1, "💸", `${amira.name} demande un retrait de ${fmt(2000)}.`],
+    [admin, 0.9, "🏦", `${hoggar.name} annonce une recharge de ${fmt(600000)} par virement bancaire (réf. ${rechargeRef}).`]);
+  // Les événements de plus de 2 jours sont déjà lus ; les plus récents restent à lire.
+  for (const [days, icon, text] of acts) db.activity.push({ id: newId(), icon, text, createdAt: daysAgo(days) });
+  for (const [u, days, icon, text] of notes) db.notifications.push({ id: newId(), userId: u.id, icon, text, read: days > 2, createdAt: daysAgo(days) });
   return db;
 }

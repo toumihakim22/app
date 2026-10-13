@@ -42,12 +42,10 @@ const admCountLine = (n, total, one, many) =>
   `<p class="mt-4 text-small tabular-nums text-fg-subtle">${n === total ? plural(n, one, many) : `${plural(n, one, many)} sur ${fmt(total)}`}</p>`;
 // Saisie numérique « 50 000 » ou « 2,5 » : espaces ignorés, virgule décimale ; vide = NaN.
 const admParse = (v) => { const t = String(v ?? "").replace(/[\s\u00a0\u202f]/g, "").replace(",", "."); return t === "" ? NaN : Number(t); };
-// Champ refusé avant l'envoi : bordure d'erreur (aria-invalid), focus et message.
-function admInvalid(form, name, msg) {
-  document.querySelectorAll(`[data-form="${form}"] [aria-invalid]`).forEach((el) => el.removeAttribute("aria-invalid"));
-  const el = document.querySelector(`[data-form="${form}"] [name="${name}"]`);
-  if (el) { el.setAttribute("aria-invalid", "true"); el.focus(); }
-  toast(msg, "danger");
+// Champ refusé avant l'envoi : bordure d'erreur (aria-invalid), message sous le champ et focus (pas de toast éphémère).
+// Sans message (relevé de vues), l'avertissement déjà affiché dans la modale suffit.
+function admInvalid(form, name, msg = "") {
+  markInvalid(root.querySelector(`form[data-form="${form}"]`), name, msg);
 }
 // Tableaux : chacun s'affiche à partir de la largeur où il tient en entier (colonne d'actions comprise), la liste en dessous.
 // Le conteneur défile horizontalement en dernier recours au lieu de rogner ; « relative » garde l'en-tête sr-only dans le tableau.
@@ -134,8 +132,8 @@ function aApercu() {
       <div class="mt-3 grid grid-cols-2 gap-3 sm:gap-4 lg:gap-5 xl:grid-cols-4">${kpis.join("")}</div>
     </section>
     <div class="mt-4 grid gap-4 lg:mt-5 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)] lg:gap-5">
-      ${card(chart)}
-      ${card(activity, "flex flex-col p-5")}
+      ${card(chart, acts.length ? "" : "lg:col-span-2")}
+      ${acts.length ? card(activity, "flex flex-col p-5") : ""}
     </div>
     ${sectionHeader("Clips en attente", pubs.length ? "#/admin/moderation" : "")}
     ${pubs.length ? admPubTable(publicationsTable(pubs.slice(0, 3), { showUser: true, actions: true }))
@@ -150,10 +148,12 @@ const ADM_ROLES = { "Tous les rôles": null, Clippers: "clipper", Agences: "agen
 const admBalance = (u) => (u.role === "agence" ? u.credit || 0 : balance(u));
 const admBalanceLabel = (u) => (u.role === "agence" ? "crédit" : "gains");
 
-function admUserActions(u, size) {
-  if (u.role === "admin") return `<span class="text-xs text-fg-subtle">Administrateur</span>`;
-  return `<button type="button" data-action="adm-user-view" data-id="${u.id}" class="${btn("ghost", size)}">Détails</button>
-    <button type="button" data-action="adm-user-toggle" data-id="${u.id}" class="${btn("secondary", size)}">${u.status === "Actif" ? "Suspendre" : "Réactiver"}</button>`;
+// Colonne d'actions : « Détails » partout ; un compte admin ne se suspend pas, un espace vide garde l'alignement du tableau.
+function admUserActions(u, size, table = false) {
+  const details = `<button type="button" data-action="adm-user-view" data-id="${u.id}" class="${btn("ghost", size)}">Détails</button>`;
+  if (u.role === "admin") return table ? `${details}<span class="w-[6.5rem] shrink-0" aria-hidden="true"></span>` : details;
+  return `${details}
+    <button type="button" data-action="adm-user-toggle" data-id="${u.id}" class="${btn("secondary", size, "sm:min-w-[6.5rem]")}">${u.status === "Actif" ? "Suspendre" : "Réactiver"}</button>`;
 }
 
 function aUtilisateurs() {
@@ -172,12 +172,12 @@ function aUtilisateurs() {
         <td class="${TBL.td} hidden xl:table-cell"><span class="whitespace-nowrap tabular-nums text-fg-muted">${date(u.joined)}</span></td>
         <td class="${TBL.td} ${TBL.tdNum}">${money_}</td>
         <td class="${TBL.td}">${statusBadge(u.status)}</td>
-        <td class="${TBL.td} ${TBL.tdActions}"><div class="flex items-center justify-end gap-2">${admUserActions(u, "sm")}</div></td>
+        <td class="${TBL.td} ${TBL.tdActions}"><div class="flex items-center justify-end gap-2">${admUserActions(u, "sm", true)}</div></td>
       </tr>`,
       li: `<li class="${TBL.item}">
         <div class="flex items-start gap-3">${avatar(u, "md")}<div class="min-w-0 flex-1"><div class="flex min-w-0 items-center gap-1.5"><p class="truncate text-sm font-medium text-fg">${esc(u.name)}</p>${roleTag(u)}</div><p class="truncate text-xs text-fg-subtle">${esc(u.email)}</p></div>${statusBadge(u.status)}</div>
         <div class="flex items-center justify-between gap-3 text-small"><span class="min-w-0 truncate text-fg-subtle">${esc(u.country)} · inscrit le ${date(u.joined)}</span>${u.role === "admin" ? "" : `<span class="shrink-0 font-medium">${money(admBalance(u))}<span class="font-normal text-fg-subtle"> ${admBalanceLabel(u)}</span></span>`}</div>
-        ${u.role === "admin" ? "" : `<div class="grid grid-cols-2 gap-2">${admUserActions(u, "md")}</div>`}
+        <div class="grid grid-cols-2 gap-2">${admUserActions(u, "md")}</div>
       </li>`,
     };
   });
@@ -187,8 +187,8 @@ function aUtilisateurs() {
     rows.map((r) => r.tr).join(""), rows.map((r) => r.li).join(""));
 
   return `${pageHeader("Utilisateurs", "Clippers, agences et administrateurs. Les nouvelles inscriptions apparaissent ici automatiquement.")}
-    ${admToolbar(searchInput("adm-user-q", f.userQ, "Nom, email ou pays", "Rechercher un utilisateur", "w-full xl:max-w-xs"),
-      admScrollRow([segmented("adm-user-role", f.userRole, roles, "Rôle"), segmented("adm-user-status", f.userStatus, statuses, "Statut")]))}
+    ${admToolbar(`<div class="flex min-w-0 gap-2 xl:contents">${searchInput("adm-user-q", f.userQ, "Nom, email, pays", "Rechercher un utilisateur", "min-w-0 flex-1 xl:max-w-xs")}${select("adm-user-status", f.userStatus, [["Tous", "Tous statuts"], ...statuses.slice(1)], { label: "Statut", cls: "w-36 shrink-0 sm:hidden" })}</div>`,
+      `<div class="flex min-w-0 items-center gap-2">${segmented("adm-user-role", f.userRole, roles, "Rôle", { scroll: true })}<span class="hidden sm:contents">${segmented("adm-user-status", f.userStatus, statuses, "Statut")}</span></div>`)}
     ${admCountLine(list.length, db.users.length, "compte", "comptes")}
     <div class="mt-3">${list.length ? table
       : emptyState("search", "Aucun utilisateur ne correspond", "Essayez un autre nom, un autre rôle ou effacez les filtres.", `<button type="button" data-action="adm-user-clear" class="${btn("secondary")}">Effacer les filtres</button>`)}</div>`;
@@ -200,7 +200,8 @@ const ADM_CAMP_STATUS = [["Toutes", "Toutes"], ["Active", "Actives"], ["En atten
 
 // Actions par statut, sur une ligne ; l'action principale est à droite (comme la colonne Décision de la modération).
 function admCampActions(c, size) {
-  const b = (action, variant, label, ic = "") => `<button type="button" data-action="${action}" data-id="${c.id}" class="${btn(variant, size)}">${ic ? icon(ic) : ""}${label}</button>`;
+  // Action secondaire à largeur fixe dès sm : « Terminer » garde la même position d'une ligne à l'autre.
+  const b = (action, variant, label, ic = "") => `<button type="button" data-action="${action}" data-id="${c.id}" class="${btn(variant, size, variant === "ghost" || variant === "dangerSoft" ? "" : "sm:min-w-[7.5rem]")}">${ic ? icon(ic) : ""}${label}</button>`;
   return {
     "En attente": b("adm-camp-refuse", "dangerSoft", "Refuser") + b("adm-camp-approve", "primary", "Approuver"),
     "Active": b("adm-camp-end", "ghost", "Terminer") + b("adm-camp-pause", "secondary", "Pause", "pause"),
@@ -259,8 +260,8 @@ function aModeration() {
     : emptyState("film", "Aucun clip dans cette catégorie", "Changez de filtre pour voir les autres clips.");
   return `${pageHeader("Modération des clips", "Relevez les vues de chaque clip, puis validez ceux qui respectent les règles de la campagne.")}
     <div class="mt-6">${rules}</div>
-    <div class="mt-6">${segmented("adm-mod-status", f.modStatus, [["En attente", "En attente", n("En attente")], ["Validée", "Validées", n("Validée")], ["Refusée", "Refusées", n("Refusée")], ["Toutes", "Toutes", all.length]], "Statut")}</div>
-    <div class="mt-4">${list.length ? admPubTable(publicationsTable(list, { showUser: true, actions: true })) : empty}</div>`;
+    <div class="mt-6">${segmented("adm-mod-status", f.modStatus, [["En attente", "En attente", n("En attente")], ["Validée", "Validées", n("Validée")], ["Refusée", "Refusées", n("Refusée")], ["Toutes", "Toutes", all.length]], "Statut", { scroll: true })}</div>
+    <div class="mt-4">${list.length ? admPubTable(publicationsTable(list, { showUser: true, actions: true, amountLabel: f.modStatus === "En attente" ? "Gain estimé" : "Gain" })) : empty}</div>`;
 }
 
 // ---------- Paiements ----------
@@ -370,8 +371,8 @@ LIVE.admSettings = (d) => {
 };
 
 const admSettingRow = (title, desc, control, id) =>
-  `<div class="flex flex-col gap-3 py-4 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between sm:gap-8">
-    <div class="min-w-0"><label for="${id}" class="text-sm font-medium text-fg">${title}</label><p id="${id}-desc" class="mt-0.5 text-small text-fg-muted">${desc}</p></div>
+  `<div data-field class="flex flex-col gap-3 py-4 first:pt-0 last:pb-0 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-x-8 sm:gap-y-2 [&>[data-field-error]]:basis-full sm:[&>[data-field-error]]:justify-end">
+    <div class="min-w-0 sm:flex-1"><label for="${id}" class="text-sm font-medium text-fg">${title}</label><p id="${id}-desc" class="mt-0.5 text-small text-fg-muted">${desc}</p></div>
     <div class="shrink-0 sm:w-48">${control}</div></div>`;
 const admSwitchRow = (s, key, title, desc) =>
   `<div class="flex items-center justify-between gap-6 py-4 first:pt-0 last:pb-0">
@@ -414,7 +415,7 @@ function aParametres() {
         ${group("Délais", "Contrôle et rémunération des clips validés.",
           admSettingRow("Rétention des gains", "Délai de contrôle avant qu'un gain validé devienne retirable.", admNumber(s, "holdDays", "jours"), "set-holdDays")
           + admSettingRow("Fenêtre de gains", "Après la validation, chaque nouveau relevé paie les vues supplémentaires pendant ce délai.", admNumber(s, "earningDays", "jours"), "set-earningDays"))}
-        <div class="sticky bottom-[calc(4.75rem+env(safe-area-inset-bottom))] z-20 flex items-center justify-between gap-4 rounded-card border border-line bg-surface/95 px-4 py-3 shadow-popover backdrop-blur-md sm:px-5 lg:bottom-4">
+        <div data-sticky-save class="sticky bottom-[calc(4.75rem+env(safe-area-inset-bottom))] z-20 flex items-center justify-between gap-4 rounded-card border border-line bg-surface/95 px-4 py-3 shadow-popover backdrop-blur-md sm:px-5 lg:bottom-4">
           <p class="hidden text-small text-fg-muted sm:block">Annonce, montants et délais s'appliquent à tout le site dès l'enregistrement.</p>
           <button type="submit" class="${btn("primary", "md", "w-full sm:w-auto")}">Enregistrer</button>
         </div>
@@ -459,11 +460,11 @@ function adminModal() {
     const pubs = db.publications.filter((p) => p.userId === u.id), agency = u.role === "agence";
     const tile = (label, value, cls = "") => `<div class="${TILE} ${cls}"><dt class="text-xs text-fg-subtle">${label}</dt><dd class="mt-1 text-sm font-semibold text-fg">${value}</dd></div>`;
     const acc = admAccountValue(u.payoutAccount);
-    const tiles = agency
+    const tiles = u.role === "admin" ? [] : agency
       ? (() => { const cs = db.campaigns.filter((c) => c.ownerId === u.id); return [
-          tile("Crédit", money(u.credit || 0)), tile("Budget engagé", money(admSum(cs, (c) => c.budget))), tile("Campagnes", `<span class="tabular-nums">${fmt(cs.length)}</span>`),
+          tile("Crédit", money(u.credit || 0)), tile("Budget engagé", money(admSum(cs, (c) => c.budget))), tile("Campagnes", `<span class="tabular-nums">${fmt(cs.length)}</span>`, "col-span-2 sm:col-span-1"),
           tile("Contact", esc(u.contact || "—"), "col-span-2 sm:col-span-3")]; })()
-      : [tile("Gains totaux", money(totalEarned(u))), tile("Solde retirable", money(balance(u))), tile("Clips soumis", `<span class="tabular-nums">${fmt(pubs.length)}</span>`),
+      : [tile("Gains totaux", money(totalEarned(u))), tile("Solde retirable", money(balance(u))), tile("Clips soumis", `<span class="tabular-nums">${fmt(pubs.length)}</span>`, "col-span-2 sm:col-span-1"),
           tile("Moyen de retrait", u.payoutMethod
             ? `<span class="flex flex-wrap items-center gap-x-2 gap-y-1">${badge(esc(u.payoutMethod), "idle")}${acc ? `<span class="flex items-center gap-0.5"><span class="font-mono text-small font-medium">${admAccount(acc)}</span>${admCopyBtn(acc, "Copier le numéro", "Numéro copié")}</span>` : ""}</span>`
             : `<span class="font-normal text-fg-subtle">Aucun moyen enregistré</span>`, "col-span-2 sm:col-span-3")];
@@ -476,7 +477,7 @@ function adminModal() {
       body: `<div class="flex items-center gap-4">${avatar(u, "lg")}
           <div class="min-w-0"><div class="flex flex-wrap items-center gap-1.5">${roleTag(u) || (u.level ? badge(esc(u.level), "brand", { ic: "medal" }) : "")}${statusBadge(u.status)}${badge("Email vérifié", "success", { ic: "check" })}</div>
             <p class="mt-2 text-small text-fg-muted">${esc(u.country)} · inscrit le ${date(u.joined)}</p></div></div>
-        <dl class="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-3">${tiles.join("")}</dl>`,
+        ${tiles.length ? `<dl class="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-3">${tiles.join("")}</dl>` : `<p class="mt-5 text-small text-fg-muted">Compte administrateur : accès complet à l'espace d'administration. Il ne peut pas être suspendu depuis cette page.</p>`}`,
       footer: `${cancel("Fermer")}${toggle}`,
     });
   }
@@ -496,7 +497,7 @@ function adminModal() {
     return modalShell({
       title: "Refuser le clip", description: `« ${esc(p.title)} » de ${esc(admUser(p.userId).name)}. Le clipper sera notifié du motif.`, form: "adm-reject",
       body: `<fieldset class="grid gap-2"><legend class="mb-1.5 text-small font-medium text-fg">Motif du refus</legend>
-        ${reasons.map((r, i) => `<label class="${CHOICE_DANGER}"><input type="radio" name="reason" value="${esc(r)}" ${i === 0 ? "checked" : ""} class="mt-0.5 size-4 shrink-0 cursor-pointer accent-danger-solid"/><span class="text-sm font-medium text-fg">${esc(r)}</span></label>`).join("")}</fieldset>`,
+        ${reasons.map((r, i) => `<label class="${CHOICE_DANGER}"><input type="radio" name="reason" value="${esc(r)}" ${i === 0 ? "checked autofocus" : ""} class="mt-0.5 size-4 shrink-0 cursor-pointer accent-danger-solid focus-visible:outline-none"/><span class="text-sm font-medium text-fg">${esc(r)}</span></label>`).join("")}</fieldset>`,
       footer: `${cancel()}<button type="submit" class="${btn("danger")}">Confirmer le refus</button>`,
     });
   }
@@ -602,10 +603,12 @@ function handleAdminSubmit(form, data) {
   }
   if (form === "adm-views") {
     const p = db.publications.find((x) => x.id === state.modal.id), views = Math.floor(admParse(data.views));
-    if (!Number.isFinite(views) || (p && views < p.views)) return admInvalid("adm-views", "views", p ? `Le nombre de vues ne peut pas être inférieur au dernier relevé (${fmt(p.views)}).` : "Nombre de vues invalide.");
+    if (!Number.isFinite(views) || (p && views < p.views)) return admInvalid("adm-views", "views");
     return act("POST", `/api/clips/${state.modal.id}/views`, { views }, "Vues enregistrées", () => { state.modal = null; });
   }
   if (form === "adm-campaign") {
+    const err = !String(data.brand || "").trim() ? ["brand", "Indiquez la marque."] : agCampaignError(data);
+    if (err) return admInvalid(form, ...err);
     return act("POST", "/api/campaigns", campaignPayload(data), "Campagne publiée", () => { state.modal = null; state.adm.campStatus = "Toutes"; });
   }
   if (form === "adm-settings") {

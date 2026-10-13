@@ -29,11 +29,11 @@ export default function HowItWorks() {
           title="Trois étapes pour être payé à la vue"
           text={"Pas de négociation, pas d'attente : les règles de chaque campagne sont visibles dès le départ."}
         />
-        <ol className="mt-12 grid gap-4 md:grid-cols-3 lg:mt-14">
+        <ol className="mt-12 grid gap-4 lg:mt-14 lg:grid-cols-3">
           {steps.map((s, i) => (
             <li
               key={s.title}
-              className="relative rounded-card border border-line bg-surface p-6 shadow-card md:after:absolute md:after:-right-4 md:after:top-10 md:after:h-px md:after:w-4 md:after:bg-line-strong md:last:after:hidden"
+              className="relative rounded-card border border-line bg-surface p-6 shadow-card lg:after:absolute lg:after:-right-4 lg:after:top-10 lg:after:h-px lg:after:w-4 lg:after:bg-line-strong lg:last:after:hidden"
             >
               <div className="flex items-center justify-between">
                 <span className="grid size-8 place-items-center rounded-full bg-brand-soft text-small font-semibold tabular-nums text-brand-fg">

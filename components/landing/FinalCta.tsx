@@ -1,6 +1,7 @@
-// CTA final (§7.11) : panneau toujours sombre (bg-night, fixe) avec les 2 halos autorisés (§8), titre et boutons.
-// Le filet night-line détache le panneau du fond en mode sombre (surface #12151c ≈ night #11141b).
-const FOCUS = "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus";
+// CTA final (§7.11) : panneau toujours sombre avec les 2 halos autorisés (§8), titre et boutons.
+// cta-panel / cta-line : nuit en clair ; en sombre, un panneau relevé et un filet lisible (app/dark.css),
+// sinon night #11141b se confond avec surface #12151c. Anneau de focus blanc : l'anneau violet ne se voit pas sur nuit.
+const FOCUS = "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-on-brand";
 const BTN = `inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap font-medium transition-colors duration-150 ease-standard ${FOCUS}`;
 const LG = "h-12 rounded-control px-5 text-[15px] [&_svg]:size-5";
 const PRIMARY = "bg-brand text-on-brand shadow-control hover:bg-brand-hover active:bg-brand-active";
@@ -10,7 +11,7 @@ export default function FinalCta() {
   return (
     <section id="inscription" className="scroll-mt-20 bg-surface py-20 lg:py-28">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <div className="relative overflow-hidden rounded-panel border border-night-line bg-night px-6 py-16 text-center sm:px-12 lg:py-20">
+        <div className="relative overflow-hidden rounded-panel border border-cta-line bg-cta-panel px-6 py-16 text-center sm:px-12 lg:py-20">
           <div className="pointer-events-none absolute -left-20 -top-24 size-80 rounded-full bg-brand/30 blur-3xl" aria-hidden="true" />
           <div className="pointer-events-none absolute -bottom-28 -right-10 size-80 rounded-full bg-night-income/15 blur-3xl" aria-hidden="true" />
           <h2 className="relative mx-auto max-w-2xl text-h2 text-on-brand lg:text-h1">Prêt à faire décoller vos clips&nbsp;?</h2>

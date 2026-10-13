@@ -49,7 +49,7 @@ export function stateFor(db: Store, user: UserRow) {
   // Séries des graphiques.
   let series: { daily: number[]; label: string };
   if (isAdmin) {
-    series = { daily: daily30(db.users.filter((u) => u.createdAt >= since).map((u) => ({ at: u.createdAt, v: 1 }))), label: "Inscriptions par jour" };
+    series = { daily: daily30(db.users.filter((u) => u.role !== "admin" && u.createdAt >= since).map((u) => ({ at: u.createdAt, v: 1 }))), label: "Inscriptions par jour" };
   } else {
     const pubIds = new Set(pubRows.map((p) => p.id));
     const gains = db.transactions.filter((t) => t.type === "gain" && t.createdAt >= since && (isAgency ? t.publicationId !== null && pubIds.has(t.publicationId) : t.userId === user.id));

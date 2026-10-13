@@ -60,7 +60,7 @@ export async function stateFor(user: User) {
   // Séries des graphiques.
   let series: { daily: number[]; label: string };
   if (isAdmin) {
-    const rows = await db.select({ d: sql<string>`to_char(${schema.users.createdAt}, 'YYYY-MM-DD')`, v: sql<number>`count(*)` }).from(schema.users).where(gte(schema.users.createdAt, since)).groupBy(sql`1`);
+    const rows = await db.select({ d: sql<string>`to_char(${schema.users.createdAt}, 'YYYY-MM-DD')`, v: sql<number>`count(*)` }).from(schema.users).where(and(ne(schema.users.role, "admin"), gte(schema.users.createdAt, since))).groupBy(sql`1`);
     series = { daily: daily30(rows), label: "Inscriptions par jour" };
   } else {
     const rows = await db.select({ d: sql<string>`to_char(${T.createdAt}, 'YYYY-MM-DD')`, v: sql<number>`sum(${T.amount})` }).from(T)

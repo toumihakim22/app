@@ -61,14 +61,15 @@ export default function Hero() {
               ))}
             </div>
             <p className="text-small text-fg-muted">
-              <strong className="font-semibold tabular-nums text-fg">12&nbsp;400+</strong> clippers inscrits
+              {/* Le nombre d'inscrits figure déjà dans la bande de chiffres juste dessous (§9.5 : un chiffre clé, une fois). */}
+              <strong className="font-semibold text-fg">Inscription gratuite</strong> · retrait dès <span className="whitespace-nowrap tabular-nums">2&nbsp;000&nbsp;DA</span>
             </p>
           </div>
         </div>
 
         {/* Visuel produit : maquette de l'espace clipper, marquée « Exemple » (aucun chiffre présenté comme réel).
             Sous lg, une seule colonne : largeur limitée à celle du chapô pour ne pas étirer la maquette. */}
-        <div className="relative w-full max-w-xl lg:max-w-none">
+        <div className="relative mx-auto w-full max-w-xl lg:mx-0 lg:max-w-none">
           <div
             className="pointer-events-none absolute -inset-x-10 -inset-y-12 -z-10 bg-[radial-gradient(55%_55%_at_60%_35%,color-mix(in_oklab,var(--color-brand)_14%,transparent),transparent_70%)]"
             aria-hidden="true"

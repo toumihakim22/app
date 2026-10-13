@@ -34,7 +34,7 @@ function authLayout(content) {
         <span class="lg:invisible">${logo({ size: "sm" })}</span>
         <div class="flex items-center gap-1"><a href="/" class="${btn("ghost", "sm")}">${icon("arrowLeft")}Retour au site</a>${themeToggle()}</div>
       </header>
-      <main id="main" class="mx-auto my-auto w-full max-w-sm py-10">${content}</main>
+      <main id="main" class="mx-auto mt-6 w-full max-w-sm pb-10 sm:my-auto sm:py-10">${content}</main>
     </div>
   </div></div>`;
 }
@@ -54,7 +54,7 @@ const authHelp = (id, hint, error) => (error
 function authPwdField({ id, label, name, autocomplete, toggle = false, meter = false, hint = "", error = "", placeholder = "" }) {
   const shown = toggle && state.auth.showPwd, help = error || hint;
   return `<div class="relative grid gap-1.5"><label for="${id}" class="text-small font-medium text-fg">${label}</label>
-    <div class="relative"><input id="${id}" name="${name}" type="${shown ? "text" : "password"}"${meter ? " data-strength" : ""} autocomplete="${autocomplete}"${placeholder ? ` placeholder="${placeholder}"` : ""} class="${inputCls} ${inputLg}${toggle ? " pr-11" : ""}"${error ? ' aria-invalid="true"' : ""}${help ? ` aria-describedby="${id}-help"` : ""}/>
+    <div class="relative"><input id="${id}" name="${name}" type="${shown ? "text" : "password"}"${meter ? " data-strength" : ""} autocomplete="${autocomplete}"${placeholder ? ` placeholder="${placeholder}"` : ""} class="${inputCls} ${inputLg}${toggle ? " pr-12 md:pr-11" : ""}"${error ? ' aria-invalid="true"' : ""}${help ? ` aria-describedby="${id}-help"` : ""}/>
       ${toggle ? `<span class="absolute inset-y-0 right-1.5 flex items-center"><button type="button" data-action="toggle-pwd" aria-pressed="${shown}" aria-controls="${id}" aria-label="Afficher le mot de passe" title="${shown ? "Masquer" : "Afficher"} le mot de passe" class="${iconBtn("sm", false, "aria-pressed:text-brand-fg")}">${icon("eye")}</button></span>` : ""}</div>
     ${meter ? `<div data-strength-meter>${strengthMeter("")}</div>` : ""}
     ${authHelp(`${id}-help`, hint, error)}</div>`;
@@ -71,14 +71,14 @@ const AUTH_BACK = `inline-flex items-center gap-1.5 rounded-sm text-small font-m
 
 function viewConnexion() {
   const a = state.auth, badEmail = !!a.error && !isEmail(a.email);
-  authKeepLogin();
+  authKeepForm("login");
   return authLayout(`
     ${authHead("Connexion", `Heureux de vous revoir${NB}! Connectez-vous avec votre adresse email.`)}
     <form data-form="login" class="mt-8 grid gap-4" novalidate>
       ${authError(a.error)}
       ${field("Adresse email", `<input name="email" type="email" autocomplete="email" value="${esc(a.email)}" placeholder="vous@exemple.dz" class="${inputCls} ${inputLg}"${badEmail ? ' aria-invalid="true"' : ""}/>`)}
       <div class="grid gap-2">
-        ${authPwdField({ id: "auth-password", label: "Mot de passe", name: "password", autocomplete: "current-password", toggle: true, placeholder: "••••••••" })}
+        ${authPwdField({ id: "auth-password", label: "Mot de passe", name: "password", autocomplete: "current-password", toggle: true })}
         <p class="text-right text-small"><a href="#/mot-de-passe" class="${btn("link")}">Mot de passe oublié${NB}?</a></p>
       </div>
       ${authSubmit("Se connecter")}
@@ -87,19 +87,20 @@ function viewConnexion() {
     ${window.__CLIPBOOST_OFFLINE__ ? demoAccounts() : ""}`);
 }
 
-// « Afficher le mot de passe » réaffiche toute la page : la saisie (adresse, mot de passe) et le focus sur le bouton
-// sont reportés sur le nouveau formulaire, juste après le rendu.
-function authKeepLogin() {
-  const old = document.querySelector('form[data-form="login"]');
+// « Afficher le mot de passe » réaffiche toute la page : la saisie (adresse, code, mot de passe) et le focus sur le bouton
+// sont reportés sur le nouveau formulaire, juste après le rendu. Connexion et nouveau mot de passe.
+function authKeepForm(name) {
+  const old = document.querySelector(`form[data-form="${name}"]`);
   if (!old || !old.elements.password) return;
   const toggled = old.elements.password.type !== (state.auth.showPwd ? "text" : "password");
   if (!toggled) return;
-  const email = old.elements.email.value, pwd = old.elements.password.value;
+  const values = [...old.elements].filter((el) => el.name && "value" in el).map((el) => [el.name, el.value]);
   queueMicrotask(() => {
-    const f = document.querySelector('form[data-form="login"]');
+    const f = document.querySelector(`form[data-form="${name}"]`);
     if (!f) return;
-    f.elements.email.value = email;
-    f.elements.password.value = pwd;
+    values.forEach(([k, v]) => { if (f.elements[k]) f.elements[k].value = v; });
+    const meter = f.querySelector("[data-strength-meter]"), pwd = f.elements.password;
+    if (meter && pwd) meter.innerHTML = strengthMeter(pwd.value);
     const t = f.querySelector('[data-action="toggle-pwd"]');
     if (t) t.focus();
   });
@@ -190,7 +191,7 @@ function viewInscription() {
       ${authPwdField({ id: "auth-confirm", label: "Confirmer le mot de passe", name: "confirm", autocomplete: "new-password", error: err.confirm })}
       <div class="grid gap-1.5">
         <label class="flex items-start gap-3 text-small text-fg-muted"><input name="terms" type="checkbox" ${f.terms ? "checked" : ""} class="${CHECKBOX} mt-px"${inv("terms")}${err.terms ? ' aria-describedby="auth-terms-help"' : ""}/>
-          <span>J'accepte les <a href="#/inscription" class="${btn("link")}">conditions d'utilisation</a> et la politique de confidentialité.</span></label>
+          <span>J'accepte les <a href="/#conditions" target="_blank" rel="noopener" class="${btn("link")}">conditions d'utilisation</a> et la <a href="/#confidentialite" target="_blank" rel="noopener" class="${btn("link")}">politique de confidentialité</a>.</span></label>
         ${err.terms ? `<div class="pl-7">${authHelp("auth-terms-help", "", err.terms)}</div>` : ""}
       </div>
       ${authSubmit("Recevoir mon code par email")}
@@ -218,28 +219,43 @@ const devCodeNotice = (devCode) => alertBox("warning", `<p>${window.__CLIPBOOST_
   <b class="mt-1 block text-base font-semibold">${code(devCode)}</b>`).replace('role="note"', 'role="status"');
 
 // Version autonome : comptes d'exemple créés au premier lancement (voir web/offline/seed.ts).
-const AUTH_DEMO = [["Admin", "admin@clipboost.dz"], ["Clipper", "yacine@clipboost.dz"], ["Agence", "agence@clipboost.dz"]];
+const AUTH_DEMO = [["Admin", "admin@clipboost.dz", "AdminClip2026"], ["Clipper", "yacine@clipboost.dz", "Clipboost2026"], ["Agence", "agence@clipboost.dz", "Clipboost2026"]];
 const demoAccounts = () => `<div class="mt-8">${alertBox("info", `<p class="font-medium">Mode démo${NB}: les données restent dans ce navigateur.</p>
-  <ul class="mt-2 grid gap-0.5">${AUTH_DEMO.map(([role, email]) => `<li class="flex items-center gap-2">
-    <span class="w-14 shrink-0 text-xs">${role}</span><span class="min-w-0 flex-1 truncate text-fg">${code(email)}</span>
-    <button type="button" data-action="auth-copy" data-value="${email}" class="${iconBtn("sm", false, "-mr-1.5")}" aria-label="Copier ${email}" title="Copier">${icon("copy")}</button></li>`).join("")}</ul>
+  <ul class="mt-2 grid gap-1.5">${AUTH_DEMO.map(([role, email]) => `<li class="flex items-center gap-2">
+    <span class="min-w-0 flex-1"><span class="block text-xs">${role}</span><span class="block truncate text-fg">${code(email)}</span></span>
+    <button type="button" data-action="auth-copy" data-value="${email}" class="${iconBtn("sm")}" aria-label="Copier ${email}" title="Copier">${icon("copy")}</button>
+    <button type="button" data-action="auth-demo" data-value="${email}" class="${btn("secondary", "sm")}" aria-label="Utiliser le compte ${role}">Utiliser</button></li>`).join("")}</ul>
   <p class="mt-2 text-xs">Mot de passe${NB}: ${code("AdminClip2026")} pour l'admin, ${code("Clipboost2026")} pour les comptes d'exemple.</p>`)}</div>`;
+// « Utiliser » : remplit l'adresse et le mot de passe du compte choisi, puis place le focus sur « Se connecter ».
+function authUseDemo(email) {
+  const f = document.querySelector('form[data-form="login"]'), acc = AUTH_DEMO.find((a) => a[1] === email);
+  if (!f || !acc) return;
+  f.elements.email.value = acc[1];
+  f.elements.password.value = acc[2];
+  state.auth.email = acc[1];
+  const submit = f.querySelector('button[type="submit"]');
+  if (submit) { submit.focus({ preventScroll: true }); submit.scrollIntoView({ block: "nearest", behavior: "smooth" }); }
+}
 
 // ---------- Mot de passe oublié ----------
 
 function viewMotDePasse() {
   const a = state.auth;
   if (a.step === "code") {
+    authKeepForm("reset");
     return authLayout(`
       ${authHead("Nouveau mot de passe", `Si un compte existe pour <span class="font-medium text-fg">${esc(a.email)}</span>, un code à 6 chiffres vient d'y être envoyé.`, "mail")}
       ${a.devCode ? `<div class="mt-6">${devCodeNotice(a.devCode)}</div>` : ""}
       <form data-form="reset" class="mt-8 grid gap-4" novalidate>
         ${authError(a.error)}
         ${field("Code reçu par email", `<input name="code" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="000000" class="${inputCls} ${inputLg} font-mono tracking-[0.4em] text-center"/>`)}
-        ${authPwdField({ id: "auth-reset-password", label: "Nouveau mot de passe", name: "password", autocomplete: "new-password", meter: true, hint: "8 caractères minimum, avec une lettre et un chiffre." })}
+        ${authPwdField({ id: "auth-reset-password", label: "Nouveau mot de passe", name: "password", autocomplete: "new-password", toggle: true, meter: true, hint: "8 caractères minimum, avec une lettre et un chiffre." })}
         ${authSubmit("Changer le mot de passe")}
       </form>
-      <p class="mt-6 text-center text-small"><a href="#/connexion" class="${AUTH_BACK}">${icon("arrowLeft")}Retour à la connexion</a></p>`);
+      <div class="mt-6 flex items-center justify-between gap-4 text-small">
+        <button type="button" data-action="signup-back" class="${AUTH_BACK}">${icon("arrowLeft")}Modifier l'email</button>
+        <button type="button" data-action="resend-code" class="${btn("link")}">Renvoyer le code</button>
+      </div>`);
   }
   const badEmail = !!a.error && !isEmail(a.email);
   return authLayout(`
@@ -324,9 +340,12 @@ async function handleAuthSubmit(form, data) {
   }
 }
 
+// Nouveau code : inscription (étape de vérification) ou mot de passe oublié (étape du nouveau mot de passe).
 async function resendCode() {
   try {
-    const res = await api("POST", "/api/auth/signup", signupPayload());
+    const res = state.route.view === "mot-de-passe"
+      ? await api("POST", "/api/auth/forgot", { email: state.auth.email })
+      : await api("POST", "/api/auth/signup", signupPayload());
     state.auth.devCode = res.devCode || ""; state.auth.error = "";
     render();
     toast("Nouveau code envoyé");

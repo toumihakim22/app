@@ -9,9 +9,17 @@ const BTN = `inline-flex shrink-0 items-center justify-center gap-2 whitespace-n
 const CARD = "rounded-card border border-line bg-surface shadow-card";
 const CARD_HOVER = "transition-[border-color,box-shadow] duration-150 ease-standard hover:border-line-strong hover:shadow-card-hover";
 // Bouton copier : volontairement différent de la chaîne remplacée par la version hors ligne (§0.3).
-const COPY = `${BTN} h-8 w-full rounded-lg px-3 text-small border border-line-strong bg-surface shadow-control hover:bg-subtle [&_svg]:size-4`;
+const COPY = `${BTN} h-10 w-full rounded-lg px-3 text-small border border-line-strong bg-surface shadow-control hover:bg-subtle sm:h-8 [&_svg]:size-4`;
 
-export default function CampaignCard({ c }: { c: Campaign }) {
+// Tracés de l'icône du bouton : la version hors ligne remplace aussi le contenu du <svg> (web/offline/landing.js).
+const COPY_ICON = (
+  <>
+    <rect x="9" y="9" width="11" height="11" rx="2" />
+    <path d="M5 15V6a2 2 0 0 1 2-2h9" />
+  </>
+);
+
+export default function CampaignCard({ c, hidden = false }: { c: Campaign; hidden?: boolean }) {
   const [copied, setCopied] = useState(false);
   const timer = useRef<number | undefined>(undefined);
   const url = `https://clipboost.dz/c/${c.id}`;
@@ -30,7 +38,7 @@ export default function CampaignCard({ c }: { c: Campaign }) {
   }
 
   return (
-    <article data-category={c.category} data-search={`${c.title} ${c.brand}`.toLowerCase()} className={`flex flex-col ${CARD} ${CARD_HOVER} p-2`}>
+    <article hidden={hidden} data-category={c.category} data-search={`${c.title} ${c.brand}`.toLowerCase()} className={`flex flex-col ${CARD} ${CARD_HOVER} p-2`}>
       <div className="cover relative aspect-[16/9] overflow-hidden rounded-tile" data-cat={c.category}>
         <span className="absolute inset-0 grid place-items-center text-5xl drop-shadow-[0_6px_14px_rgb(0_0_0/0.22)]" aria-hidden="true">
           {c.emoji}
@@ -63,17 +71,10 @@ export default function CampaignCard({ c }: { c: Campaign }) {
         </dl>
         <div className="mt-auto pt-1">
           <button type="button" onClick={copyLink} data-copy={url} className={`${COPY} ${copied ? "text-success-fg" : "text-fg"}`}>
-            {copied ? (
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <path d="M5 12l5 5L20 7" />
-              </svg>
-            ) : (
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <rect x="9" y="9" width="11" height="11" rx="2" />
-                <path d="M5 15V6a2 2 0 0 1 2-2h9" />
-              </svg>
-            )}
-            {copied ? "Lien copié" : "Copier le lien"}
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              {copied ? <path d="M5 12l5 5L20 7" /> : COPY_ICON}
+            </svg>
+            <span data-label>{copied ? "Lien copié" : "Copier le lien"}</span>
           </button>
           {/* Annonce pour les lecteurs d'écran (hors du bouton : la version hors ligne lit son textContent). */}
           <span className="sr-only" role="status" aria-live="polite">

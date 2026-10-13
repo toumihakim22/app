@@ -7,4 +7,9 @@
 /* L'app vit sur canvas, en 14 px par défaut (le landing reste sur surface, en 16 px). */
 @layer base {
   body { background-color: var(--color-canvas); font-size: var(--text-sm); line-height: var(--text-sm--line-height); }
+  /* Le focus clavier ne passe jamais sous la barre du haut (56 px) ni sous la navigation du bas (64 px, masquée dès lg). */
+  html { scroll-padding-top: 4.5rem; scroll-padding-bottom: calc(5rem + env(safe-area-inset-bottom)); }
+  @media (min-width: 64rem) { html { scroll-padding-bottom: 1rem; } }
+  /* Croix native des champs de recherche masquée : l'app pose son propre bouton « Effacer » (searchInput). */
+  input[type="search"]::-webkit-search-cancel-button { -webkit-appearance: none; appearance: none; }
 }

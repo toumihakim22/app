@@ -44,8 +44,10 @@ function agTotals(list) {
   return { spent, left, engaged: spent + left, awaiting, count: kept.length };
 }
 const agNewBtn = () => `<button type="button" data-action="ag-new" class="${btn("primary")}">${icon("plus")}Nouvelle campagne</button>`;
+// Rangée « Nouvelle campagne » qui complète la liste de l'aperçu quand elle compte moins de 4 campagnes.
+const agNewRow = `<li><button type="button" data-action="ag-new" class="flex w-full items-center gap-3 rounded-tile p-2 text-left text-sm font-medium text-fg-muted transition-colors duration-150 hover:bg-subtle hover:text-fg ${FOCUS}"><span class="grid size-10 shrink-0 place-items-center rounded-tile border border-dashed border-line-strong text-fg-subtle" aria-hidden="true">${icon("plus", "size-4")}</span>Nouvelle campagne</button></li>`;
 const agMoreLink = (href, label = "Tout voir") =>
-  `<a href="${href}" class="inline-flex items-center gap-1 rounded-sm text-small font-medium text-brand-fg underline-offset-4 hover:underline ${FOCUS}">${label}${icon("chevronRight", "size-3.5")}</a>`;
+  `<a href="${href}" class="${HIT} inline-flex items-center gap-1 rounded-sm text-small font-medium text-brand-fg underline-offset-4 hover:underline ${FOCUS}">${label}${icon("chevronRight", "size-3.5")}</a>`;
 // Pause ou reprise : seules actions de statut ouvertes à l'agence.
 const agToggle = (c, size = "sm", extra = "") =>
   c.status === "Active" ? `<button type="button" data-action="ag-pause" data-id="${c.id}" class="${btn("secondary", size, extra)}">${icon("pause")}Mettre en pause</button>`
@@ -97,12 +99,12 @@ function agOnboarding(u, pending) {
 }
 
 // Ligne compacte « Vos campagnes » : toute la ligne ouvre le détail (bouton étiré sur le titre).
-const agCampaignRow = (c) => `<li class="relative flex items-center gap-3 rounded-tile p-2 transition-colors duration-150 hover:bg-subtle">
+const agCampaignRow = (c) => `<li class="relative flex min-w-0 items-center gap-3 rounded-tile p-2 transition-colors duration-150 hover:bg-subtle">
     ${coverThumb(c, "sm")}
     <div class="min-w-0 flex-1">
       <div class="flex items-center justify-between gap-2">
         <button type="button" data-action="ag-open" data-id="${c.id}" class="min-w-0 truncate text-left text-sm font-medium text-fg after:absolute after:inset-0 after:rounded-tile focus-visible:outline-hidden focus-visible:after:outline-2 focus-visible:after:outline-offset-2 focus-visible:after:outline-focus">${esc(c.title)}</button>
-        ${statusBadge(c.status)}
+        <span class="shrink-0">${statusBadge(c.status)}</span>
       </div>
       <p class="mt-0.5 truncate text-xs tabular-nums text-fg-subtle">${rateShort(c.rate)} · ${plural(c.clippers, "clipper", "clippers")}</p>
       <div class="mt-2">${progress(c.spent, c.budget, { label: false, aria: `Budget consommé de ${c.title}` })}</div>
@@ -142,7 +144,7 @@ function gApercu() {
     <div class="mt-4 grid gap-4 lg:mt-5 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)] lg:gap-5">
       ${card(chart)}
       ${card(`${cardHeader("Vos campagnes", "", agMoreLink("#/agence/campagnes"))}
-        <ul class="-mx-2 mt-3 grid gap-1">${list.slice(0, 4).map(agCampaignRow).join("")}</ul>
+        <ul class="-mx-2 mt-3 grid min-w-0 grid-cols-[minmax(0,1fr)] gap-1">${list.slice(0, 4).map(agCampaignRow).join("")}${list.length < 4 ? agNewRow : ""}</ul>
         <div class="mt-auto pt-5"><dl class="flex items-baseline justify-between gap-3 border-t border-line pt-4 text-small"><dt class="text-fg-muted">Restant à consommer</dt><dd class="font-medium">${money(left)}</dd></dl></div>`, "flex flex-col p-5")}
     </div>
     ${sectionHeader("Derniers clips reçus", clips.length ? "#/agence/clips" : "")}
@@ -190,7 +192,7 @@ function gCampagnes() {
   return `${pageHeader("Mes campagnes", "Créez, suivez et pilotez vos campagnes. Chaque nouvelle campagne est vérifiée par ClipBoost avant publication.", all.length ? `<span class="lg:hidden">${agNewBtn()}</span>` : "")}
     ${all.length ? `<div class="mt-6 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
       ${searchInput("ag-q", state.ag.q, "Rechercher une campagne", "Rechercher une campagne", "w-full xl:max-w-xs")}
-      ${segmented("ag-status", state.ag.status, statuses, "Filtrer par statut")}
+      ${segmented("ag-status", state.ag.status, statuses, "Filtrer par statut", { scroll: true })}
     </div>` : ""}
     <div class="mt-5">${body}</div>`;
 }
@@ -207,7 +209,7 @@ function gClips() {
     : all.length ? emptyState("film", `Aucun clip ${label}`, "Les autres clips restent visibles dans « Tous ».", `<button type="button" data-action="ag-clip-status" data-value="Toutes" class="${btn("secondary")}">Voir tous les clips</button>`)
     : emptyState("film", "Aucun clip reçu", "Dès qu'un clipper publie sur l'une de vos campagnes, son clip apparaît ici avec ses vues et son coût.");
   return `${pageHeader("Clips reçus", "Les clips publiés par les clippers sur vos campagnes. Modération assurée par l'équipe ClipBoost.")}
-    ${all.length ? `<div class="mt-6">${segmented("ag-clip-status", state.ag.clipStatus, statuses, "Filtrer par statut")}</div>` : ""}
+    ${all.length ? `<div class="mt-6">${segmented("ag-clip-status", state.ag.clipStatus, statuses, "Filtrer par statut", { scroll: true })}</div>` : ""}
     <div class="${all.length ? "mt-4" : "mt-6"}">${body}</div>`;
 }
 
@@ -232,7 +234,7 @@ function gBudget() {
       </dl></div>`);
 
   const action = (c, mobile) => agClosed(c) ? `<span class="text-xs text-fg-subtle">Archivée</span>`
-    : `<button type="button" data-action="ag-topup" data-id="${c.id}" class="${mobile ? btn("secondary", "md", "w-full") : btn("ghost", "sm")}">${icon("plus")}Ajouter du budget</button>`;
+    : `<button type="button" data-action="ag-topup" data-id="${c.id}" class="${mobile ? btn("secondary", "md", "w-full sm:w-auto") : btn("ghost", "sm")}">${icon("plus")}Ajouter du budget</button>`;
   // 5 colonnes (environ 880 px) : le tableau à partir de xl, la liste en dessous.
   const perCampaign = list.length ? `<div class="${TBL.wrap}">
       <table class="${TBL.table.replace("md:table", "xl:table")}">
@@ -247,7 +249,7 @@ function gBudget() {
       <ul class="${TBL.list.replace("md:hidden", "xl:hidden")}">${list.map((c) => `<li class="${TBL.item}">
         <div class="flex items-start gap-3">${coverThumb(c, "sm")}<div class="min-w-0 flex-1"><p class="truncate text-sm font-medium text-fg">${esc(c.title)}</p><p class="truncate text-xs text-fg-subtle">${rate(c.rate)}</p></div>${statusBadge(c.status)}</div>
         ${progress(c.spent, c.budget, { aria: `Budget consommé de ${c.title}` })}
-        ${agClosed(c) ? `<p class="text-xs text-fg-subtle">Archivée</p>` : `<div class="flex items-center justify-between text-small"><span class="text-fg-subtle">Restant</span><span class="font-medium">${money(Math.max(0, c.budget - c.spent))}</span></div>${action(c, true)}`}
+        ${agClosed(c) ? `<p class="text-xs text-fg-subtle">Archivée</p>` : `<div class="flex items-center justify-between text-small"><span class="text-fg-subtle">Restant</span><span class="font-medium">${money(Math.max(0, c.budget - c.spent))}</span></div><div class="sm:flex sm:justify-end">${action(c, true)}</div>`}
       </li>`).join("")}</ul>
     </div>` : emptyState("wallet", "Aucune campagne pour l'instant", "Le budget de chaque campagne s'affichera ici dès sa création.", agNewBtn());
 
@@ -539,8 +541,28 @@ function handleAgencyAction(action, t) {
   }
 }
 
+// Erreur de saisie dans une modale de l'agence : message sous le champ, focus dessus (pas de toast éphémère).
+function agInvalid(form, name, msg) {
+  markInvalid(root.querySelector(`form[data-form="${form}"]`), name, msg);
+}
+
+// Contrôles côté client, mêmes règles que l'API ; renvoie [champ, message] ou null.
+function agCampaignError(d) {
+  const n = campaignPayload(d), min = db.settings.minBudget;
+  if (!String(d.title || "").trim()) return ["title", "Donnez un titre à la campagne."];
+  if (!(n.rate >= 20)) return ["rate", `Tarif minimum : 20${NB}DA pour 1${NB}000 vues.`];
+  if (n.rate > 2000) return ["rate", `Tarif maximum : 2${NB}000${NB}DA pour 1${NB}000 vues.`];
+  if (!(n.maxPayout > n.minPayout)) return ["maxPayout", "Le plafond doit être supérieur au seuil."];
+  if (!(n.budget >= min)) return ["budget", `Le budget minimum est de ${da(min)}.`];
+  if (n.maxPayout > n.budget) return ["maxPayout", "Le plafond par clip ne peut pas dépasser le budget."];
+  if (!n.platforms.length) return ["pf-TikTok", "Choisissez au moins une plateforme."];
+  return null;
+}
+
 function handleAgencySubmit(form, data) {
   if (form === "ag-campaign") {
+    const err = agCampaignError(data);
+    if (err) return agInvalid(form, ...err);
     return act("POST", "/api/campaigns", campaignPayload(data), "Campagne envoyée pour validation", () => {
       state.modal = null; state.ag.status = "Toutes";
       navigate("#/agence/campagnes");
@@ -548,9 +570,11 @@ function handleAgencySubmit(form, data) {
   }
   if (form === "ag-topup") {
     const amount = agNum(data.amount);
+    if (!amount) return agInvalid(form, "amount", "Indiquez le montant à ajouter.");
     return act("POST", `/api/campaigns/${state.modal.id}/budget`, { amount }, `${da(amount)} ajoutés au budget`, () => { state.modal = null; });
   }
   if (form === "ag-credit") {
+    if (agNum(data.amount) < 10000) return agInvalid(form, "amount", `Recharge minimum : ${da(10000)}.`);
     return act("POST", "/api/credit", { amount: agNum(data.amount), method: data.method }, (r) => `Demande envoyée · référence ${r.ref} à indiquer dans votre paiement`, () => { state.modal = null; });
   }
   if (form === "ag-profile") {

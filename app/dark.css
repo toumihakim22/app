@@ -28,6 +28,9 @@ html.dark {
   --color-brand-soft-hover: #291d4a;
   --color-brand-line: #3b2a78;
   --color-brand-panel: #4c1d95;
+  /* CTA final : night (#11141b) se confondait avec surface (#12151c) ; panneau relevé et filet lisible. */
+  --color-cta-panel: #1d2230;
+  --color-cta-line: #3d4556;
 
   --color-success-bg: #0f2a27;  --color-success-fg: #5eead4;  --color-success-border: #19443f;  --color-success-solid: #2dd4bf;
   --color-warning-bg: #2d2410;  --color-warning-fg: #fcd34d;  --color-warning-border: #4d3b14;  --color-warning-solid: #fbbf24;

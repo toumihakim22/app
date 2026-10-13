@@ -102,6 +102,8 @@
   --color-night-raised: #1b1f29;
   --color-night-line: #2b303c;
   --color-night-income: #5eead4;     /* courbe et point sur bg-night */
+  --color-cta-panel: #11141b;         /* panneau du CTA final : nuit en clair, relevé en sombre (app/dark.css) */
+  --color-cta-line: #2b303c;
   --color-avatar-1: #7c3aed;
   --color-avatar-2: #0f766e;
   --color-avatar-3: #b45309;

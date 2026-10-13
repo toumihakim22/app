@@ -27,15 +27,18 @@
   };
 
   // Liens absolus restants (« / », « /espace#/… ») : ancres de ce fichier, jamais la racine du disque.
+  // target=_blank (conditions d'utilisation depuis l'inscription) : ce même fichier, ouvert sur l'ancre dans un nouvel onglet.
   document.addEventListener("click", function (e) {
     var a = e.target.closest && e.target.closest("a[href^='/']");
     if (!a || a.getAttribute("href").indexOf("//") === 0) return;
     var href = a.getAttribute("href"), hash = href.indexOf("#") >= 0 ? href.slice(href.indexOf("#")) : "";
+    var target = href.indexOf("/espace") === 0 ? hash || "#/connexion" : hash;
     e.preventDefault();
-    location.hash = href.indexOf("/espace") === 0 ? hash || "#/connexion" : hash;
+    if (a.getAttribute("target") === "_blank") window.open(location.href.split("#")[0] + target, "_blank", "noopener");
+    else location.hash = target;
   });
 
-  // Menu mobile
+  // Menu mobile (Échap le referme et rend le focus au bouton)
   var btn = landing.querySelector("button[aria-controls='menu-mobile']");
   var menu = document.getElementById("menu-mobile");
   if (btn && menu) {
@@ -48,22 +51,23 @@
     };
     btn.addEventListener("click", function () { setMenu(menu.classList.contains("hidden")); });
     menu.querySelectorAll("a").forEach(function (a) { a.addEventListener("click", function () { setMenu(false); }); });
+    document.addEventListener("keydown", function (e) {
+      if (e.key !== "Escape" || menu.classList.contains("hidden")) return;
+      setMenu(false);
+      btn.focus();
+    });
   }
 
-  // Filtres des campagnes (catégorie et recherche)
+  // Filtres des campagnes (catégorie et recherche) : l'état vide est déjà dans le HTML statique ([data-empty]).
   var section = document.getElementById("campagnes");
   var cards = section ? section.querySelectorAll("article[data-category]") : [];
   if (cards.length) {
-    var tabs = section.querySelectorAll("[role='tab']");
+    var tabs = Array.prototype.slice.call(section.querySelectorAll("[role='tab']"));
+    var panel = document.getElementById("campagnes-liste");
     var input = section.querySelector("input[type='search']");
     var grid = cards[0].parentElement;
-    var empty = document.createElement("p");
-    empty.className = "mt-10 rounded-3xl bg-white p-10 text-center text-gray-500 ring-1 ring-gray-100";
-    empty.textContent = "Aucune campagne ne correspond à votre recherche.";
-    empty.hidden = true;
-    grid.after(empty);
+    var empty = section.querySelector("[data-empty]");
     var active = "Toutes";
-    var on = ["bg-ink", "text-white"], off = ["bg-white", "text-gray-600", "ring-1", "ring-gray-200", "hover:text-ink"];
     var apply = function () {
       var q = input ? input.value.trim().toLowerCase() : "", n = 0;
       cards.forEach(function (c) {
@@ -72,32 +76,57 @@
         if (ok) n++;
       });
       grid.hidden = n === 0;
-      empty.hidden = n !== 0;
+      if (empty) empty.hidden = n !== 0;
     };
-    tabs.forEach(function (t) {
-      t.addEventListener("click", function () {
-        active = t.textContent.trim();
-        tabs.forEach(function (o) {
-          var sel = o === t;
-          o.setAttribute("aria-selected", String(sel));
-          on.forEach(function (k) { o.classList.toggle(k, sel); });
-          off.forEach(function (k) { o.classList.toggle(k, !sel); });
-        });
-        apply();
+    // Onglets ARIA : un seul arrêt de tabulation (tabindex mobile), flèches / Début / Fin pour changer de catégorie.
+    var select = function (t, focus) {
+      active = t.textContent.trim();
+      tabs.forEach(function (o) {
+        var sel = o === t;
+        o.setAttribute("aria-selected", String(sel));
+        o.tabIndex = sel ? 0 : -1;
+      });
+      if (panel && t.id) panel.setAttribute("aria-labelledby", t.id);
+      if (focus) t.focus();
+      apply();
+    };
+    tabs.forEach(function (t, i) {
+      t.addEventListener("click", function () { select(t, false); });
+      t.addEventListener("keydown", function (e) {
+        var last = tabs.length - 1;
+        var next = { ArrowRight: i === last ? 0 : i + 1, ArrowLeft: i === 0 ? last : i - 1, Home: 0, End: last }[e.key];
+        if (next === undefined) return;
+        e.preventDefault();
+        select(tabs[next], true);
       });
     });
     if (input) input.addEventListener("input", apply);
+    var reset = empty && empty.querySelector("[data-reset]");
+    if (reset) reset.addEventListener("click", function () {
+      if (input) input.value = "";
+      select(tabs[0], false);
+      if (input) input.focus();
+    });
   }
 
-  // Bouton « Copier le lien » des campagnes
+  // Bouton « Copier le lien » des campagnes : icône coche, libellé et couleur de succès, annonce pour les lecteurs d'écran.
   landing.querySelectorAll("button[data-copy]").forEach(function (b) {
-    var label = b.textContent, base = b.className, timer;
+    var label = b.querySelector("[data-label]"), svg = b.querySelector("svg");
+    var status = b.parentElement && b.parentElement.querySelector("[role='status']");
+    var title = b.closest("article") && b.closest("article").querySelector("h3");
+    var text = label ? label.textContent : "", icon = svg ? svg.innerHTML : "", timer;
+    var set = function (copied) {
+      if (label) label.textContent = copied ? "Lien copié" : text;
+      if (svg) svg.innerHTML = copied ? '<path d="M5 12l5 5L20 7"></path>' : icon;
+      b.classList.toggle("text-success-fg", copied);
+      b.classList.toggle("text-fg", !copied);
+      if (status) status.textContent = copied ? "Lien de la campagne " + (title ? title.textContent : "") + " copié" : "";
+    };
     b.addEventListener("click", function () {
       try { navigator.clipboard.writeText(b.dataset.copy).catch(function () {}); } catch (err) {}
-      b.textContent = "Lien copié ✓";
-      b.className = base.replace("bg-brand-50 text-brand-700 hover:bg-brand-100", "bg-emerald-50 text-emerald-700");
+      set(true);
       clearTimeout(timer);
-      timer = setTimeout(function () { b.textContent = label; b.className = base; }, 1800);
+      timer = setTimeout(function () { set(false); }, 1800);
     });
   });
 })();

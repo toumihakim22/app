@@ -55,8 +55,9 @@ const fmt = (n) => String(Math.round(Math.abs(n))).replace(/\B(?=(\d{3})+(?!\d))
 const da = (n) => `${n < 0 ? MINUS : ""}${fmt(n)}${NB}DA`;                                  // texte brut : phrases, toasts, aria
 const daSigned = (n) => `${n > 0 ? "+" : n < 0 ? MINUS : ""}${fmt(n)}${NB}DA`;              // mouvements : historiques, deltas
 // Montant HTML en ligne ou en cellule : chiffres tabulaires, « DA » atténué. signed : vert + « + » si positif.
-const money = (n, { signed = false, cls = "" } = {}) =>
-  `<span class="whitespace-nowrap tabular-nums ${signed && n > 0 ? "text-income" : "text-fg"} ${cls}">${signed ? (n > 0 ? "+" : n < 0 ? MINUS : "") : n < 0 ? MINUS : ""}${fmt(n)}<span class="font-normal text-fg-subtle">${NB}DA</span></span>`;
+// pending : montant en attente (rétention, recharge non confirmée) : garde le « + » mais reste en text-fg (§3.3).
+const money = (n, { signed = false, pending = false, cls = "" } = {}) =>
+  `<span class="whitespace-nowrap tabular-nums ${signed && n > 0 && !pending ? "text-income" : "text-fg"} ${cls}">${signed ? (n > 0 ? "+" : n < 0 ? MINUS : "") : n < 0 ? MINUS : ""}${fmt(n)}<span class="font-normal text-fg-subtle">${NB}DA</span></span>`;
 // Grand montant (KPI, solde) : chiffres proportionnels, unité plus petite. size : "kpi" | "money".
 const BIG = { kpi: ["text-xl font-semibold tracking-tight sm:text-kpi", "text-sm sm:text-base"], money: ["text-[1.875rem] leading-9 font-semibold tracking-[-0.03em] sm:text-money", "text-base sm:text-lg"] };
 const bigMoney = (n, size = "kpi") =>
@@ -160,11 +161,13 @@ function logo(opts = {}) {
 // ---------- Classes de base ----------
 const cx = (...a) => a.filter(Boolean).join(" ");
 const FOCUS = "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus";
+// Zone tactile élargie (≥ 40 px sous md) pour les liens texte, sans changer leur rendu.
+const HIT = "relative max-md:after:absolute max-md:after:-inset-x-2 max-md:after:-inset-y-3";
 
 // ---------- Boutons ----------
 const BTN = {
   base: `inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap font-medium select-none transition-colors duration-150 ease-standard disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 ${FOCUS}`,
-  sm: "h-8 rounded-lg px-3 text-small [&_svg]:size-4",
+  sm: "h-10 rounded-lg px-3 text-small md:h-8 [&_svg]:size-4", // 40 px sous md (cible tactile, §3.5)
   md: "h-10 rounded-control px-4 text-sm [&_svg]:size-4",
   lg: "h-12 rounded-control px-5 text-[15px] [&_svg]:size-5",
   primary: "bg-brand text-on-brand shadow-control hover:bg-brand-hover active:bg-brand-active",
@@ -175,14 +178,15 @@ const BTN = {
   dangerSoft: "border border-line-strong bg-surface text-danger-fg shadow-control hover:border-danger-border hover:bg-danger-bg",
   onColor: "bg-on-brand text-brand-700 shadow-control hover:bg-brand-50",
   onColorGhost: "bg-on-brand/10 text-on-brand ring-1 ring-inset ring-on-brand/25 hover:bg-on-brand/15",
-  link: "rounded-sm font-medium text-brand-fg underline-offset-4 hover:underline", // sans taille : hérite du texte parent
+  link: `${HIT} rounded-sm font-medium text-brand-fg underline-offset-4 hover:underline`, // sans taille : hérite du texte parent
 };
 // extra ne doit jamais redéfinir une propriété déjà posée par la recette (voir « Règle des extras »).
 const btn = (variant = "primary", size = "md", extra = "") => cx(BTN.base, variant === "link" ? "" : BTN[size], BTN[variant], extra);
 
 const ICON_BTN = {
   base: `inline-grid shrink-0 place-items-center rounded-lg text-fg-muted transition-colors duration-150 hover:bg-muted hover:text-fg ${FOCUS}`,
-  sm: "size-8 [&_svg]:size-4", md: "size-9 [&_svg]:size-[18px]", lg: "size-10 [&_svg]:size-5",
+  // 40 px sous md (cible tactile, §3.5), tailles compactes à partir de md.
+  sm: "size-10 md:size-8 [&_svg]:size-4", md: "size-10 md:size-9 [&_svg]:size-[18px]", lg: "size-10 [&_svg]:size-5",
   outline: "border border-line-strong bg-surface shadow-control",
 };
 const iconBtn = (size = "md", outline = false, extra = "") => cx(ICON_BTN.base, ICON_BTN[size], outline && ICON_BTN.outline, extra);
@@ -205,25 +209,52 @@ const countrySelect = (name, value, opts = {}) =>
 // Champ numérique avec unité en suffixe (DA, %, jours, vues). attrs : attributs bruts de l'input.
 const unitInput = (attrs, unit, { lg = false } = {}) =>
   `<span class="relative block"><input ${attrs} inputmode="numeric" class="${inputCls} ${lg ? inputLg : ""} ${unit.length > 3 ? "pr-16" : "pr-12"} tabular-nums"/><span class="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm font-medium text-fg-subtle">${unit}</span></span>`;
+// Bouton « Effacer » maison (la croix native de WebKit est masquée dans web/styles.css) : visible dès que le champ n'est plus vide.
 const searchInput = (name, value, placeholder, label, cls = "") =>
-  `<label class="relative block ${cls}"><span class="sr-only">${esc(label)}</span>${icon("search", "pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-fg-subtle")}<input data-input="${name}" type="search" value="${esc(value)}" placeholder="${esc(placeholder)}" class="${inputCls} pl-9"/></label>`;
+  `<label class="relative block ${cls}"><span class="sr-only">${esc(label)}</span>${icon("search", "pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-fg-subtle")}<input data-input="${name}" type="search" value="${esc(value)}" placeholder="${esc(placeholder)}" class="peer ${inputCls} pl-9 pr-10 md:pr-9"/><span class="absolute inset-y-0 right-0 flex items-center pr-0 peer-placeholder-shown:hidden md:pr-1"><button type="button" data-action="clear-search" data-value="${name}" class="${iconBtn("sm", false, "text-fg-subtle")}" aria-label="Effacer la recherche">${icon("close")}</button></span></label>`;
 // field(libellé, champ, aide, erreur) : l'erreur remplace l'aide ; poser aria-invalid="true" sur le champ en erreur.
 // L'aide et l'erreur restent hors du <label> : elles ne s'ajoutent pas au nom accessible du champ.
 const field = (label, input, hint = "", error = "") =>
-  `<div class="grid gap-1.5"><label class="contents"><span class="text-small font-medium text-fg">${label}</span>${input}</label>${error
+  `<div class="grid gap-1.5" data-field><label class="contents"><span class="text-small font-medium text-fg">${label}</span>${input}</label>${error
     ? `<span class="flex items-center gap-1 text-xs font-medium text-danger-fg" role="alert">${icon("alert", "size-3.5 shrink-0")}${error}</span>`
     : hint ? `<span class="text-xs text-fg-subtle">${hint}</span>` : ""}</div>`;
 const OPTIONAL = `<span class="font-normal text-fg-subtle">(facultatif)</span>`;
+// Erreur de saisie posée sans réafficher le formulaire (les valeurs saisies restent) : aria-invalid, message sous le
+// champ (dans son conteneur [data-field]), focus et défilement. msg vide : le champ est seulement marqué.
+function markInvalid(formEl, name, msg = "") {
+  if (!formEl) return;
+  formEl.querySelectorAll('[aria-invalid="true"]').forEach((el) => el.removeAttribute("aria-invalid"));
+  formEl.querySelectorAll("[data-field-error]").forEach((el) => el.remove());
+  const el = formEl.querySelector(`[name="${name}"]`);
+  if (!el) { if (msg) toast(msg, "danger"); return; }
+  el.setAttribute("aria-invalid", "true");
+  const host = el.closest("[data-field]");
+  if (msg && host) {
+    const id = `err-${name}`;
+    host.insertAdjacentHTML("beforeend", `<span id="${id}" data-field-error class="flex items-center gap-1 text-xs font-medium text-danger-fg" role="alert">${icon("alert", "size-3.5 shrink-0")}${esc(msg)}</span>`);
+    el.setAttribute("aria-describedby", [...new Set([...(el.getAttribute("aria-describedby") || "").split(" ").filter((x) => x && x !== id), id])].join(" "));
+  } else if (msg) toast(msg, "danger");
+  el.focus({ preventScroll: true });
+  el.scrollIntoView({ block: "center", behavior: "smooth" });
+}
+// Une nouvelle saisie efface l'erreur posée par markInvalid sur ce champ (appelé par main.js).
+function clearInvalid(el) {
+  if (!el || el.getAttribute("aria-invalid") !== "true") return;
+  el.removeAttribute("aria-invalid");
+  const host = el.closest("[data-field]");
+  if (host) host.querySelectorAll("[data-field-error]").forEach((x) => x.remove());
+}
 
 // Cartes de choix (radio natif visible) et segments de choix (input peer sr-only).
 const CHOICE = `group relative flex cursor-pointer items-start gap-3 rounded-control border border-line-strong bg-surface p-3.5 transition-colors duration-150 hover:border-line-control has-checked:border-brand has-checked:bg-brand-soft has-focus-visible:outline-2 has-focus-visible:outline-offset-2 has-focus-visible:outline-focus`;
 const CHOICE_DANGER = `group relative flex cursor-pointer items-start gap-3 rounded-control border border-line-strong bg-surface p-3.5 transition-colors duration-150 hover:border-line-control has-checked:border-danger-solid has-checked:bg-danger-bg has-focus-visible:outline-2 has-focus-visible:outline-offset-2 has-focus-visible:outline-focus`;
 const SEG_CHOICE = "flex h-10 cursor-pointer items-center justify-center gap-2 rounded-control border border-line-strong bg-surface px-3 text-sm font-medium text-fg-muted transition-colors hover:border-line-control peer-checked:border-brand peer-checked:bg-brand-soft peer-checked:text-brand-fg peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-focus [&_svg]:size-4";
-const RADIO = "mt-0.5 size-4 shrink-0 cursor-pointer accent-brand";
+// Pas d'anneau propre : la carte de choix (has-focus-visible) porte le seul indicateur de focus.
+const RADIO = "mt-0.5 size-4 shrink-0 cursor-pointer accent-brand focus-visible:outline-none";
 const CHECKBOX = `size-4 shrink-0 cursor-pointer rounded-[4px] accent-brand ${FOCUS}`;
 
 const switchBtn = (on, action, key, label) =>
-  `<button type="button" role="switch" aria-checked="${on}" data-action="${action}" data-key="${key}" aria-label="${esc(label)}" class="group relative inline-flex h-6 w-10 shrink-0 cursor-pointer items-center rounded-full bg-line-control transition-colors duration-150 ease-standard aria-checked:bg-brand ${FOCUS}"><span class="pointer-events-none ml-0.5 size-5 rounded-full bg-on-brand shadow-control transition-transform duration-150 ease-standard group-aria-checked:translate-x-4"></span></button>`;
+  `<button type="button" role="switch" aria-checked="${on}" data-action="${action}" data-key="${key}" aria-label="${esc(label)}" class="group relative inline-flex h-6 w-10 shrink-0 cursor-pointer items-center rounded-full bg-line-control transition-colors duration-150 ease-standard after:absolute after:-inset-2 aria-checked:bg-brand ${FOCUS}"><span class="pointer-events-none ml-0.5 size-5 rounded-full bg-on-brand shadow-control transition-transform duration-150 ease-standard group-aria-checked:translate-x-4"></span></button>`;
 
 // ---------- Cartes ----------
 const CARD = "rounded-card border border-line bg-surface shadow-card";
@@ -263,7 +294,8 @@ const badge = (text, tone = "idle", { dot = false, ic = "" } = {}) =>
 const statusBadge = (s) => badge(esc(s), STATUS_TONE[s] || "idle", s === "En pause" ? { ic: "pause" } : { dot: true });
 const PLATFORM_ICON = { TikTok: "tiktok", Instagram: "instagram", YouTube: "youtube" };
 const platformTag = (p) => `<span class="inline-flex h-6 items-center gap-1.5 whitespace-nowrap rounded-badge bg-muted px-2 text-xs font-medium text-fg-muted">${icon(PLATFORM_ICON[p] || "film", "size-3.5")}${esc(p)}</span>`;
-const roleBadge = (role) => ({ agence: `<span class="inline-flex h-5 items-center rounded-[4px] bg-info-bg px-1.5 text-micro font-semibold text-info-fg">Agence</span>`, admin: `<span class="inline-flex h-5 items-center rounded-[4px] bg-brand-soft px-1.5 text-micro font-semibold text-brand-fg">Admin</span>` }[role] || "");
+// Liseré : brand-soft et info-bg se confondent avec le fond canvas en clair (même correction que countBadge).
+const roleBadge = (role) => ({ agence: `<span class="inline-flex h-5 items-center rounded-[4px] bg-info-bg px-1.5 text-micro font-semibold text-info-fg ring-1 ring-inset ring-info-border">Agence</span>`, admin: `<span class="inline-flex h-5 items-center rounded-[4px] bg-brand-soft px-1.5 text-micro font-semibold text-brand-fg ring-1 ring-inset ring-brand-line/70">Admin</span>` }[role] || "");
 // queue : liseré brand-line, sinon la pastille brand-soft se confond avec le fond canvas en clair.
 const COUNT = { queue: "bg-brand-soft text-brand-fg ring-1 ring-inset ring-brand-line/70", unread: "bg-brand text-on-brand", total: "bg-muted text-fg-muted" };
 const countBadge = (n, tone = "queue") => `<span class="inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-semibold tabular-nums ${COUNT[tone]}">${fmt(n)}</span>`;
@@ -271,16 +303,22 @@ const countBadge = (n, tone = "queue") => `<span class="inline-flex h-5 min-w-5 
 // ---------- Filtres : segmented (2 à 5 choix), chips (au-delà, défilable) ----------
 // options : "Libellé" | [valeur, libellé] | [valeur, libellé, compteur]
 const opt = (o) => (Array.isArray(o) ? o : [o, o]);
-const segmented = (name, value, options, label = "Filtrer") =>
-  `<div class="inline-flex max-w-full items-center gap-0.5 overflow-x-auto rounded-control border border-line bg-subtle p-0.5 [scrollbar-width:none]" role="group" aria-label="${esc(label)}">${options.map((o) => {
+// segmented(…, { scroll: true }) : filtre de statut ; sous sm il devient une rangée de puces défilante bord à bord
+// (comme chips), pour qu'aucune option ne soit rognée dans le cadre ; à partir de sm, le contrôle segmenté.
+const SEG_WRAP = "inline-flex max-w-full items-center gap-0.5 overflow-x-auto rounded-control border border-line bg-subtle p-0.5 [scrollbar-width:none]";
+const SEG_WRAP_SCROLL = "max-sm:-mx-4 max-sm:flex max-sm:max-w-none max-sm:gap-2 max-sm:rounded-none max-sm:border-0 max-sm:bg-transparent max-sm:p-0 max-sm:px-4 max-sm:pb-1";
+const SEG_BTN = `inline-flex h-10 shrink-0 items-center gap-1.5 rounded-lg px-3 text-small font-medium text-fg-muted transition-colors duration-150 hover:text-fg aria-pressed:bg-surface-raised aria-pressed:text-fg aria-pressed:shadow-control md:h-8 ${FOCUS}`;
+const SEG_BTN_SCROLL = "max-sm:rounded-full max-sm:border max-sm:border-line-strong max-sm:bg-surface max-sm:px-3.5 max-sm:aria-pressed:border-brand-line max-sm:aria-pressed:bg-brand-soft max-sm:aria-pressed:text-brand-fg max-sm:aria-pressed:shadow-none";
+const segmented = (name, value, options, label = "Filtrer", { scroll = false } = {}) =>
+  `<div class="${SEG_WRAP} ${scroll ? SEG_WRAP_SCROLL : ""}" role="group" aria-label="${esc(label)}">${options.map((o) => {
     const [v, l, n] = opt(o);
-    return `<button type="button" data-action="${name}" data-value="${esc(v)}" aria-pressed="${String(v) === String(value)}" class="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg px-3 text-small font-medium text-fg-muted transition-colors duration-150 hover:text-fg aria-pressed:bg-surface-raised aria-pressed:text-fg aria-pressed:shadow-control ${FOCUS}">${esc(l)}${n !== undefined ? `<span class="tabular-nums text-fg-subtle">${fmt(n)}</span>` : ""}</button>`;
+    return `<button type="button" data-action="${name}" data-value="${esc(v)}" aria-pressed="${String(v) === String(value)}" class="${SEG_BTN} ${scroll ? SEG_BTN_SCROLL : ""}">${esc(l)}${n !== undefined ? `<span class="tabular-nums ${scroll ? "text-fg-subtle max-sm:text-current" : "text-fg-subtle"}">${fmt(n)}</span>` : ""}</button>`;
   }).join("")}</div>`;
 const pills = segmented; // compatibilité
 const chips = (name, value, options, label = "Filtrer") =>
   `<div class="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] sm:mx-0 sm:px-0" role="group" aria-label="${esc(label)}">${options.map((o) => {
     const [v, l, n] = opt(o);
-    return `<button type="button" data-action="${name}" data-value="${esc(v)}" aria-pressed="${String(v) === String(value)}" class="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full border border-line-strong bg-surface px-3.5 text-small font-medium text-fg-muted transition-colors hover:border-line-control hover:text-fg aria-pressed:border-brand-line aria-pressed:bg-brand-soft aria-pressed:text-brand-fg ${FOCUS}">${esc(l)}${n !== undefined ? `<span class="tabular-nums opacity-80">${fmt(n)}</span>` : ""}</button>`;
+    return `<button type="button" data-action="${name}" data-value="${esc(v)}" aria-pressed="${String(v) === String(value)}" class="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-full border border-line-strong bg-surface px-3.5 text-small font-medium text-fg-muted transition-colors hover:border-line-control hover:text-fg aria-pressed:border-brand-line aria-pressed:bg-brand-soft aria-pressed:text-brand-fg md:h-8 ${FOCUS}">${esc(l)}${n !== undefined ? `<span class="tabular-nums">${fmt(n)}</span>` : ""}</button>`;
   }).join("")}</div>`;
 // Onglets soulignés (sections d'une même page).
 const TABLIST = "flex gap-6 border-b border-line";
@@ -340,9 +378,18 @@ const TBL = {
 // ---------- Toast ----------
 // toast(message, "success" | "danger" | "info"). Messages sans emoji ni « ✓ » : l'icône s'en charge.
 const TOAST = { success: ["check", "text-toast-success"], danger: ["alert", "text-toast-danger"], info: ["info", "text-toast-info"] };
+// Emplacement de la pile : en haut quand une modale ou une feuille est ouverte (son pied porte l'action principale),
+// au-dessus de la barre d'enregistrement collante des Réglages, sinon en bas (au-dessus de la navigation mobile).
+const TOAST_AT = {
+  bottom: "bottom-20 lg:bottom-6",
+  top: "top-[calc(3.5rem+env(safe-area-inset-top)+0.5rem)] lg:top-6",
+  sticky: "bottom-[calc(9.5rem+env(safe-area-inset-bottom))] lg:bottom-24",
+};
 function toast(msg, tone = "success") {
   const box = document.getElementById("toasts");
   if (!box) return;
+  const at = document.querySelector('#app [aria-modal="true"]') ? "top" : document.querySelector("[data-sticky-save]") ? "sticky" : "bottom";
+  box.className = `pointer-events-none fixed inset-x-0 z-[60] flex flex-col items-center gap-2 px-4 ${TOAST_AT[at]}`;
   const [ic, cls] = TOAST[tone] || TOAST.success;
   const el = document.createElement("div");
   el.setAttribute("role", tone === "danger" ? "alert" : "status");
@@ -364,7 +411,7 @@ function modalShell(arg, legacySize = "max-w-lg") {
   const tag = form ? "form" : "div";
   return `<div class="fixed inset-0 z-50 flex items-end justify-center bg-overlay animate-fade-in sm:items-center sm:p-6" data-action="close-modal">
     <${tag} ${form ? `data-form="${form}" novalidate` : ""} ${live ? `data-live="${live}"` : ""} data-stop role="dialog" aria-modal="true" ${title ? 'aria-labelledby="modal-title"' : ""} tabindex="-1"
-      class="relative flex max-h-[92dvh] w-full ${MODAL_W[size] || MODAL_W.md} flex-col overflow-hidden rounded-t-panel border border-line bg-surface-raised shadow-modal animate-sheet-in sm:rounded-panel sm:animate-modal-in">
+      class="relative flex focus:outline-none max-h-[92dvh] w-full ${MODAL_W[size] || MODAL_W.md} flex-col overflow-hidden rounded-t-panel border border-line bg-surface-raised shadow-modal animate-sheet-in sm:rounded-panel sm:animate-modal-in">
       <span class="mx-auto mt-2 h-1 w-9 shrink-0 rounded-full bg-line-strong sm:hidden" aria-hidden="true"></span>
       ${title ? `<header class="flex items-start justify-between gap-4 border-b border-line px-5 py-4 sm:px-6">
         <div class="min-w-0"><h2 id="modal-title" class="text-heading text-fg">${title}</h2>${description ? `<p class="mt-0.5 text-small text-fg-muted">${description}</p>` : ""}</div>

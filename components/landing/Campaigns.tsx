@@ -74,7 +74,10 @@ export default function Campaigns() {
                 }}
                 type="button"
                 role="tab"
+                id={`campagnes-tab-${i}`}
+                aria-controls="campagnes-liste"
                 aria-selected={active === cat}
+                tabIndex={active === cat ? 0 : -1}
                 onClick={() => setActive(cat)}
                 onKeyDown={(e) => onTabKey(e, i)}
                 className={TAB}
@@ -85,14 +88,19 @@ export default function Campaigns() {
           </div>
         </div>
 
-        {visible.length > 0 ? (
-          <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {visible.map((c) => (
-              <CampaignCard key={c.id} c={c} />
+        {/* Toutes les cartes et l'état vide sont dans le HTML statique : la version hors ligne (web/offline/landing.js)
+            n'a qu'à basculer leur attribut hidden. Sous sm, une rangée défilante (une carte et l'amorce de la suivante) ;
+            « relative » y retient les annonces sr-only (absolues) des cartes, sinon elles élargissent la page. */}
+        <div id="campagnes-liste" role="tabpanel" aria-labelledby={`campagnes-tab-${categories.indexOf(active)}`}>
+          <div
+            hidden={visible.length === 0}
+            className="relative -mx-4 mt-8 flex snap-x snap-mandatory scroll-px-4 gap-3 overflow-x-auto px-4 pb-2 [scrollbar-width:none] [&>article]:w-[82%] [&>article]:shrink-0 [&>article]:snap-start sm:mx-0 sm:grid sm:grid-cols-2 sm:gap-4 sm:overflow-visible sm:px-0 sm:pb-0 lg:grid-cols-3"
+          >
+            {campaigns.map((c) => (
+              <CampaignCard key={c.id} c={c} hidden={!visible.includes(c)} />
             ))}
           </div>
-        ) : (
-          <div className="mt-10 flex flex-col items-center rounded-card border border-dashed border-line-strong bg-surface px-6 py-12 text-center" role="status">
+          <div data-empty hidden={visible.length > 0} className="mt-10 flex flex-col items-center rounded-card border border-dashed border-line-strong bg-surface px-6 py-12 text-center" role="status">
             <span className="grid size-10 place-items-center rounded-full bg-muted text-fg-subtle" aria-hidden="true">
               <svg viewBox="0 0 24 24" className="size-5" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
                 <circle cx="11" cy="11" r="7" />
@@ -103,6 +111,7 @@ export default function Campaigns() {
             <p className="mt-1 max-w-sm text-small text-fg-muted">Essayez un autre mot-clé ou une autre catégorie.</p>
             <button
               type="button"
+              data-reset
               onClick={() => {
                 setQuery("");
                 setActive("Toutes");
@@ -112,7 +121,7 @@ export default function Campaigns() {
               Effacer les filtres
             </button>
           </div>
-        )}
+        </div>
       </div>
     </section>
   );

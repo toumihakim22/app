@@ -7,6 +7,8 @@ const BTN = `inline-flex shrink-0 items-center justify-center gap-2 whitespace-n
 const LG = "h-12 rounded-control px-5 text-[15px] [&_svg]:size-5";
 const SECONDARY = "border border-line-strong bg-surface text-fg shadow-control hover:border-line-control hover:bg-subtle";
 const ON_COLOR = "bg-on-brand text-brand-700 shadow-control hover:bg-brand-50";
+// Sur le panneau violet, l'anneau violet (#7c3aed sur #7c3aed) est invisible : anneau blanc (on-brand).
+const BTN_ON_COLOR = "inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap font-medium transition-colors duration-150 ease-standard focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-on-brand";
 
 const clipper = [
   "Inscription gratuite, sans minimum d'abonnés",
@@ -87,7 +89,7 @@ export default function Audiences() {
             <p className="mt-2 text-[15px] leading-7 text-on-brand/90">Faites parler de vous partout en Algérie grâce à des créateurs authentiques.</p>
             <Bullets items={brand} bullet="bg-on-brand/15 text-on-brand" text="text-on-brand/90" />
             <div className="mt-auto pt-9">
-              <a href="/espace#/inscription-agence" className={`${BTN} ${LG} ${ON_COLOR} w-full sm:w-auto`}>
+              <a href="/espace#/inscription-agence" className={`${BTN_ON_COLOR} ${LG} ${ON_COLOR} w-full sm:w-auto`}>
                 Lancer une campagne
               </a>
             </div>

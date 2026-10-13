@@ -101,29 +101,36 @@ function shellSidebar(area, tools = "") {
 
 function shellTopbar(area) {
   const u = userById(state.session), notifs = myNotifs(), unread = notifs.filter((n) => n.unread).length;
+  // Recherche rapide du clipper : absente de la page Campagnes, qui a sa propre recherche (un seul champ à l'écran).
   const ctx = area === "clipper"
-    ? searchInput("global-q", "", "Rechercher une campagne…", "Recherche rapide", "hidden w-full max-w-xs md:block")
+    ? (state.route.view === "campagnes" ? "" : searchInput("global-q", "", "Rechercher une campagne…", "Recherche rapide", "hidden w-full max-w-xs md:block"))
     : `<p class="hidden min-w-0 truncate text-small text-fg-muted lg:block">${area === "admin" ? "Administration" : `Agence · ${esc(u.name)}`}</p>`;
   return `<header class="sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-line bg-canvas/85 px-4 backdrop-blur-md sm:px-6 lg:px-8">
     <div class="flex items-center gap-2 lg:hidden">${logo({ size: "sm" })}${roleBadge(area)}</div>
     ${ctx}
     <div class="relative ml-auto flex items-center gap-1">
       <span class="hidden sm:contents">${themeToggle()}</span>
-      <button type="button" data-action="notif" aria-expanded="${state.notifOpen}" aria-haspopup="dialog" aria-label="Notifications${unread ? ` (${unread} non lues)` : ""}" class="${iconBtn("md", false, "relative")}">${icon("bell")}${unread ? `<span class="absolute right-1.5 top-1.5 size-2 rounded-full bg-brand ring-2 ring-canvas" aria-hidden="true"></span>` : ""}</button>
+      <button type="button" data-action="notif" aria-expanded="${state.notifOpen}" aria-haspopup="dialog" aria-controls="notif-panel" aria-label="Notifications${unread ? ` (${unread} non lues)` : ""}" class="${iconBtn("md", false, "relative")}">${icon("bell")}${unread ? `<span class="absolute right-1.5 top-1.5 size-2 rounded-full bg-brand ring-2 ring-canvas" aria-hidden="true"></span>` : ""}</button>
       ${state.notifOpen ? notifPanel(notifs) : ""}
       <a href="#/${area}/${AREAS[area].profile}" class="flex items-center gap-2 rounded-lg p-1 transition-colors duration-150 hover:bg-muted sm:pr-2 ${FOCUS}" aria-label="Mon compte">${avatar(u, "sm")}
         <span class="hidden text-left sm:block"><span class="block text-small font-medium leading-tight text-fg">${esc(u.name)}</span><span class="block text-xs text-fg-subtle">${area === "admin" ? "Administrateur" : area === "agence" ? "Agence" : esc(u.level)}</span></span></a>
     </div></header>`;
 }
 
+// État vide propre à chaque rôle.
+const NOTIF_EMPTY = {
+  clipper: "Vous serez prévenu ici quand un clip est validé ou un paiement envoyé.",
+  agence: "Vous serez prévenu ici quand une campagne est approuvée, terminée ou une recharge confirmée.",
+  admin: "Les nouvelles campagnes, demandes de retrait et recharges à traiter s'afficheront ici.",
+};
 function notifPanel(list) {
   const anyUnread = list.some((n) => n.unread);
-  return `<div class="absolute right-0 top-12 z-40 w-[min(24rem,calc(100vw-2rem))] overflow-hidden rounded-card border border-line bg-surface-raised shadow-popover animate-pop-in" role="dialog" aria-label="Notifications">
+  return `<div id="notif-panel" tabindex="-1" class="absolute right-0 top-12 z-40 w-[min(24rem,calc(100vw-2rem))] overflow-hidden rounded-card border border-line bg-surface-raised shadow-popover animate-pop-in focus:outline-none" role="dialog" aria-label="Notifications">
     <div class="flex items-center justify-between gap-3 border-b border-line px-4 py-3"><p class="text-sm font-semibold text-fg">Notifications</p>${anyUnread ? `<button type="button" data-action="read-all" class="${btn("link", "", "text-small")}">Tout marquer comme lu</button>` : ""}</div>
     ${list.length ? `<div class="max-h-96 divide-y divide-line overflow-y-auto">${list.map((n) => `<button type="button" data-action="read-one" data-id="${n.id}" class="relative flex w-full gap-3 px-4 py-3 pr-9 text-left transition-colors duration-150 hover:bg-subtle focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus ${n.unread ? "bg-brand-soft/50" : ""}">
       ${eventIcon(n.icon)}<span class="min-w-0 flex-1"><span class="block text-small leading-5 ${n.unread ? "font-medium text-fg" : "text-fg-muted"}">${esc(n.text)}</span><span class="mt-0.5 block text-xs text-fg-subtle">${ago(n.at)}</span></span>
       ${n.unread ? '<span class="absolute right-4 top-4 size-2 rounded-full bg-brand"></span><span class="sr-only">(non lue)</span>' : ""}</button>`).join("")}</div>`
-      : emptyState("bell", "Aucune notification", "Vous serez prévenu ici quand un clip est validé ou un paiement envoyé.", "", { inCard: true })}
+      : emptyState("bell", "Aucune notification", NOTIF_EMPTY[state.route.area] || NOTIF_EMPTY.clipper, "", { inCard: true })}
   </div>`;
 }
 
@@ -157,19 +164,29 @@ function shell(area) {
 }
 
 // ---------- Focus des modales et du tiroir, récapitulatifs en direct ----------
-let focusReturn = null; // sélecteur de l'élément qui a ouvert la modale ou le tiroir
+let focusReturn = null; // { key, index } : l'élément (visible) qui a ouvert la modale ou le tiroir
 
-// Appelé par render() : focus dans la modale ou le tiroir à l'ouverture, retour à l'élément d'origine à la fermeture.
-function placeOverlayFocus(hadOverlay, active) {
+// Sélecteur stable d'un bouton d'action (data-action + data-value + data-id) : render() remplace tout le DOM.
+function actionKey(el) {
+  if (!el || !el.dataset || !el.dataset.action || !root.contains(el)) return null;
+  const q = (v) => String(v).replace(/["\\]/g, "\\$&"), d = el.dataset;
+  return `[data-action="${q(d.action)}"]${d.value !== undefined ? `[data-value="${q(d.value)}"]` : ""}${d.id ? `[data-id="${q(d.id)}"]` : ""}`;
+}
+// Les tableaux existent en double (table ≥ md, liste < md) : seule la copie affichée compte.
+const visibleAll = (sel) => { try { return [...root.querySelectorAll(sel)].filter((el) => el.getClientRects().length > 0); } catch (e) { return []; } };
+
+// Appelé par render() quand une modale ou le tiroir s'ouvre ou se ferme : focus dedans à l'ouverture,
+// retour à l'élément d'origine (sa copie visible) à la fermeture.
+function placeOverlayFocus(hadOverlay, key, index) {
   const dlg = root.querySelector('[aria-modal="true"]');
   if (dlg && !hadOverlay) {
-    const d = active && active.dataset ? active.dataset : {};
-    focusReturn = d.action ? `[data-action="${d.action}"]${d.id ? `[data-id="${d.id}"]` : ""}` : null;
+    focusReturn = key ? { key, index: Math.max(0, index) } : null;
     const target = dlg.querySelector("[autofocus]") || (dlg.hasAttribute("tabindex") ? dlg : dlg.querySelector("button, a[href], input, select, textarea"));
     if (target) target.focus();
-  } else if (!dlg && hadOverlay && focusReturn) {
-    const el = root.querySelector(focusReturn);
-    if (el) el.focus();
+  } else if (!dlg && hadOverlay) {
+    const list = focusReturn ? visibleAll(focusReturn.key) : [];
+    const el = list[focusReturn ? Math.min(focusReturn.index, list.length - 1) : 0] || root.querySelector("#main");
+    if (el) el.focus({ preventScroll: true });
     focusReturn = null;
   }
 }
@@ -207,6 +224,11 @@ function render() {
   const focusKey = active && active.dataset ? active.dataset.input : null;
   const caret = focusKey && "selectionStart" in active ? active.selectionStart : null;
   const hadOverlay = !!root.querySelector('[aria-modal="true"]');
+  const dlgTitle = (root.querySelector('[aria-modal="true"] #modal-title') || {}).textContent;
+  const hadNotif = !!root.querySelector("#notif-panel"), inNotif = !!(active && active.closest && active.closest("#notif-panel"));
+  // Bouton d'action actif (filtre, favori, période…) : son focus est rendu après le rendu (sinon il tombe sur <body>).
+  const aKey = focusKey ? null : actionKey(active), aIndex = aKey ? visibleAll(aKey).indexOf(active) : -1;
+  const group = aKey ? active.closest('[role="group"][aria-label]') : null, groupLabel = group ? group.getAttribute("aria-label") : "";
 
   let html;
   if (area === "auth") html = { connexion: viewConnexion, inscription: viewInscription, "mot-de-passe": viewMotDePasse }[state.route.view]();
@@ -221,8 +243,31 @@ function render() {
     const el = root.querySelector(`[data-input="${focusKey}"]`);
     if (el) { el.focus(); if (caret !== null) try { el.setSelectionRange(caret, caret); } catch (e) {} }
   }
+  if (focusKey) return;
+  const dlg = root.querySelector('[aria-modal="true"]'), notif = root.querySelector("#notif-panel");
   // Modale ou tiroir : focus envoyé dedans à l'ouverture, rendu à l'élément d'origine à la fermeture.
-  if (!focusKey) placeOverlayFocus(hadOverlay, active);
+  if (!!dlg !== hadOverlay) return placeOverlayFocus(hadOverlay, aKey, aIndex);
+  // Une modale en remplace une autre (Détails → Suspendre, Détails → Ajouter du budget) : focus dans la nouvelle.
+  if (dlg && (dlg.querySelector("#modal-title") || {}).textContent !== dlgTitle) {
+    const target = dlg.querySelector("[autofocus]") || dlg;
+    return target.focus();
+  }
+  // Panneau de notifications : focus sur sa première action à l'ouverture, retour à la cloche à la fermeture.
+  if (notif && !hadNotif) {
+    const first = notif.querySelector("button, a[href]") || notif;
+    return first.focus({ preventScroll: true });
+  }
+  if (!notif && hadNotif && (inNotif || aKey === '[data-action="notif"]' || document.activeElement === document.body)) {
+    const bell = visibleAll('[data-action="notif"]')[0];
+    if (bell) bell.focus({ preventScroll: true });
+    return;
+  }
+  if (!aKey || (document.activeElement && document.activeElement !== document.body && root.contains(document.activeElement))) return;
+  const list = visibleAll(aKey);
+  const el = list[Math.min(Math.max(0, aIndex), list.length - 1)]
+    || (groupLabel && visibleAll(`[role="group"][aria-label="${groupLabel.replace(/"/g, '\\"')}"] [aria-pressed="true"]`)[0])
+    || dlg || root.querySelector("#main");
+  if (el) el.focus({ preventScroll: true });
 }
 
 // ---------- Événements ----------
@@ -249,6 +294,12 @@ root.addEventListener("click", (e) => {
     case "signup-role": captureSignupForm(); state.auth.form.role = t.dataset.value; state.auth.fieldErrors = {}; return render();
     case "resend-code": return resendCode();
     case "auth-copy": return copy(t.dataset.value, "Adresse copiée");
+    case "auth-demo": return authUseDemo(t.dataset.value);
+    case "clear-search": {
+      const input = root.querySelector(`[data-input="${t.dataset.value}"]`);
+      if (input) { input.value = ""; input.focus(); input.dispatchEvent(new Event("input", { bubbles: true })); }
+      return;
+    }
     case "skip": { const m = root.querySelector("#main"); if (m) m.focus(); return; }
   }
   if (state.route.area === "admin") handleAdminAction(action, t);
@@ -257,6 +308,7 @@ root.addEventListener("click", (e) => {
 });
 
 root.addEventListener("input", (e) => {
+  clearInvalid(e.target);
   if (e.target.form && e.target.form.dataset.live) runLive(e.target.form);
   const k = e.target.dataset.input;
   if (k === "camp-q") { state.camp.q = e.target.value; render(); }
@@ -274,6 +326,7 @@ root.addEventListener("change", (e) => {
   const k = e.target.dataset.input;
   if (k === "camp-category") { state.camp.category = e.target.value; render(); }
   if (k === "camp-sort") { state.camp.sort = e.target.value; render(); }
+  if (k === "adm-user-status") { state.adm.userStatus = e.target.value; render(); }
 });
 
 root.addEventListener("keydown", (e) => {

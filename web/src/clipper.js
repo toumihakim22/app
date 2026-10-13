@@ -30,11 +30,11 @@ const CL_MONTHS_LONG = ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "
 const CL_PAYOUT_ICON = { BaridiMob: "wallet", CCP: "mail", "RIB bancaire": "bank" };
 // Le lien doit pointer vers la plateforme déclarée (mêmes règles que le serveur, lib/server/services/clips.ts).
 const CL_HOSTS = { TikTok: /(^|\.)tiktok\.com$/, Instagram: /(^|\.)instagram\.com$/, YouTube: /(^|\.)(youtube\.com|youtu\.be)$/ };
-const CL_CHIP = `inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full border border-line-strong bg-surface px-3.5 text-small font-medium text-fg-muted transition-colors hover:border-line-control hover:text-fg aria-pressed:border-brand-line aria-pressed:bg-brand-soft aria-pressed:text-brand-fg [&_svg]:size-3.5 ${FOCUS}`;
+const CL_CHIP = `inline-flex h-10 shrink-0 items-center gap-1.5 rounded-full border border-line-strong bg-surface px-3.5 text-small font-medium text-fg-muted transition-colors hover:border-line-control hover:text-fg aria-pressed:border-brand-line aria-pressed:bg-brand-soft aria-pressed:text-brand-fg [&_svg]:size-3.5 ${FOCUS}`;
 const clSum = (a) => a.reduce((s, v) => s + v, 0);
 const clFirst = (u) => esc(u.name.split(" ")[0]);
 const clToday = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
-const clLink = (href, text) => `<a href="${href}" class="inline-flex items-center gap-1 rounded-sm text-small font-medium text-brand-fg underline-offset-4 hover:underline ${FOCUS}">${text}${icon("chevronRight", "size-3.5")}</a>`;
+const clLink = (href, text) => `<a href="${href}" class="${HIT} inline-flex items-center gap-1 rounded-sm text-small font-medium text-brand-fg underline-offset-4 hover:underline ${FOCUS}">${text}${icon("chevronRight", "size-3.5")}</a>`;
 const clThresholdViews = (c) => viewsFor(c, c.minPayout);
 const clThresholdPct = (p) => Math.min(99, Math.floor((p.views / Math.max(1, clThresholdViews(campaignById(p.campaign)))) * 100));
 const clMyEarnings = (c) => myPubs().filter((p) => p.campaign === c.id).reduce((s, p) => s + earningsOf(p), 0);
@@ -45,9 +45,11 @@ const clPeriodSeg = () => segmented("period", `${state.period} jours`, [["7 jour
 
 // Carte portefeuille : seule source du solde sur l'Accueil et le Portefeuille.
 function clWalletCard({ curve = false } = {}) {
-  const bal = balance(), hold = db.settings.holdDays;
+  const bal = balance(), hold = db.settings.holdDays, min = db.settings.minWithdraw;
+  // Sous le minimum, « Retirer » n'est pas l'action principale de l'écran : bouton secondaire et seuil affiché.
+  const canWithdraw = bal >= min, wdVariant = canWithdraw ? "primary" : "secondary";
   const actions = curve
-    ? `<div class="flex items-center gap-2"><button type="button" data-action="withdraw" class="${btn("primary")}">Retirer</button><a href="#/clipper/portefeuille" class="${btn("ghost")}">Portefeuille</a></div>`
+    ? `<div class="flex flex-col items-start gap-1.5 sm:items-end"><div class="flex items-center gap-2"><button type="button" data-action="withdraw" class="${btn(wdVariant)}">Retirer</button><a href="#/clipper/portefeuille" class="${btn("ghost")}">Portefeuille</a></div>${canWithdraw ? "" : `<p class="text-xs text-fg-subtle">Disponible dès ${da(min)}</p>`}</div>`
     : "";
   const facts = `<dl class="mt-5 grid grid-cols-2 gap-4 border-t border-line pt-4">
       <div class="min-w-0"><dt class="flex items-center gap-1.5 text-small text-fg-muted">${icon("clock", "size-3.5 shrink-0 text-fg-subtle")}En rétention</dt>
@@ -57,8 +59,8 @@ function clWalletCard({ curve = false } = {}) {
   if (!curve) {
     return card(`<p class="text-small font-medium text-fg-muted">Solde disponible</p>
       <p class="mt-1">${bigMoney(bal, "money")}</p>
-      <button type="button" data-action="withdraw" class="${btn("primary", "md", "mt-5 w-full")}">Demander un retrait</button>
-      <p class="mt-2 text-center text-xs text-fg-subtle">Retrait minimum ${da(db.settings.minWithdraw)}</p>
+      <button type="button" data-action="withdraw" class="${btn(wdVariant, "md", "mt-5 w-full")}">Demander un retrait</button>
+      <p class="mt-2 text-center text-xs text-fg-subtle">${canWithdraw ? `Retrait minimum ${da(min)}` : `Disponible dès ${da(min)} de solde`}</p>
       ${facts}`, "p-5");
   }
   const series = dailySeries();
@@ -78,7 +80,7 @@ function txRow(t) {
     <div class="min-w-0 flex-1"><p class="truncate text-sm font-medium text-fg">${esc(t.label)}</p>
       <p class="truncate text-xs text-fg-subtle">${date(t.date)} · ${code(t.ref)}${t.fee ? ` · frais ${da(t.fee)}` : ""}</p>
       ${final ? "" : `<div class="mt-1.5 sm:hidden">${clTxBadge(t)}</div>`}</div>
-    <div class="shrink-0 text-right"><p class="text-sm font-medium">${money(t.amount, { signed: true })}</p><div class="mt-1 hidden justify-end sm:flex">${clTxBadge(t)}</div></div>
+    <div class="shrink-0 text-right"><p class="text-sm font-medium">${money(t.amount, { signed: true, pending: !final })}</p><div class="mt-1 hidden justify-end sm:flex">${clTxBadge(t)}</div></div>
   </li>`;
 }
 
@@ -92,7 +94,7 @@ function campaignCard(c) {
         <span class="absolute left-2.5 top-2.5 inline-flex items-baseline gap-1 rounded-badge bg-night/80 px-2 py-1 text-small font-semibold tabular-nums text-on-brand backdrop-blur-sm">${fmt(c.rate)}${NB}DA<span class="text-[11px] font-medium text-on-brand/80">/ 1k${NB}vues</span></span>
         ${c.top ? `<span class="absolute bottom-2.5 left-2.5 inline-flex items-center gap-1 rounded-badge bg-on-brand/90 px-1.5 py-0.5 text-[11px] font-semibold text-night">${icon("star", "size-3", true)}Top campagne</span>` : ""}
       </button>
-      <button type="button" data-action="toggle-fav" data-id="${c.id}" aria-pressed="${fav}" aria-label="${fav ? "Retirer des favoris" : "Ajouter aux favoris"}" class="absolute right-2.5 top-2.5 grid size-8 place-items-center rounded-full bg-on-brand/90 text-night/70 shadow-control backdrop-blur-sm transition-colors hover:text-danger-solid aria-pressed:text-danger-solid ${FOCUS}">${icon("heart", "size-4", fav)}</button>
+      <button type="button" data-action="toggle-fav" data-id="${c.id}" aria-pressed="${fav}" aria-label="${fav ? "Retirer des favoris" : "Ajouter aux favoris"}" class="absolute right-2.5 top-2.5 grid size-10 place-items-center rounded-full bg-on-brand/90 md:size-8 text-night/70 shadow-control backdrop-blur-sm transition-colors hover:text-danger-solid aria-pressed:text-danger-solid ${FOCUS}">${icon("heart", "size-4", fav)}</button>
     </div>
     <div class="flex flex-1 flex-col gap-3 px-2 pb-1 pt-3">
       <div class="min-w-0"><p class="truncate text-xs text-fg-subtle">${esc(c.brand)} · ${esc(c.category)}</p><h3 class="mt-0.5 font-sans text-[15px] font-semibold leading-snug text-fg">${esc(c.title)}</h3></div>
@@ -145,9 +147,10 @@ function publicationsTable(list, { showUser = false, actions = false, amountLabe
     const c = campaignById(p.campaign), owner = userById(p.userId), pending = p.status === "En attente", under = pending && belowMin(p);
     const share = under ? clThresholdPct(p) : 0;
     const thresholdBar = (w) => `<span class="block ${w}">${progress(p.views, clThresholdViews(c), { label: false, aria: "Progression vers le seuil" })}</span>`;
+    // La cellule Clip prend la place restante (w-full max-w-0) : seul le texte trop long est tronqué.
     const title = p.url
-      ? `<a href="${esc(p.url)}" target="_blank" rel="noopener noreferrer" class="block max-w-40 truncate font-medium text-fg underline-offset-2 hover:underline xl:max-w-64 ${FOCUS}">${esc(p.title)}</a>`
-      : `<span class="block max-w-40 truncate font-medium text-fg xl:max-w-64">${esc(p.title)}</span>`;
+      ? `<a href="${esc(p.url)}" target="_blank" rel="noopener noreferrer" class="block truncate font-medium text-fg underline-offset-2 hover:underline ${FOCUS}">${esc(p.title)}</a>`
+      : `<span class="block truncate font-medium text-fg">${esc(p.title)}</span>`;
     const reason = p.status === "Refusée" && p.reason ? `<span class="mt-0.5 block truncate text-xs text-danger-fg">Motif${NB}: ${esc(p.reason)}</span>` : "";
     const capped = p.status === "Validée" && isCapped(p) ? `<span class="mt-0.5 flex items-center justify-end gap-1 text-xs font-medium text-warning-fg">${icon("info", "size-3.5 shrink-0")}Plafond atteint</span>` : "";
     // Montant : réel si validé ; estimé pour la modération ; « — » sinon (jamais « 0 DA » pour un gain non calculé).
@@ -158,16 +161,20 @@ function publicationsTable(list, { showUser = false, actions = false, amountLabe
     const amountMobile = p.status === "Validée" ? money(earningsOf(p)) : actions && pending && !under ? `<span class="text-fg-subtle">estimé</span> ${money(payoutOf(p))}` : under ? `<span class="text-xs text-fg-subtle">${pct(share)} du seuil</span>` : dash;
     const eye = (size) => `<button type="button" data-action="adm-views" data-id="${p.id}" class="${iconBtn(size, true)}" aria-label="Relever les vues de « ${esc(p.title)} »" title="Relever les vues">${icon("eye")}</button>`;
     const threshold = (cls) => `<span class="${cls}"><span class="text-xs font-medium text-warning-fg">Seuil${NB}: ${pct(share)}</span>${thresholdBar("w-full")}</span>`;
+    // Clip déjà traité : l'emplacement du bouton « Relever les vues » est toujours réservé (badges alignés à droite).
     const decision = !actions ? "" : pending
       ? `<div class="flex items-center justify-end gap-2">${eye("sm")}<button type="button" data-action="adm-reject" data-id="${p.id}" class="${btn("dangerSoft", "sm")}">Refuser</button>${under ? threshold("inline-grid w-[4.125rem] gap-1 whitespace-nowrap text-left") : `<button type="button" data-action="adm-validate" data-id="${p.id}" class="${btn("primary", "sm")}">Valider</button>`}</div>`
-      : `<div class="flex items-center justify-end gap-2">${statusBadge(p.status)}${p.status === "Validée" ? eye("sm") : ""}</div>`;
+      : `<div class="flex items-center justify-end gap-2">${statusBadge(p.status)}${p.status === "Validée" ? eye("sm") : `<span class="size-10 shrink-0 md:size-8" aria-hidden="true"></span>`}</div>`;
+    // Liste (sous 1 440 px chez l'admin) : boutons md en grille sur téléphone, alignés à droite dès sm (comme Campagnes et Paiements).
     const decisionMobile = !actions ? "" : pending
-      ? `<div class="grid grid-cols-[auto_1fr_1fr] gap-2">${eye("lg")}<button type="button" data-action="adm-reject" data-id="${p.id}" class="${btn("dangerSoft", "md")}">Refuser</button>${under ? threshold("grid content-center gap-1 rounded-control border border-line px-3") : `<button type="button" data-action="adm-validate" data-id="${p.id}" class="${btn("primary", "md")}">Valider</button>`}</div>`
+      ? `<div class="grid grid-cols-[auto_1fr_1fr] gap-2 sm:flex sm:justify-end">${eye("lg")}<button type="button" data-action="adm-reject" data-id="${p.id}" class="${btn("dangerSoft", "md")}">Refuser</button>${under ? threshold("grid content-center gap-1 rounded-control border border-line px-3 sm:w-40") : `<button type="button" data-action="adm-validate" data-id="${p.id}" class="${btn("primary", "md")}">Valider</button>`}</div>`
       : p.status === "Validée" ? `<div class="flex justify-end"><button type="button" data-action="adm-views" data-id="${p.id}" class="${btn("secondary", "md")}">${icon("eye")}Relever les vues</button></div>` : "";
     const sub = `${esc(c.title)} · ${date(p.date)}`;
+    // Sous-ligne du tableau : seule la campagne se tronque ; la plateforme (colonne masquée sous xl) devient un pictogramme.
+    const subCell = `<span class="mt-0.5 flex min-w-0 items-center gap-1 text-xs text-fg-subtle"><span class="truncate">${esc(c.title)}</span><span class="shrink-0 whitespace-nowrap">· ${date(p.date)}</span><span class="inline-flex shrink-0 items-center gap-1 xl:hidden" title="${esc(p.platform)}">·${icon(PLATFORM_ICON[p.platform] || "film", "size-3.5")}<span class="sr-only">${esc(p.platform)}</span></span></span>`;
     return {
       tr: `<tr class="${TBL.tr}">
-        <td class="${TBL.td}"><div class="flex min-w-0 items-center gap-3">${coverThumb(c, "sm")}<div class="min-w-0">${title}<span class="${TBL.tdSub} max-w-40 truncate xl:max-w-64">${sub}<span class="xl:hidden"> · ${esc(p.platform)}</span></span>${reason}</div></div></td>
+        <td class="${TBL.td} w-full max-w-0"><div class="flex min-w-0 items-center gap-3">${coverThumb(c, "sm")}<div class="min-w-0 flex-1">${title}${subCell}${reason}</div></div></td>
         ${showUser ? `<td class="${TBL.td}">${owner ? `<div class="flex items-center gap-2">${avatar(owner, "xs")}<span class="max-w-40 truncate text-small text-fg">${esc(owner.name)}</span></div>` : dash}</td>` : ""}
         <td class="${TBL.td} hidden xl:table-cell">${platformTag(p.platform)}</td>
         <td class="${TBL.td} ${TBL.tdNum}">${fmt(p.views)}${actions ? `<span class="${TBL.tdSub} font-normal">seuil ${fmt(clThresholdViews(c))}</span>` : ""}</td>
@@ -222,10 +229,10 @@ function cAccueil() {
       : emptyState("wallet", "Aucune opération", "Vos gains validés et vos retraits apparaîtront ici.", "", { inCard: true })}`, "p-5");
 
   const kpis = [
-    kpi({ label: "Gains de la période", value: bigMoney(periodGain), ic: "wallet", delta: change === null ? "" : `${change >= 0 ? "+" : MINUS}${pct(Math.abs(change))}`, deltaTone: change === null ? "flat" : change > 0 ? "up" : change < 0 ? "down" : "flat", sub: change === null ? `${state.period} derniers jours` : "vs 7 jours précédents" }),
-    kpi({ label: "Vues totales", value: kpiValue(compact(totalViews)), ic: "eye", sub: "Tous clips confondus" }),
-    kpi({ label: "Clips publiés", value: kpiValue(fmt(pubs.length)), ic: "film", sub: `${plural(validated, "validé", "validés")} · ${fmt(count("En attente"))} en attente` }),
-    kpi({ label: "Taux de validation", value: kpiValue(pubs.length ? pct((validated / pubs.length) * 100) : "—"), ic: "check", sub: `Objectif 80${NB}%` }),
+    kpi({ label: "Gains de la période", value: bigMoney(periodGain), delta: change === null ? "" : `${change >= 0 ? "+" : MINUS}${pct(Math.abs(change))}`, deltaTone: change === null ? "flat" : change > 0 ? "up" : change < 0 ? "down" : "flat", sub: change === null ? `${state.period} derniers jours` : "vs 7 jours précédents" }),
+    kpi({ label: "Vues totales", value: kpiValue(compact(totalViews)), sub: "Tous clips confondus" }),
+    kpi({ label: "Clips publiés", value: kpiValue(fmt(pubs.length)), sub: `${plural(validated, "validé", "validés")} · ${fmt(count("En attente"))} en attente` }),
+    kpi({ label: "Taux de validation", value: kpiValue(pubs.length ? pct((validated / pubs.length) * 100) : "—"), sub: `Objectif 80${NB}%` }),
   ];
 
   const chart = card(`<header class="flex flex-wrap items-start justify-between gap-3">
@@ -275,10 +282,11 @@ function cCampagnes() {
   const results = list.length === 0
     ? emptyState("search", "Aucune campagne ne correspond", "Essayez une autre catégorie ou effacez la recherche.", `<button type="button" data-action="reset-filters" class="${btn("secondary")}">Effacer les filtres</button>`)
     : f.layout === "list"
-      ? `<div class="${TBL.wrap}"><table class="${TBL.table}">
+      // 5 colonnes (environ 760 px) : le tableau à partir de xl, la liste en dessous (jamais de colonne rognée).
+      ? `<div class="${TBL.wrap}"><table class="${TBL.table.replace("md:table", "xl:table")}">
           <thead><tr class="${TBL.headRow}"><th scope="col" class="${TBL.th}">Campagne</th><th scope="col" class="${TBL.th} ${TBL.thNum}">Tarif / 1${NB}000 vues</th><th scope="col" class="${TBL.th} ${TBL.thNum}">Plafond par clip</th><th scope="col" class="${TBL.th} ${TBL.thNum}">Clippers</th><th scope="col" class="${TBL.th} ${TBL.thNum}"><span class="sr-only">Actions</span></th></tr></thead>
           <tbody>${list.map(campaignRow).join("")}</tbody></table>
-          <ul class="${TBL.list}">${list.map(clCampaignItem).join("")}</ul></div>`
+          <ul class="${TBL.list.replace("md:hidden", "xl:hidden")}">${list.map(clCampaignItem).join("")}</ul></div>`
       : `<div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">${list.map(campaignCard).join("")}</div>`;
 
   return `${pageHeader("Campagnes", `${plural(activeCampaigns().length, "campagne active", "campagnes actives")} · tarif pour 1${NB}000 vues validées`)}
@@ -292,7 +300,7 @@ function cPublications() {
   const count = (s) => pubs.filter((p) => p.status === s).length;
   const empty = { Validée: "Aucun clip validé", "En attente": "Aucun clip en attente", Refusée: "Aucun clip refusé" }[state.pub.status];
   return `${pageHeader("Mes publications", "Suivez la validation et les gains de chacun de vos clips.", `<span class="lg:hidden"><button type="button" data-action="submit-clip" class="${btn("primary")}">${icon("plus")}Soumettre un clip</button></span>`)}
-    ${pubs.length ? `<div class="mt-6">${segmented("pub-status", state.pub.status, [["Toutes", "Toutes", pubs.length], ["Validée", "Validées", count("Validée")], ["En attente", "En attente", count("En attente")], ["Refusée", "Refusées", count("Refusée")]], "Statut")}</div>
+    ${pubs.length ? `<div class="mt-6">${segmented("pub-status", state.pub.status, [["Toutes", "Toutes", pubs.length], ["Validée", "Validées", count("Validée")], ["En attente", "En attente", count("En attente")], ["Refusée", "Refusées", count("Refusée")]], "Statut", { scroll: true })}</div>
     <div class="mt-4">${list.length ? publicationsTable(list)
       : emptyState("film", empty, "Les clips de ce statut apparaîtront ici.", `<button type="button" data-action="pub-status" data-value="Toutes" class="${btn("secondary")}">Voir tous les clips</button>`)}</div>`
     : `<div class="mt-6">${emptyState("film", "Aucun clip soumis", "Rejoignez une campagne, publiez votre clip puis soumettez son lien pour validation.", `<a href="#/clipper/campagnes" class="${btn("primary")}">Voir les campagnes</a>`)}</div>`}`;
@@ -360,10 +368,10 @@ function cStatistiques() {
 
   const topTable = `<div class="${TBL.wrap}">
     <table class="${TBL.table}">
-      <thead><tr class="${TBL.headRow}"><th scope="col" class="${TBL.th} w-12">Rang</th><th scope="col" class="${TBL.th}">Clip</th><th scope="col" class="${TBL.th}">Plateforme</th><th scope="col" class="${TBL.th} ${TBL.thNum}">Vues</th><th scope="col" class="${TBL.th} ${TBL.thNum}">Gains</th></tr></thead>
+      <thead><tr class="${TBL.headRow}"><th scope="col" class="${TBL.th} w-12">Rang</th><th scope="col" class="${TBL.th}">Clip</th><th scope="col" class="${TBL.th} hidden xl:table-cell">Plateforme</th><th scope="col" class="${TBL.th} ${TBL.thNum}">Vues</th><th scope="col" class="${TBL.th} ${TBL.thNum}">Gains</th></tr></thead>
       <tbody>${top.map((p, i) => { const c = campaignById(p.campaign); return `<tr class="${TBL.tr}">
         <td class="${TBL.td}"><span class="text-small font-medium tabular-nums text-fg-subtle">${i + 1}</span></td>
-        <td class="${TBL.td}"><div class="flex min-w-0 items-center gap-3">${coverThumb(c, "sm")}<div class="min-w-0"><span class="block max-w-72 truncate font-medium text-fg">${esc(p.title)}</span><span class="${TBL.tdSub} truncate">${esc(c.title)}</span></div></div></td>
+        <td class="${TBL.td}"><div class="flex min-w-0 items-center gap-3">${coverThumb(c, "sm")}<div class="min-w-0"><span class="block max-w-72 truncate font-medium text-fg">${esc(p.title)}</span><span class="${TBL.tdSub} truncate">${esc(c.title)}<span class="xl:hidden"> · ${esc(p.platform)}</span></span></div></div></td>
         <td class="${TBL.td} hidden xl:table-cell">${platformTag(p.platform)}</td>
         <td class="${TBL.td} ${TBL.tdNum}">${fmt(p.views)}</td>
         <td class="${TBL.td} ${TBL.tdNum}">${p.status === "Validée" ? money(earningsOf(p)) : `<span class="font-normal text-fg-subtle">—</span>`}</td></tr>`; }).join("")}</tbody>
@@ -375,9 +383,9 @@ function cStatistiques() {
 
   return `${pageHeader("Statistiques", "Comprenez ce qui fait performer vos clips.", clPeriodSeg())}
     <div class="mt-6 grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3 lg:gap-5">
-      ${kpi({ label: "Gains de la période", value: bigMoney(periodGain), ic: "wallet", sub: `${state.period} derniers jours` })}
-      ${kpi({ label: "Vues totales", value: kpiValue(compact(clSum(pubs.map((p) => p.views)))), ic: "eye", sub: `sur ${plural(pubs.length, "clip", "clips")}` })}
-      <div class="col-span-2 grid lg:col-span-1">${kpi({ label: `Revenu pour 1${NB}000 vues`, value: rpm ? bigMoney(rpm) : kpiValue("—"), ic: "trend", sub: rpm ? "sur vos clips validés" : "Aucun clip validé" })}</div>
+      ${kpi({ label: "Gains de la période", value: bigMoney(periodGain), sub: `${state.period} derniers jours` })}
+      ${kpi({ label: "Vues totales", value: kpiValue(compact(clSum(pubs.map((p) => p.views)))), sub: `sur ${plural(pubs.length, "clip", "clips")}` })}
+      <div class="col-span-2 grid lg:col-span-1">${kpi({ label: `Revenu pour 1${NB}000 vues`, value: rpm ? bigMoney(rpm) : kpiValue("—"), sub: rpm ? "sur vos clips validés" : "Aucun clip validé" })}</div>
     </div>
     <div class="mt-4 lg:mt-5">${chart}</div>
     <div class="mt-4 grid gap-4 lg:mt-5 lg:grid-cols-2 lg:gap-5">
@@ -393,7 +401,7 @@ function cProfil() {
   const u = me(), h = u.handles || {};
   const at = (v) => esc(String(v || "").replace(/^@+/, ""));
   const handleInput = (name, label, placeholder) => field(label, `<span class="relative block"><span class="pointer-events-none absolute inset-y-0 left-3 flex items-center text-sm text-fg-subtle" aria-hidden="true">@</span><input name="${name}" maxlength="60" value="${at(h[name])}" placeholder="${placeholder}" autocomplete="off" class="${inputCls} pl-8"/></span>`);
-  const form = card(`<form data-form="profile">
+  const form = card(`<form data-form="profile" class="@container">
       <h2 class="text-section text-fg">Informations publiques</h2><p class="mt-0.5 text-small text-fg-muted">Visibles par les marques qui consultent vos clips.</p>
       <div class="mt-5 grid gap-4 sm:grid-cols-2">
         ${field("Nom complet", `<input name="name" required maxlength="80" value="${esc(u.name)}" autocomplete="name" class="${inputCls}"/>`)}
@@ -402,7 +410,7 @@ function cProfil() {
       </div>
       <div class="mt-5 border-t border-line pt-5">
         <h2 class="text-section text-fg">Vos comptes</h2><p class="mt-0.5 text-small text-fg-muted">Les comptes depuis lesquels vous publiez vos clips.</p>
-        <div class="mt-5 grid gap-4 sm:grid-cols-3">${handleInput("tiktok", "TikTok", "votrecompte")}${handleInput("instagram", "Instagram", "votrecompte")}${handleInput("youtube", "YouTube", "votrechaine")}</div>
+        <div class="mt-5 grid gap-4 @xl:grid-cols-3">${handleInput("tiktok", "TikTok", "votrecompte")}${handleInput("instagram", "Instagram", "votrecompte")}${handleInput("youtube", "YouTube", "votrechaine")}</div>
       </div>
       <div class="mt-6 flex justify-end"><button class="${btn("primary")}">Enregistrer</button></div>
     </form>`);
@@ -413,9 +421,9 @@ function cProfil() {
       ${u.bio ? `<p class="mt-4 text-sm text-fg-muted">${esc(u.bio)}</p>` : ""}
       <p class="mt-4 text-xs text-fg-subtle">Membre depuis le ${date(u.joined)}</p></div>`);
   return `${pageHeader("Profil", "Vos informations publiques et votre compte.")}
-    <div class="mt-6 grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_380px] lg:gap-5">
+    <div class="mt-6 grid items-start gap-4 lg:gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
       ${form}
-      <div class="grid gap-4 lg:gap-5">${identity}${accountCard(u)}</div>
+      <div class="grid gap-4 lg:grid-cols-2 lg:gap-5 xl:grid-cols-1">${identity}${accountCard(u)}</div>
     </div>`;
 }
 
@@ -430,7 +438,7 @@ function cParametres() {
     ["Retrait instantané", "Traité en priorité.", `${pct(s.instantFeePercent)}, min. ${money(s.instantMinFee)}`],
   ];
   return `${pageHeader("Paramètres", "Votre moyen de retrait et les règles de paiement.")}
-    <div class="mt-6 grid items-start gap-4 lg:grid-cols-2 lg:gap-5">
+    <div class="mt-6 grid items-start gap-4 lg:gap-5 xl:grid-cols-2">
       ${card(`${cardHeader("Moyen de retrait", "Vos gains sont versés sur ce compte, après validation de chaque demande par l'équipe ClipBoost.")}
         <form data-form="payout" class="mt-5 grid gap-5">
           <fieldset><legend class="mb-1.5 text-small font-medium text-fg">Type de compte</legend>
@@ -516,7 +524,7 @@ function clipperModal() {
       title: "Soumettre un clip", description: "Le clip sera vérifié par l'équipe ClipBoost avant validation.", form: "submit", live: "clip",
       body: `<div class="grid gap-4">
         ${field("Campagne", `<span class="relative block"><select name="campaign" class="${selectCls}">${joined.map((c) => `<option value="${c.id}" ${c.id === campaignId ? "selected" : ""}>${esc(c.title)} · ${rateShort(c.rate)}</option>`).join("")}</select>${CHEVRON}</span>`)}
-        ${field("Titre du clip", `<input name="title" maxlength="80" value="${esc(v.title || "")}" placeholder="Ex. Le but de l'année" autocomplete="off" class="${inputCls}"${inv("title")}/>`, "", e.title)}
+        ${field("Titre du clip", `<input name="title" maxlength="80" value="${esc(v.title || "")}" placeholder="Ex. Le but de l'année" autocomplete="off" autofocus class="${inputCls}"${inv("title")}/>`, "", e.title)}
         ${field("Lien de la vidéo", `<span class="relative block">${icon("link", "pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-fg-subtle")}<input name="url" type="url" inputmode="url" value="${esc(v.url || "")}" placeholder="https://www.tiktok.com/@…" autocomplete="off" class="${inputCls} pl-9"${inv("url")}/></span>`, "", e.url)}
         <fieldset><legend class="mb-1.5 text-small font-medium text-fg">Plateforme</legend>
           <div class="grid grid-cols-3 gap-2">${["TikTok", "Instagram", "YouTube"].map((p) => `<label class="block min-w-0"><input type="radio" name="platform" value="${p}" ${p === platform ? "checked" : ""} class="peer sr-only"/><span class="${SEG_CHOICE}"><span class="hidden sm:contents">${icon(PLATFORM_ICON[p])}</span><span class="truncate">${p}</span></span></label>`).join("")}</div>

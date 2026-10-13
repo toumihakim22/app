@@ -18,16 +18,34 @@ const cols = [
     links: [
       { label: "Comment ça marche", href: "#comment-ca-marche" },
       { label: "FAQ", href: "#faq" },
-      { label: "Administration", href: "/espace#/connexion" },
     ],
   },
   {
     title: "Légal",
     links: [
-      { label: "Conditions d'utilisation", href: "#" },
-      { label: "Confidentialité", href: "#" },
-      { label: "Mentions légales", href: "#" },
+      { label: "Conditions d'utilisation", href: "#conditions" },
+      { label: "Confidentialité", href: "#confidentialite" },
+      { label: "Mentions légales", href: "#mentions-legales" },
     ],
+  },
+];
+
+// Textes légaux courts, ciblés par les liens « Légal » et par la case des conditions de l'inscription (/#conditions).
+const legal = [
+  {
+    id: "conditions",
+    title: "Conditions d'utilisation",
+    text: "ClipBoost met en relation des clippers et des marques. Les gains sont calculés sur les vues des clips validés, selon le tarif, le seuil et le plafond de chaque campagne, puis restent quelques jours en rétention avant d'être retirables. Un clip qui ne respecte pas les règles de sa campagne ou dont les vues sont gonflées artificiellement est refusé, et le compte peut être suspendu.",
+  },
+  {
+    id: "confidentialite",
+    title: "Confidentialité",
+    text: "Nous ne collectons que les données utiles au service : nom, email, wilaya, liens des clips publiés et coordonnées de paiement. Elles servent à vérifier les clips et à verser les gains, ne sont jamais revendues et sont supprimées sur simple demande avec le compte.",
+  },
+  {
+    id: "mentions-legales",
+    title: "Mentions légales",
+    text: "ClipBoost est une plateforme exploitée en Algérie. Les montants sont exprimés en dinars algériens (DA). Les marques citées sur cette page appartiennent à leurs propriétaires respectifs.",
   },
 ];
 
@@ -44,16 +62,26 @@ export default function Footer() {
           {cols.map((c) => (
             <nav key={c.title} aria-label={c.title}>
               <p className="text-small font-semibold text-fg">{c.title}</p>
-              <ul className="mt-4 grid gap-3">
+              <ul className="mt-3 grid gap-1 md:mt-4 md:gap-3">
                 {c.links.map((l) => (
                   <li key={l.label}>
-                    <a href={l.href} className={`rounded-sm text-small text-fg-muted transition-colors duration-150 hover:text-fg ${FOCUS}`}>
+                    <a href={l.href} className={`inline-flex min-h-10 items-center rounded-sm text-small md:min-h-0 text-fg-muted transition-colors duration-150 hover:text-fg ${FOCUS}`}>
                       {l.label}
                     </a>
                   </li>
                 ))}
               </ul>
             </nav>
+          ))}
+        </div>
+        <div className="grid gap-6 border-t border-line py-10 md:grid-cols-3 md:gap-10">
+          {legal.map((l) => (
+            <section key={l.id} id={l.id} aria-labelledby={`${l.id}-titre`} className="scroll-mt-20">
+              <h2 id={`${l.id}-titre`} className="font-sans text-small font-semibold text-fg">
+                {l.title}
+              </h2>
+              <p className="mt-2 text-xs leading-5 text-fg-muted">{l.text}</p>
+            </section>
           ))}
         </div>
         <div className="flex flex-col gap-3 border-t border-line py-6 text-xs text-fg-subtle sm:flex-row sm:items-center sm:justify-between">
