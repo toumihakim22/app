@@ -5,6 +5,7 @@ import type { User } from "../auth";
 import { logActivity, notify, notifyRole } from "../events";
 import { badRequest, forbidden, notFound } from "../http";
 import { newId } from "../ids";
+import { link } from "../links";
 import { fundingCost, validateCampaignNumbers } from "../rules";
 import { getSettings } from "../settings";
 import { GRADIENTS } from "../gradients";
@@ -41,11 +42,11 @@ export async function createCampaign(user: User, input: CampaignInput) {
     status: isAdmin ? "Active" : "En attente", commissionRate: isAdmin ? 0 : settings.commissionRate,
   });
   if (isAdmin) {
-    await notifyRole(db, "clipper", "🎯", `Nouvelle campagne : ${input.title.trim()} (${input.rate} DA /1K).`);
+    await notifyRole(db, "clipper", "🎯", `Nouvelle campagne : ${input.title.trim()} (${input.rate} DA /1K).`, link.clipperCampaign(id));
     await logActivity(db, "🎯", `Campagne « ${input.title.trim()} » publiée.`);
   } else {
-    await notify(db, user.id, "⏳", `Votre campagne « ${input.title.trim()} » est en cours de vérification.`);
-    await notifyRole(db, "admin", "🏢", `${user.name} a soumis la campagne « ${input.title.trim()} ».`);
+    await notify(db, user.id, "⏳", `Votre campagne « ${input.title.trim()} » est en cours de vérification.`, link.agencyCampaign(id));
+    await notifyRole(db, "admin", "🏢", `${user.name} a soumis la campagne « ${input.title.trim()} ».`, link.adminCampaign(id));
     await logActivity(db, "🏢", `${user.name} a soumis la campagne « ${input.title.trim()} ».`);
   }
   return id;
@@ -85,14 +86,14 @@ export async function setCampaignStatus(user: User, id: string, next: CampaignSt
       if (refund > 0) {
         await tx.update(schema.users).set({ credit: sql`${schema.users.credit} + ${refund}` }).where(eq(schema.users.id, c.ownerId));
         patch.reserved = c.reserved - refund;
-        await notify(tx, c.ownerId, "💰", `${fmt(refund)} non consommés sur « ${c.title} » ont été rendus à votre crédit.`);
+        await notify(tx, c.ownerId, "💰", `${fmt(refund)} non consommés sur « ${c.title} » ont été rendus à votre crédit.`, link.agencyBudget(c.id));
       }
     }
     await tx.update(schema.campaigns).set(patch).where(eq(schema.campaigns.id, id));
 
     const verb: Record<string, string> = { Active: c.status === "En attente" ? "a été approuvée et est en ligne" : "est de nouveau active", "En pause": "a été mise en pause", "Terminée": "est terminée", "Refusée": "a été refusée" };
-    if (isAdmin) await notify(tx, c.ownerId, next === "Active" ? "✅" : "⚠️", `Votre campagne « ${c.title} » ${verb[next] ?? "a changé de statut"}.`);
-    if (c.status === "En attente" && next === "Active") await notifyRole(tx, "clipper", "🎯", `Nouvelle campagne : ${c.title} (${c.rate} DA /1K).`);
+    if (isAdmin) await notify(tx, c.ownerId, next === "Active" ? "✅" : "⚠️", `Votre campagne « ${c.title} » ${verb[next] ?? "a changé de statut"}.`, link.agencyCampaign(c.id));
+    if (c.status === "En attente" && next === "Active") await notifyRole(tx, "clipper", "🎯", `Nouvelle campagne : ${c.title} (${c.rate} DA /1K).`, link.clipperCampaign(c.id));
     await logActivity(tx, "🎯", `Campagne « ${c.title} » : ${c.status} → ${next}.`);
   });
 }

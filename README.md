@@ -48,6 +48,18 @@ Sans clé `RESEND_API_KEY`, les codes de vérification sont affichés dans le te
    ```
 3. Déployer (Vercel ou tout hébergeur Node.js) avec `DATABASE_URL`, `RESEND_API_KEY` et `EMAIL_FROM`, puis `npm run build` et `npm start`.
 
+## Fichier HTML autonome
+
+```bash
+npm run build:offline        # next build, puis web/dist/clipboost-site.html
+```
+
+Produit un seul fichier HTML (accueil, connexion, espaces Clipper, Agence et Admin) qui s'ouvre directement depuis le disque, sans serveur ni connexion internet : pratique pour une démonstration. L'API y est simulée dans le navigateur (`web/offline/`) avec les mêmes règles (`lib/server/rules.ts`) et les mêmes contrôles (`lib/server/validation.ts`) que le serveur ; les données sont enregistrées dans le `localStorage` du navigateur.
+
+Au premier lancement, le fichier contient les données d'exemple de `db:seed:demo` et le compte `admin@clipboost.dz` (mot de passe `AdminClip2026`). Les codes de vérification sont affichés à l'écran. « Réinitialiser la démo », dans les réglages de l'administration, efface les données du navigateur.
+
+Si l'accueil a déjà été construit (`.next/`), `node web/build.mjs --offline [fichier]` suffit.
+
 ## Règles métier
 
 Les réglages sont modifiables par l'administrateur (page « Réglages du site »). Valeurs par défaut :
@@ -57,6 +69,7 @@ Les réglages sont modifiables par l'administrateur (page « Réglages du site �
 - **Gains** : 3 jours de rétention avant d'être retirables.
 - **Retraits** : minimum 2 000 DA vers BaridiMob, CCP ou RIB. Standard gratuit, ou instantané avec 2 % de frais (100 DA minimum).
 - **Crédit agence** : demande de recharge avec une référence, confirmée par l'administrateur à réception du paiement.
+- **Agences côté clipper** : la page Campagnes s'ouvre sur la liste des agences qui organisent les campagnes visibles (l'agence propriétaire, ou la marque pour une campagne créée par ClipBoost), puis chaque agence a sa page (`#/clipper/agence/<clé>`) avec sa présentation et ses projets de clipping. Le clipper ne reçoit que leur profil public (nom, pays, présentation, date d'inscription).
 
 Le code des règles est dans `lib/server/rules.ts` et `lib/server/services/`.
 
@@ -78,7 +91,7 @@ components/landing/  sections de la page d'accueil
 lib/server/          base de données, authentification, règles et services
 drizzle/             migrations SQL
 scripts/             migrate et seed
-web/                 application /espace (JavaScript, sans framework)
+web/                 application /espace (JavaScript, sans framework) et version autonome (web/offline/)
 tests/               tests des règles et du parcours API
 ```
 

@@ -7,7 +7,7 @@ const PAYOUT_METHODS = ["BaridiMob", "CCP", "RIB bancaire"];
 const emptyDb = () => ({
   me: null,
   settings: { maintenance: false, signupsOpen: true, announcement: "", minWithdraw: 2000, commissionRate: 15, minBudget: 50000, holdDays: 3, earningDays: 7, instantFeePercent: 2, instantMinFee: 100 },
-  users: [], campaigns: [], publications: [], transactions: [], notifications: [], activity: [],
+  users: [], campaigns: [], agencies: [], publications: [], transactions: [], notifications: [], activity: [],
   series: { daily: [], label: "" },
 });
 let db = emptyDb();
@@ -15,7 +15,10 @@ let db = emptyDb();
 async function api(method, path, body) {
   let res;
   try {
-    res = await fetch(path, { method, credentials: "same-origin", headers: body ? { "Content-Type": "application/json" } : {}, body: body ? JSON.stringify(body) : undefined });
+    const init = { method, credentials: "same-origin", headers: body ? { "Content-Type": "application/json" } : {}, body: body ? JSON.stringify(body) : undefined };
+    // Version autonome (fichier HTML unique) : l'API tourne dans le navigateur, voir web/offline/server.ts.
+    const offline = window.__CLIPBOOST_OFFLINE__;
+    res = await (offline ? offline.fetch(path, init) : fetch(path, init));
   } catch (e) {
     throw new Error("Connexion au serveur impossible. Vérifiez votre connexion internet.");
   }
@@ -63,7 +66,7 @@ async function act(method, path, body, success, after) {
     return res;
   } catch (e) {
     if (e.status === 401) { await refresh().catch(() => {}); state.modal = null; navigate("#/connexion"); }
-    toast(e.message);
+    toast(e.message, "danger");
     return null;
   } finally {
     busy = false;

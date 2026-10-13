@@ -19,6 +19,9 @@ const ok = (r: { status: number; data: { error?: string } }, label: string) => a
 const step = (s: string) => console.log("✓", s);
 
 const stamp = Date.now();
+// Lien de la notification la plus récente dont le texte correspond.
+type Note = { text: string; link: string | null };
+const linkOf = (r: { data: { notifications: Note[] } }, text: RegExp) => r.data.notifications.find((n) => text.test(n.text))?.link;
 
 // 1. Inscription d'une agence avec code email.
 const agency = client();
@@ -28,11 +31,19 @@ assert.equal((await agency("POST", "/api/auth/verify", { email: `atlas${stamp}@t
 ok(await agency("POST", "/api/auth/verify", { email: `atlas${stamp}@test.dz`, code: r.data.devCode }), "vérification");
 r = await agency("GET", "/api/state"); assert.equal(r.data.me.role, "agence"); step("inscription agence + code email");
 
+// 1 bis. Présentation de l'agence (bio publique, 300 caractères au plus).
+assert.equal((await agency("PATCH", "/api/me", { bio: "x".repeat(301) })).status, 400);
+ok(await agency("PATCH", "/api/me", { bio: "Agence de contenus sportifs à Alger." }), "présentation de l'agence");
+r = await agency("GET", "/api/state"); assert.equal(r.data.me.bio, "Agence de contenus sportifs à Alger."); assert.deepEqual(r.data.agencies, []);
+step("présentation de l'agence enregistrée");
+
 // 2. Règles de campagne : plafond > seuil, budget minimum.
 assert.equal((await agency("POST", "/api/campaigns", { title: "Test", category: "Sport", rate: 150, budget: 60000, minPayout: 300, maxPayout: 200, platforms: ["TikTok"], rules: [] })).status, 400);
 assert.equal((await agency("POST", "/api/campaigns", { title: "Test", category: "Sport", rate: 150, budget: 1000, minPayout: 300, maxPayout: 600, platforms: ["TikTok"], rules: [] })).status, 400);
 r = await agency("POST", "/api/campaigns", { title: "Défi Sahara", category: "Sport", rate: 200, budget: 100000, minPayout: 400, maxPayout: 20000, emoji: "🏜️", platforms: ["TikTok", "Instagram"], rules: ["Mentionner @atlas"] });
-ok(r, "création campagne"); const campaignId = r.data.id; step("campagne créée (en attente), règles vérifiées");
+ok(r, "création campagne"); const campaignId = r.data.id;
+assert.equal(linkOf(await agency("GET", "/api/state"), /en cours de vérification/), `#/agence/campagnes/${campaignId}`);
+step("campagne créée (en attente), règles vérifiées");
 
 // 3. Admin : approbation impossible sans crédit, puis recharge confirmée, puis approbation (budget + 15 %).
 const admin = client();
@@ -42,9 +53,14 @@ assert.equal(r.status, 400); assert.match(r.data.error, /insuffisant/);
 r = await agency("POST", "/api/credit", { amount: 120000, method: "virement bancaire" }); ok(r, "demande de recharge");
 let st = await admin("GET", "/api/state");
 const recharge = st.data.transactions.find((t: { ref: string }) => t.ref === r.data.ref);
+assert.equal(linkOf(st, new RegExp(`^Atlas Média ${stamp} a soumis la campagne`)), `#/admin/campagnes/${campaignId}`);
+assert.equal(linkOf(st, new RegExp(`^Atlas Média ${stamp} annonce une recharge`)), `#/admin/retraits/${recharge.id}`);
 ok(await admin("POST", `/api/transactions/${recharge.id}/review`, { approve: true }), "recharge confirmée");
 ok(await admin("PATCH", `/api/campaigns/${campaignId}`, { status: "Active" }), "approbation");
-r = await agency("GET", "/api/state"); assert.equal(r.data.me.credit, 120000 - 115000); step("recharge confirmée, campagne approuvée, 115 000 DA prélevés");
+r = await agency("GET", "/api/state"); assert.equal(r.data.me.credit, 120000 - 115000);
+assert.equal(linkOf(r, /^Votre recharge de 120 000 DA a été validé/), `#/agence/budget/${recharge.id}`);
+assert.equal(linkOf(r, /a été approuvée et est en ligne/), `#/agence/campagnes/${campaignId}`);
+step("recharge confirmée, campagne approuvée, 115 000 DA prélevés, notifications liées");
 
 // 4. Clipper : inscription, rejoindre, soumettre un clip (lien vérifié).
 const clipper = client();
@@ -56,6 +72,14 @@ assert.equal((await clipper("POST", "/api/clips", { campaignId, title: "Mon clip
 r = await clipper("POST", "/api/clips", { campaignId, title: "Mon clip", platform: "TikTok", url: `https://www.tiktok.com/@r/video/${stamp}` }); ok(r, "soumission");
 const clipId = r.data.id; step("clipper inscrit, campagne rejointe, clip soumis (lien contrôlé)");
 
+// 4 bis. Le clipper voit l'agence de la campagne : profil public seulement (aucun email, contact ni crédit).
+r = await clipper("GET", "/api/state");
+const atlas = r.data.agencies.find((a: { id: string }) => a.id === r.data.campaigns.find((c: { id: string }) => c.id === campaignId).ownerId);
+assert.deepEqual(atlas, { id: atlas.id, name: `Atlas Média ${stamp}`, country: "Algérie", bio: "Agence de contenus sportifs à Alger.", joined: atlas.joined });
+assert.match(atlas.joined, /^\d{4}-\d{2}-\d{2}$/);
+for (const a of r.data.agencies) assert.deepEqual(Object.keys(a).sort(), ["bio", "country", "id", "joined", "name"]);
+step("agences visibles par le clipper : profil public uniquement");
+
 // 5. Seuil : refus de validation sous le seuil, puis vues relevées, validation, plafond.
 await admin("POST", `/api/clips/${clipId}/views`, { views: 1500 });
 r = await admin("POST", `/api/clips/${clipId}/review`, { approve: true }); assert.equal(r.status, 400); assert.match(r.data.error, /Seuil/);
@@ -63,6 +87,8 @@ ok(await admin("POST", `/api/clips/${clipId}/views`, { views: 50000 }), "vues");
 ok(await admin("POST", `/api/clips/${clipId}/review`, { approve: true }), "validation");
 r = await clipper("GET", "/api/state");
 assert.equal(r.data.me.pending, 10000); assert.equal(r.data.me.available, 0);
+const gain = r.data.transactions.find((t: { type: string }) => t.type === "gain");
+assert.equal(r.data.notifications[0].link, `#/clipper/portefeuille/${gain.id}`);
 ok(await admin("POST", `/api/clips/${clipId}/views`, { views: 400000 }), "vues +");
 r = await clipper("GET", "/api/state"); assert.equal(r.data.me.pending, 20000);
 step("seuil appliqué, 10 000 DA crédités, plafond de 20 000 DA respecté, gains en rétention");
@@ -88,6 +114,22 @@ step("rôles, protection CSRF et suspension vérifiés");
 const before = (await agency("GET", "/api/state")).data.me.credit;
 ok(await admin("PATCH", `/api/campaigns/${campaignId}`, { status: "Terminée" }), "terminer");
 const after = (await agency("GET", "/api/state")).data.me.credit;
-assert.equal(after - before, Math.round(80000 * 1.15)); step("campagne terminée, 92 000 DA rendus à l'agence");
+assert.equal(after - before, Math.round(80000 * 1.15));
+r = await agency("GET", "/api/state");
+assert.equal(linkOf(r, /non consommés sur/), `#/agence/budget/${campaignId}`);
+assert.equal(linkOf(r, /est terminée\.$/), `#/agence/campagnes/${campaignId}`);
+step("campagne terminée, 92 000 DA rendus à l'agence");
+
+// 9. Clip refusé : la notification mène au clip ; données d'exemple : chaque notification a son lien.
+const yacine = client();
+ok(await yacine("POST", "/api/auth/login", { email: "yacine@clipboost.dz", password: "Clipboost2026" }), "connexion yacine");
+const derby = (await yacine("GET", "/api/state")).data.campaigns.find((c: { title: string; status: string }) => c.title === "Derby Algérois" && c.status === "Active");
+r = await yacine("POST", "/api/clips", { campaignId: derby.id, title: "Hors sujet", platform: "TikTok", url: `https://www.tiktok.com/@y/video/${stamp}` }); ok(r, "soumission yacine");
+const refusedId = r.data.id;
+ok(await admin("POST", `/api/clips/${refusedId}/review`, { approve: false, reason: "Hors sujet" }), "refus");
+r = await yacine("GET", "/api/state");
+assert.equal(r.data.notifications[0].link, `#/clipper/publications/${refusedId}`);
+assert.ok(r.data.notifications.every((n: Note) => /^#\/clipper\/(campagnes|publications|portefeuille|accueil)(\/[0-9a-z]+)?$/.test(n.link ?? "")), "notifications sans lien");
+step("notifications liées : clip refusé, données d'exemple");
 
 console.log("\nParcours API complet : OK");
