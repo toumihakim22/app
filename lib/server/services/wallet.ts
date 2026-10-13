@@ -4,6 +4,7 @@ import type { User } from "../auth";
 import { logActivity, notify, notifyRole } from "../events";
 import { badRequest, notFound } from "../http";
 import { newId, newRef } from "../ids";
+import { link } from "../links";
 import { instantFee } from "../rules";
 import { getSettings } from "../settings";
 import { balances } from "./money";
@@ -22,11 +23,12 @@ export async function requestWithdrawal(user: User, amount: number, instant: boo
     await tx.select({ id: schema.users.id }).from(schema.users).where(eq(schema.users.id, user.id)).for("update");
     const { available } = await balances(tx, user.id);
     if (amount > available) throw badRequest(`Solde disponible insuffisant (${fmt(available)})`);
+    const id = newId();
     await tx.insert(schema.transactions).values({
-      id: newId(), ref: newRef(), userId: user.id, type: "retrait", amount: -amount, fee, status: "En cours",
+      id, ref: newRef(), userId: user.id, type: "retrait", amount: -amount, fee, status: "En cours",
       method: user.payoutMethod, label: `Retrait ${instant ? "instantané " : ""}vers ${user.payoutMethod}`,
     });
-    await notifyRole(tx, "admin", "💸", `${user.name} demande un retrait de ${fmt(amount)}${instant ? " (instantané)" : ""}.`);
+    await notifyRole(tx, "admin", "💸", `${user.name} demande un retrait de ${fmt(amount)}${instant ? " (instantané)" : ""}.`, link.adminPayment(id));
     await logActivity(tx, "💸", `${user.name} a demandé un retrait de ${fmt(amount)}.`);
   });
 }
@@ -34,9 +36,9 @@ export async function requestWithdrawal(user: User, amount: number, instant: boo
 /** Une agence demande à recharger son crédit (virement ou carte). Le crédit est ajouté quand l'équipe confirme la réception. */
 export async function requestCredit(user: User, amount: number, method: string) {
   const db = await getDb();
-  const ref = newRef();
-  await db.insert(schema.transactions).values({ id: newId(), ref, userId: user.id, type: "recharge", amount, status: "En cours", method, label: `Recharge par ${method}` });
-  await notifyRole(db, "admin", "🏦", `${user.name} annonce une recharge de ${fmt(amount)} par ${method} (réf. ${ref}).`);
+  const id = newId(), ref = newRef();
+  await db.insert(schema.transactions).values({ id, ref, userId: user.id, type: "recharge", amount, status: "En cours", method, label: `Recharge par ${method}` });
+  await notifyRole(db, "admin", "🏦", `${user.name} annonce une recharge de ${fmt(amount)} par ${method} (réf. ${ref}).`, link.adminPayment(id));
   return ref;
 }
 
@@ -53,7 +55,7 @@ export async function reviewTransaction(admin: User, id: string, approve: boolea
     }
     const what = t.type === "retrait" ? `retrait de ${fmt(-t.amount)}` : `recharge de ${fmt(t.amount)}`;
     const net = t.type === "retrait" && approve && t.fee ? ` (${fmt(-t.amount - t.fee)} versés après ${fmt(t.fee)} de frais)` : "";
-    await notify(tx, t.userId, approve ? "✅" : "⚠️", `Votre ${what} a été ${approve ? "validé" : "refusé"}${net}.`);
+    await notify(tx, t.userId, approve ? "✅" : "⚠️", `Votre ${what} a été ${approve ? "validé" : "refusé"}${net}.`, link.userTx(t.type, t.id));
     await logActivity(tx, approve ? "✅" : "🚫", `${what[0].toUpperCase()}${what.slice(1)} ${approve ? "validé" : "refusé"} par ${admin.name}.`);
   });
 }

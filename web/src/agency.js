@@ -239,14 +239,14 @@ function gBudget() {
   const perCampaign = list.length ? `<div class="${TBL.wrap}">
       <table class="${TBL.table.replace("md:table", "xl:table")}">
         <thead><tr class="${TBL.headRow}"><th scope="col" class="${TBL.th}">Campagne</th><th scope="col" class="${TBL.th} ${TBL.thNum}">Tarif</th><th scope="col" class="${TBL.th}">Consommé</th><th scope="col" class="${TBL.th} ${TBL.thNum}">Restant</th><th scope="col" class="${TBL.th} ${TBL.thNum}"><span class="sr-only">Action</span></th></tr></thead>
-        <tbody>${list.map((c) => `<tr class="${TBL.tr}">
+        <tbody>${list.map((c) => `<tr data-row="${c.id}" class="${TBL.tr}">
           <td class="${TBL.td}"><div class="flex min-w-0 items-center gap-3">${coverThumb(c, "sm")}<div class="min-w-0"><p class="max-w-56 truncate font-medium text-fg">${esc(c.title)}</p><div class="mt-1">${statusBadge(c.status)}</div></div></div></td>
           <td class="${TBL.td} ${TBL.tdNum}">${money(c.rate)}<span class="${TBL.tdSub} font-normal">pour 1${NB}000 vues</span></td>
           <td class="${TBL.td}"><div class="min-w-48 max-w-64">${progress(c.spent, c.budget, { aria: `Budget consommé de ${c.title}` })}</div></td>
           <td class="${TBL.td} ${TBL.tdNum}">${agClosed(c) ? `<span class="text-fg-subtle">—</span>` : money(Math.max(0, c.budget - c.spent))}</td>
           <td class="${TBL.td} ${TBL.tdActions}">${action(c, false)}</td></tr>`).join("")}</tbody>
       </table>
-      <ul class="${TBL.list.replace("md:hidden", "xl:hidden")}">${list.map((c) => `<li class="${TBL.item}">
+      <ul class="${TBL.list.replace("md:hidden", "xl:hidden")}">${list.map((c) => `<li data-row="${c.id}" class="${TBL.item}">
         <div class="flex items-start gap-3">${coverThumb(c, "sm")}<div class="min-w-0 flex-1"><p class="truncate text-sm font-medium text-fg">${esc(c.title)}</p><p class="truncate text-xs text-fg-subtle">${rate(c.rate)}</p></div>${statusBadge(c.status)}</div>
         ${progress(c.spent, c.budget, { aria: `Budget consommé de ${c.title}` })}
         ${agClosed(c) ? `<p class="text-xs text-fg-subtle">Archivée</p>` : `<div class="flex items-center justify-between text-small"><span class="text-fg-subtle">Restant</span><span class="font-medium">${money(Math.max(0, c.budget - c.spent))}</span></div><div class="sm:flex sm:justify-end">${action(c, true)}</div>`}
@@ -256,14 +256,14 @@ function gBudget() {
   const history = `<div class="${TBL.wrap}">
       <table class="${TBL.table}">
         <thead><tr class="${TBL.headRow}"><th scope="col" class="${TBL.th}">Date</th><th scope="col" class="${TBL.th}">Moyen</th><th scope="col" class="${TBL.th}">Référence</th><th scope="col" class="${TBL.th}">Statut</th><th scope="col" class="${TBL.th} ${TBL.thNum}">Montant</th></tr></thead>
-        <tbody>${recharges.map((x) => `<tr class="${TBL.tr}">
+        <tbody>${recharges.map((x) => `<tr data-row="${x.id}" class="${TBL.tr}">
           <td class="${TBL.td} whitespace-nowrap tabular-nums">${date(x.date)}<span class="${TBL.tdSub}">${esc(x.time || "")}</span></td>
           <td class="${TBL.td}">${agMethod(x)}</td>
           <td class="${TBL.td}"><span class="inline-flex items-center gap-1 text-fg">${code(x.ref)}${agCopyBtn(x.ref)}</span></td>
           <td class="${TBL.td}">${agRechargeStatus(x)}</td>
           <td class="${TBL.td} ${TBL.tdNum}">${agRechargeAmount(x)}</td></tr>`).join("")}</tbody>
       </table>
-      <ul class="${TBL.list}">${recharges.map((x) => `<li class="flex items-center gap-3 px-4 py-3">
+      <ul class="${TBL.list}">${recharges.map((x) => `<li data-row="${x.id}" class="flex items-center gap-3 px-4 py-3">
         <span class="grid size-8 shrink-0 place-items-center rounded-full ${x.status === "Validé" ? "bg-income-soft text-income" : "bg-muted text-fg-muted"}" aria-hidden="true">${icon("arrowDownLeft", "size-4")}</span>
         <div class="min-w-0 flex-1"><p class="truncate text-sm font-medium text-fg">${agMethod(x)}</p><p class="flex items-center gap-1 truncate text-xs text-fg-subtle">${date(x.date)} · ${code(x.ref)}</p></div>
         <div class="shrink-0 text-right"><p class="text-sm font-medium">${agRechargeAmount(x)}</p>${x.status === "Validé" ? "" : `<div class="mt-1 flex justify-end">${agRechargeStatus(x)}</div>`}</div>

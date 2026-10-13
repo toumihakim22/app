@@ -75,7 +75,7 @@ function clWalletCard({ curve = false } = {}) {
 // Ligne d'historique d'argent (§4.6), du point de vue du clipper.
 function txRow(t) {
   const credit = t.amount > 0, final = t.status === "Validé" && !clOnHold(t);
-  return `<li class="flex items-center gap-3 py-3">
+  return `<li data-row="${t.id}" class="flex items-center gap-3 py-3">
     <span class="grid size-8 shrink-0 place-items-center rounded-full ${credit ? "bg-income-soft text-income" : "bg-muted text-fg-muted"}" aria-hidden="true">${icon(credit ? "arrowDownLeft" : "arrowUpRight", "size-4")}</span>
     <div class="min-w-0 flex-1"><p class="truncate text-sm font-medium text-fg">${esc(t.label)}</p>
       <p class="truncate text-xs text-fg-subtle">${date(t.date)} · ${code(t.ref)}${t.fee ? ` · frais ${da(t.fee)}` : ""}</p>
@@ -173,7 +173,7 @@ function publicationsTable(list, { showUser = false, actions = false, amountLabe
     // Sous-ligne du tableau : seule la campagne se tronque ; la plateforme (colonne masquée sous xl) devient un pictogramme.
     const subCell = `<span class="mt-0.5 flex min-w-0 items-center gap-1 text-xs text-fg-subtle"><span class="truncate">${esc(c.title)}</span><span class="shrink-0 whitespace-nowrap">· ${date(p.date)}</span><span class="inline-flex shrink-0 items-center gap-1 xl:hidden" title="${esc(p.platform)}">·${icon(PLATFORM_ICON[p.platform] || "film", "size-3.5")}<span class="sr-only">${esc(p.platform)}</span></span></span>`;
     return {
-      tr: `<tr class="${TBL.tr}">
+      tr: `<tr data-row="${p.id}" class="${TBL.tr}">
         <td class="${TBL.td} w-full max-w-0"><div class="flex min-w-0 items-center gap-3">${coverThumb(c, "sm")}<div class="min-w-0 flex-1">${title}${subCell}${reason}</div></div></td>
         ${showUser ? `<td class="${TBL.td}">${owner ? `<div class="flex items-center gap-2">${avatar(owner, "xs")}<span class="max-w-40 truncate text-small text-fg">${esc(owner.name)}</span></div>` : dash}</td>` : ""}
         <td class="${TBL.td} hidden xl:table-cell">${platformTag(p.platform)}</td>
@@ -181,7 +181,7 @@ function publicationsTable(list, { showUser = false, actions = false, amountLabe
         <td class="${TBL.td} ${TBL.tdNum}">${amount}</td>
         ${actions ? `<td class="${TBL.td} ${TBL.tdActions}">${decision}</td>` : `<td class="${TBL.td}">${statusBadge(p.status)}</td>`}
       </tr>`,
-      li: `<li class="${TBL.item}">
+      li: `<li data-row="${p.id}" class="${TBL.item}">
         <div class="flex items-start gap-3">${coverThumb(c, "sm")}<div class="min-w-0 flex-1"><p class="truncate text-sm font-medium text-fg">${p.url ? `<a href="${esc(p.url)}" target="_blank" rel="noopener noreferrer" class="underline-offset-2 hover:underline">${esc(p.title)}</a>` : esc(p.title)}</p>
           <p class="truncate text-xs text-fg-subtle">${showUser && owner ? `${esc(owner.name)} · ` : ""}${sub}</p>${reason}</div>${actions && pending ? "" : statusBadge(p.status)}</div>
         <div class="flex items-center justify-between gap-3 text-small"><span class="min-w-0 truncate text-fg-subtle">${plural(p.views, "vue", "vues")} · ${esc(p.platform)}</span><span class="shrink-0 font-medium">${amountMobile}</span></div>
@@ -485,7 +485,8 @@ function clipperModal() {
   if (m.type === "campaign") {
     const c = campaignById(m.id);
     if (!c) return "";
-    const joined = u.joinedCampaigns.has(c.id), remaining = Math.max(0, c.budget - c.spent);
+    // Une campagne en pause ou terminée reste consultable (lien d'une notification) : statut affiché, sans action.
+    const joined = u.joinedCampaigns.has(c.id), remaining = Math.max(0, c.budget - c.spent), open = c.status === "Active";
     const tile = (label, value, extra = "", cls = "") => `<div class="${TILE} ${cls}"><p class="text-xs text-fg-subtle">${label}</p><p class="mt-0.5 text-sm font-semibold tabular-nums text-fg">${value}</p>${extra}</div>`;
     return modalShell({
       title: esc(c.title), description: `${esc(c.brand)} · ${esc(c.category)} · créée le ${date(c.createdAt)}`, size: "lg",
@@ -495,14 +496,19 @@ function clipperModal() {
         <div class="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3">
           ${tile("Tarif", rate(c.rate))}
           ${tile("Clippers", fmt(c.clippers))}
-          ${tile("Budget restant", da(remaining), `<div class="mt-2">${progress(c.spent, c.budget, { label: false })}</div>`, "col-span-2 sm:col-span-1")}
+          ${open
+            ? tile("Budget restant", da(remaining), `<div class="mt-2">${progress(c.spent, c.budget, { label: false })}</div>`, "col-span-2 sm:col-span-1")
+            : `<div class="${TILE} col-span-2 sm:col-span-1"><p class="text-xs text-fg-subtle">Statut</p><p class="mt-1">${statusBadge(c.status)}</p></div>`}
         </div>
-        <div class="mt-4">${alertBox("info", `Vous êtes payé à partir de <strong class="font-semibold">${plural(clThresholdViews(c), "vue", "vues")}</strong> (${da(c.minPayout)}) et jusqu'à <strong class="font-semibold">${plural(viewsFor(c, c.maxPayout), "vue", "vues")}</strong> (${da(c.maxPayout)}) par clip.`)}</div>
+        <div class="mt-4">${open ? alertBox("info", `Vous êtes payé à partir de <strong class="font-semibold">${plural(clThresholdViews(c), "vue", "vues")}</strong> (${da(c.minPayout)}) et jusqu'à <strong class="font-semibold">${plural(viewsFor(c, c.maxPayout), "vue", "vues")}</strong> (${da(c.maxPayout)}) par clip.`)
+          : alertBox("warning", c.status === "En pause"
+            ? `Cette campagne est <strong class="font-semibold">en pause</strong> : elle n'accepte ni nouveaux clippers ni nouveaux clips pour le moment.`
+            : `Cette campagne est <strong class="font-semibold">terminée</strong> : elle n'accepte plus de clippers ni de clips.`)}</div>
         <h3 class="mt-6 text-section text-fg">Règles de la campagne</h3>
         <ul class="mt-2 grid gap-2">${c.rules.map((r) => `<li class="flex gap-2.5 text-sm text-fg-muted">${icon("check", "mt-0.5 size-4 shrink-0 text-income")}<span>${esc(r)}</span></li>`).join("")}</ul>
         <h3 class="mt-6 text-section text-fg">Plateformes</h3>
         <div class="mt-2 flex flex-wrap gap-2">${c.platforms.map(platformTag).join("")}</div>`,
-      footer: `<button type="button" data-action="close-modal" class="${btn("ghost")}">Fermer</button>${joined
+      footer: `<button type="button" data-action="close-modal" class="${btn(open ? "ghost" : "secondary")}">Fermer</button>${!open ? "" : joined
         ? `<button type="button" data-action="submit-clip" data-id="${c.id}" class="${btn("primary")}">${icon("plus")}Soumettre un clip</button>`
         : `<button type="button" data-action="join" data-id="${c.id}" class="${btn("primary")}">Rejoindre la campagne</button>`}`,
     });

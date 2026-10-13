@@ -4,6 +4,7 @@ import type { User } from "../auth";
 import { logActivity, notify } from "../events";
 import { badRequest, notFound } from "../http";
 import { newId, newRef } from "../ids";
+import { link } from "../links";
 import { belowMin, payoutDelta, viewsFor } from "../rules";
 import { getSettings } from "../settings";
 
@@ -69,13 +70,14 @@ async function credit(tx: Tx, p: Pub, c: Camp, amount: number, label: string, ho
   const spent = c.spent + amount;
   await tx.update(schema.publications).set({ paid: p.paid + amount }).where(eq(schema.publications.id, p.id));
   await tx.update(schema.campaigns).set({ spent, ...(spent >= c.budget ? { status: "Terminée" as const } : {}) }).where(eq(schema.campaigns.id, c.id));
+  const txId = newId();
   await tx.insert(schema.transactions).values({
-    id: newId(), ref: newRef(), userId: p.userId, type: "gain", label, amount, status: "Validé",
+    id: txId, ref: newRef(), userId: p.userId, type: "gain", label, amount, status: "Validé",
     availableAt: new Date(Date.now() + holdDays * 86_400_000), publicationId: p.id,
   });
-  await notify(tx, p.userId, "💸", `+${fmt(amount)} pour « ${p.title} ». Retirable dans ${holdDays} jours.`);
+  await notify(tx, p.userId, "💸", `+${fmt(amount)} pour « ${p.title} ». Retirable dans ${holdDays} jours.`, link.clipperTx(txId));
   if (spent >= c.budget) {
-    await notify(tx, c.ownerId, "🏁", `Le budget de « ${c.title} » est entièrement consommé : la campagne est terminée.`);
+    await notify(tx, c.ownerId, "🏁", `Le budget de « ${c.title} » est entièrement consommé : la campagne est terminée.`, link.agencyCampaign(c.id));
     await logActivity(tx, "🏁", `Campagne « ${c.title} » terminée (budget consommé).`);
   }
 }
@@ -89,7 +91,7 @@ export async function reviewClip(admin: User, id: string, decision: { approve: t
     if (p.status !== "En attente") throw badRequest("Ce clip a déjà été traité");
     if (!decision.approve) {
       await tx.update(schema.publications).set({ status: "Refusée", reason: decision.reason }).where(eq(schema.publications.id, id));
-      await notify(tx, p.userId, "⚠️", `Clip « ${p.title} » refusé : ${decision.reason}.`);
+      await notify(tx, p.userId, "⚠️", `Clip « ${p.title} » refusé : ${decision.reason}.`, link.clip(p.id));
       await logActivity(tx, "🚫", `Clip « ${p.title} » refusé par ${admin.name}.`);
       return;
     }
@@ -99,7 +101,7 @@ export async function reviewClip(admin: User, id: string, decision: { approve: t
     await tx.update(schema.publications).set({ status: "Validée", approvedAt: now }).where(eq(schema.publications.id, id));
     const amount = payoutDelta(p.views, c, 0);
     if (amount > 0) await credit(tx, { ...p, status: "Validée", approvedAt: now }, c, amount, c.title, settings.holdDays);
-    else await notify(tx, p.userId, "✅", `Votre clip « ${p.title} » a été validé.`);
+    else await notify(tx, p.userId, "✅", `Votre clip « ${p.title} » a été validé.`, link.clip(p.id));
     await logActivity(tx, "✅", `Clip « ${p.title} » validé (${fmt(amount)}).`);
   });
 }

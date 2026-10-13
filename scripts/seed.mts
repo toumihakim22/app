@@ -2,6 +2,7 @@
 import { eq } from "drizzle-orm";
 import * as schema from "../lib/server/db/schema";
 import { newId, newRef } from "../lib/server/ids";
+import { link } from "../lib/server/links";
 import { hashPassword } from "../lib/server/password";
 import { payoutFor } from "../lib/server/rules";
 import { DEFAULT_SETTINGS } from "../lib/server/settings";
@@ -53,17 +54,17 @@ if (process.argv.includes("--demo")) {
     // Journal d'activité et notifications des événements de démo (mêmes textes que les services, lib/server/services/*).
     const fmt = (n: number) => `${n.toLocaleString("fr-FR").replace(/\u202f|\xa0/g, " ")} DA`;
     const acts: [number, string, string][] = [];
-    const notes: [{ id: string }, number, string, string][] = [];
+    const notes: [{ id: string }, number, string, string, string][] = [];
     const launched = (c: typeof derby, days: number) => {
-      for (const u of [yacine, amira, lina]) if ((u.createdAt as Date) < daysAgo(days)) notes.push([u, days, "🎯", `Nouvelle campagne : ${c.title} (${c.rate} DA /1K).`]);
+      for (const u of [yacine, amira, lina]) if ((u.createdAt as Date) < daysAgo(days)) notes.push([u, days, "🎯", `Nouvelle campagne : ${c.title} (${c.rate} DA /1K).`, link.clipperCampaign(c.id)]);
     };
     launched(rire, 20); launched(kahwa, 14);
-    notes.push([tassili, 10, "⏳", `Votre campagne « ${derby.title} » est en cours de vérification.`], [tassili, 9.9, "✅", `Votre campagne « ${derby.title} » a été approuvée et est en ligne.`]);
+    notes.push([tassili, 10, "⏳", `Votre campagne « ${derby.title} » est en cours de vérification.`, link.agencyCampaign(derby.id)], [tassili, 9.9, "✅", `Votre campagne « ${derby.title} » a été approuvée et est en ligne.`, link.agencyCampaign(derby.id)]);
     acts.push([9.9, "🎯", `Campagne « ${derby.title} » : En attente → Active.`]);
     launched(derby, 9.9);
     acts.push([3, "🏢", `${hoggar.name} s'est inscrit (agence).`]);
     acts.push([2, "🏢", `${hoggar.name} a soumis la campagne « ${soirees.title} ».`]);
-    notes.push([hoggar, 2, "⏳", `Votre campagne « ${soirees.title} » est en cours de vérification.`]);
+    notes.push([hoggar, 2, "⏳", `Votre campagne « ${soirees.title} » est en cours de vérification.`, link.agencyCampaign(soirees.id)]);
 
     // Clips : certains validés et payés, d'autres en attente (dont un sous le seuil).
     const pubs: { u: typeof yacine; c: typeof derby; title: string; platform: string; views: number; status: schema.PublicationStatus; days: number; reason?: string }[] = [
@@ -81,31 +82,33 @@ if (process.argv.includes("--demo")) {
       const id = newId(), host = p.platform === "TikTok" ? "www.tiktok.com/@clip/video/" : p.platform === "Instagram" ? "www.instagram.com/reel/" : "youtu.be/";
       const paid = p.status === "Validée" ? payoutFor(p.views, p.c) : 0;
       await db.insert(schema.publications).values({ id, userId: p.u.id, campaignId: p.c.id, title: p.title, platform: p.platform, url: `https://${host}demo${++i}`, views: p.views, status: p.status, reason: p.reason, paid, approvedAt: p.status === "Validée" ? daysAgo(p.days) : null, createdAt: daysAgo(p.days + 1) });
+      const txId = newId();
       if (paid) {
-        await db.insert(schema.transactions).values({ id: newId(), ref: newRef(), userId: p.u.id, type: "gain", label: p.c.title, amount: paid, status: "Validé", availableAt: daysAgo(p.days - 3), publicationId: id, createdAt: daysAgo(p.days) });
+        await db.insert(schema.transactions).values({ id: txId, ref: newRef(), userId: p.u.id, type: "gain", label: p.c.title, amount: paid, status: "Validé", availableAt: daysAgo(p.days - 3), publicationId: id, createdAt: daysAgo(p.days) });
         p.c.spent = (p.c.spent ?? 0) + paid;
       }
       acts.push([p.days + 1, "🎬", `${p.u.name} a soumis le clip « ${p.title} » (${p.c.title}).`]);
       if (paid) {
         acts.push([p.days, "✅", `Clip « ${p.title} » validé (${fmt(paid)}).`]);
-        notes.push([p.u, p.days, "💸", `+${fmt(paid)} pour « ${p.title} ». Retirable dans ${DEFAULT_SETTINGS.holdDays} jours.`]);
+        notes.push([p.u, p.days, "💸", `+${fmt(paid)} pour « ${p.title} ». Retirable dans ${DEFAULT_SETTINGS.holdDays} jours.`, link.clipperTx(txId)]);
       } else if (p.status === "Refusée") {
         acts.push([p.days, "🚫", `Clip « ${p.title} » refusé par Équipe ClipBoost.`]);
-        notes.push([p.u, p.days, "⚠️", `Clip « ${p.title} » refusé : ${p.reason}.`]);
+        notes.push([p.u, p.days, "⚠️", `Clip « ${p.title} » refusé : ${p.reason}.`, link.clip(id)]);
       }
     }
     for (const c of [derby, rire, kahwa]) await db.update(schema.campaigns).set({ spent: c.spent }).where(eq(schema.campaigns.id, c.id));
-    await db.insert(schema.transactions).values({ id: newId(), ref: newRef(), userId: amira.id, type: "retrait", label: "Retrait vers BaridiMob", amount: -2000, status: "En cours", method: "BaridiMob", createdAt: daysAgo(1) });
+    const withdrawalId = newId(), rechargeId = newId();
+    await db.insert(schema.transactions).values({ id: withdrawalId, ref: newRef(), userId: amira.id, type: "retrait", label: "Retrait vers BaridiMob", amount: -2000, status: "En cours", method: "BaridiMob", createdAt: daysAgo(1) });
     const rechargeRef = newRef();
-    await db.insert(schema.transactions).values({ id: newId(), ref: rechargeRef, userId: hoggar.id, type: "recharge", label: "Recharge par virement bancaire", amount: 600000, status: "En cours", method: "virement bancaire", createdAt: daysAgo(1) });
+    await db.insert(schema.transactions).values({ id: rechargeId, ref: rechargeRef, userId: hoggar.id, type: "recharge", label: "Recharge par virement bancaire", amount: 600000, status: "En cours", method: "virement bancaire", createdAt: daysAgo(1) });
     acts.push([1, "💸", `${amira.name} a demandé un retrait de ${fmt(2000)}.`]);
     for (const admin of await db.select({ id: schema.users.id }).from(schema.users).where(eq(schema.users.role, "admin"))) {
-      notes.push([admin, 2, "🏢", `${hoggar.name} a soumis la campagne « ${soirees.title} ».`], [admin, 1, "💸", `${amira.name} demande un retrait de ${fmt(2000)}.`],
-        [admin, 0.9, "🏦", `${hoggar.name} annonce une recharge de ${fmt(600000)} par virement bancaire (réf. ${rechargeRef}).`]);
+      notes.push([admin, 2, "🏢", `${hoggar.name} a soumis la campagne « ${soirees.title} ».`, link.adminCampaign(soirees.id)], [admin, 1, "💸", `${amira.name} demande un retrait de ${fmt(2000)}.`, link.adminPayment(withdrawalId)],
+        [admin, 0.9, "🏦", `${hoggar.name} annonce une recharge de ${fmt(600000)} par virement bancaire (réf. ${rechargeRef}).`, link.adminPayment(rechargeId)]);
     }
     // Les événements de plus de 2 jours sont déjà lus ; les plus récents restent à lire.
     await db.insert(schema.activity).values(acts.map(([days, icon, text]) => ({ id: newId(), icon, text, createdAt: daysAgo(days) })));
-    await db.insert(schema.notifications).values(notes.map(([u, days, icon, text]) => ({ id: newId(), userId: u.id, icon, text, read: days > 2, createdAt: daysAgo(days) })));
+    await db.insert(schema.notifications).values(notes.map(([u, days, icon, text, href]) => ({ id: newId(), userId: u.id, icon, text, link: href, read: days > 2, createdAt: daysAgo(days) })));
     console.log("Données d'exemple créées (mot de passe des comptes d'exemple : Clipboost2026).");
   }
 }

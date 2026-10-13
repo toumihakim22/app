@@ -218,7 +218,7 @@ function aCampagnes() {
   const sub = (c) => { const o = owner(c); return `${esc(c.brand)} · ${esc(c.category)} · ${o ? `par l'agence ${esc(o.name)}` : c.ownerId ? "agence supprimée" : "gérée par ClipBoost"}`; };
   const fallback = (c) => (c.status === "Terminée" ? `<span class="text-xs text-fg-subtle">Archivée</span>` : admDash);
 
-  const trs = list.map((c) => `<tr class="${TBL.tr}">
+  const trs = list.map((c) => `<tr data-row="${c.id}" class="${TBL.tr}">
         <td class="${ADM_TD_MAIN}"><div class="flex min-w-0 items-center gap-3">${coverThumb(c, "sm")}<div class="min-w-0"><p class="truncate font-medium text-fg">${esc(c.title)}</p><span class="${TBL.tdSub} truncate">${sub(c)}</span></div></div></td>
         <td class="${TBL.td}">${statusBadge(c.status)}</td>
         <td class="${TBL.td} ${TBL.tdNum}">${money(c.rate)}<span class="${TBL.tdSub} font-normal">/ 1${NB}000${NB}vues</span></td>
@@ -227,7 +227,7 @@ function aCampagnes() {
         <td class="${TBL.td} ${TBL.tdActions}"><div class="flex items-center justify-end gap-2">${admCampActions(c, "sm") || fallback(c)}</div></td>
       </tr>`).join("");
   // Sous xl : une ligne par campagne (identité | budget), actions en boutons md dessous, alignées à droite dès sm.
-  const lis = list.map((c) => { const acts = admCampActions(c, "md"); return `<li class="grid gap-3 px-4 py-3.5 sm:grid-cols-[minmax(0,1fr)_minmax(0,14rem)] sm:items-center sm:gap-x-8 sm:px-5">
+  const lis = list.map((c) => { const acts = admCampActions(c, "md"); return `<li data-row="${c.id}" class="grid gap-3 px-4 py-3.5 sm:grid-cols-[minmax(0,1fr)_minmax(0,14rem)] sm:items-center sm:gap-x-8 sm:px-5">
       <div class="flex min-w-0 items-start gap-3">${coverThumb(c, "sm")}<div class="min-w-0 flex-1"><p class="truncate text-sm font-medium text-fg">${esc(c.title)}</p><p class="line-clamp-2 text-xs text-fg-subtle">${sub(c)}</p>
         <p class="mt-1 text-xs tabular-nums text-fg-subtle">${rateShort(c.rate)} · ${plural(c.clippers, "clipper", "clippers")}</p></div>${statusBadge(c.status)}</div>
       <div class="min-w-0">${progress(c.spent, c.budget)}</div>
@@ -275,7 +275,7 @@ const admMonoLine = (label, html, value, copyLabel, msg) =>
 const admMoneyRows = (rows) => `<dl class="grid gap-1.5 text-small">${rows.map(([l, v, strong]) => `<div class="flex items-baseline justify-between gap-4 ${strong ? "border-t border-line pt-2 font-semibold text-fg first:border-t-0 first:pt-0" : "text-fg-muted"}"><dt>${l}</dt><dd class="text-right">${v}</dd></div>`).join("")}</dl>`;
 const admWhen = (t) => `${date(t.date)}${t.time ? ` · ${esc(t.time)}` : ""}`;
 // Carte d'une demande (sous la largeur du tableau) : identité et coordonnées à gauche, argent et décision à droite dès sm.
-const admPayItem = (u, sub, badgeHtml, details, moneyHtml, actions) => `<li class="grid gap-4 px-4 py-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,17rem)] sm:gap-x-8 sm:px-5">
+const admPayItem = (u, sub, badgeHtml, details, moneyHtml, actions, id) => `<li data-row="${id}" class="grid gap-4 px-4 py-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,17rem)] sm:gap-x-8 sm:px-5">
     <div class="grid min-w-0 content-start gap-3">
       <div class="flex items-start gap-3">${avatar(u, "md")}<div class="min-w-0 flex-1"><p class="truncate text-sm font-medium text-fg">${esc(u.name)}</p><p class="truncate text-xs tabular-nums text-fg-subtle">${sub}</p></div>${badgeHtml}</div>
       <dl class="grid gap-2.5 rounded-tile bg-subtle p-3">${details}</dl>
@@ -290,7 +290,7 @@ function admWithdrawals(list) {
     const u = admUser(t.userId), acc = admAccountValue(u.payoutAccount), method = t.method || u.payoutMethod || "", pending = t.status === "En cours";
     const fee = t.fee ? admMuted(t.fee) : admDash;
     return {
-      tr: `<tr class="${TBL.tr}">
+      tr: `<tr data-row="${t.id}" class="${TBL.tr}">
         <td class="${ADM_TD_MAIN}">${admPayer(u, t)}</td>
         <td class="${TBL.td}"><div class="flex items-center gap-1.5"><div class="grid justify-items-start gap-1">${method ? badge(esc(method), "idle") : ""}${acc ? `<span class="whitespace-nowrap font-mono text-small text-fg">${admAccount(acc)}</span>` : `<span class="text-xs text-fg-subtle">Aucun compte enregistré</span>`}</div>${acc ? admCopyBtn(acc, "Copier le numéro", "Numéro copié") : ""}</div></td>
         <td class="${TBL.td}"><span class="whitespace-nowrap text-small text-fg">${code(t.ref)}</span></td>
@@ -303,7 +303,7 @@ function admWithdrawals(list) {
         admMonoLine(method ? `Compte ${esc(method)}` : "Compte", acc ? admAccount(acc) : `<span class="font-sans text-small text-fg-subtle">Aucun compte enregistré</span>`, acc, "Copier le numéro", "Numéro copié")
         + admMonoLine("Référence", esc(t.ref), t.ref, "Copier la référence", "Référence copiée"),
         admMoneyRows([["Montant demandé", money(-t.amount)], ["Frais", fee], ["Net à virer", money(admNet(t)), true]]),
-        admPayActions(t, "md", "Virement effectué")),
+        admPayActions(t, "md", "Virement effectué"), t.id),
     };
   });
   return admTable("wide", `<th scope="col" class="${TBL.th}">Bénéficiaire</th><th scope="col" class="${TBL.th}">Moyen et compte</th><th scope="col" class="${TBL.th}">Référence</th><th scope="col" class="${TBL.th} ${TBL.thNum}">Montant</th><th scope="col" class="${TBL.th} ${TBL.thNum}">Frais</th><th scope="col" class="${TBL.th} ${TBL.thNum}">Net à virer</th>${ADM_TH_ACTIONS}`,
@@ -315,7 +315,7 @@ function admRecharges(list) {
   const rows = list.map((t) => {
     const u = admUser(t.userId), pending = t.status === "En cours", method = admCap(t.method);
     return {
-      tr: `<tr class="${TBL.tr}">
+      tr: `<tr data-row="${t.id}" class="${TBL.tr}">
         <td class="${ADM_TD_MAIN}">${admPayer(u, t)}</td>
         <td class="${TBL.td}">${method ? badge(method, "idle") : admDash}</td>
         <td class="${TBL.td}"><span class="flex items-center gap-0.5"><span class="whitespace-nowrap text-small text-fg">${code(t.ref)}</span>${admCopyBtn(t.ref, "Copier la référence", "Référence copiée")}</span></td>
@@ -325,7 +325,7 @@ function admRecharges(list) {
       li: admPayItem(u, `${method || "Recharge"} · ${admWhen(t)}`, pending ? badge("À confirmer", "info", { dot: true }) : statusBadge(t.status),
         admMonoLine("Référence du paiement", esc(t.ref), t.ref, "Copier la référence", "Référence copiée"),
         admMoneyRows([["Montant annoncé", money(t.amount), true]]),
-        admPayActions(t, "md", "Paiement reçu")),
+        admPayActions(t, "md", "Paiement reçu"), t.id),
     };
   });
   return admTable("xl", `<th scope="col" class="${TBL.th}">Agence</th><th scope="col" class="${TBL.th}">Moyen</th><th scope="col" class="${TBL.th}">Référence</th><th scope="col" class="${TBL.th} ${TBL.thNum}">Montant</th>${ADM_TH_ACTIONS}`,

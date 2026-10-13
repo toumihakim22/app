@@ -53,7 +53,7 @@ Tous les fichiers `web/src/*.js` sont concaténés **dans une seule fonction** p
 
 **Noms réservés à `ui.js`** (personne d'autre ne les déclare) :
 `NB`, `MINUS`, `fmt`, `da`, `daSigned`, `money`, `BIG`, `bigMoney`, `compact`, `pct`, `plural`, `rate`, `rateShort`, `code`, `groupAccount`, `icons`, `icon`, `EVENT_ICON`, `eventIcon`, `flagDz`, `logo`, `cx`, `FOCUS`, `BTN`, `btn`, `ICON_BTN`, `iconBtn`, `inputCls`, `inputLg`, `textareaCls`, `selectCls`, `CHEVRON`, `select`, `countrySelect`, `unitInput`, `searchInput`, `field`, `OPTIONAL`, `CHOICE`, `CHOICE_DANGER`, `SEG_CHOICE`, `RADIO`, `CHECKBOX`, `switchBtn`, `CARD`, `CARD_HOVER`, `TILE`, `card`, `cardHeader`, `kpiValue`, `DELTA`, `kpi`, `BADGE`, `TONE`, `DOT`, `STATUS_TONE`, `badge`, `statusBadge`, `PLATFORM_ICON`, `platformTag`, `roleBadge`, `COUNT`, `countBadge`, `opt`, `segmented`, `pills`, `chips`, `TABLIST`, `TAB`, `pageHeader`, `sectionHeader`, `emptyState`, `progress`, `coverAttr`, `THUMB`, `coverThumb`, `AVATARS`, `AVATAR_SIZE`, `avatar`, `TBL`, `TOAST`, `toast`, `MODAL_W`, `modalShell`, `summary`, `ALERT_ICON`, `alertBox`, `accountCard`, `siteBanner`, `themeToggle`, `LIVE`, `niceMax`, `seriesDates`, `dayLabel`, `barChart`, `cumulativeChart`, `barList`, `areaChart`, plus ceux déjà présents (`esc`, `MONTHS`, `date`, `ago`, `initials`, `campaignById`, `userById`, `rawEarnings`, `belowMin`, `isCapped`, `payoutOf`, `earningsOf`, `viewsFor`, `isEmail`, `copy`, `handlePasswordSubmit`, `homeOf`).
-**Réservés à `main.js` :** `NAV_ITEM`, `NAV_ICON`, `MINI_HIDDEN`, `focusReturn`, `placeOverlayFocus`, `focusTrap`, `runLive`.
+**Réservés à `main.js` :** `NAV_ITEM`, `NAV_ICON`, `MINI_HIDDEN`, `focusReturn`, `placeOverlayFocus`, `focusTrap`, `runLive`, `applyRouteItem`, `flashRow`, `NOTIF_DEST`, `notifDest`.
 **Récapitulatifs en direct :** un fichier de zone **n'ajoute qu'une propriété** à l'objet partagé (`LIVE.withdraw = …`, `LIVE.budget = …`, `LIVE.campaign = …`), il ne redéclare jamais `LIVE`.
 **Attention aux collisions connues :** `roleTag` existe déjà dans `admin.js` (d'où `roleBadge` dans `ui.js`) ; `campaignCard`, `campaignRow`, `incomeCard`, `txRow` existent dans `clipper.js`. Un fichier de zone qui a besoin d'un helper local le préfixe (`cl…`, `ag…`, `adm…`, `auth…`).
 
@@ -1755,7 +1755,8 @@ Résultats de `validate_palette.js` :
   - pictogramme `eventIcon(n.icon)` (l'emoji du serveur devient une icône au trait dans une pastille teintée) ;
   - non lu : `bg-brand-soft/50`, texte `font-medium` et point violet ;
   - état vide si la liste est vide ;
-  - « Tout marquer comme lu » affiché seulement s'il reste du non-lu.
+  - « Tout marquer comme lu » affiché seulement s'il reste du non-lu ;
+  - avec un lien (`n.link`, route `#/<espace>/<page>/<id>` posée par le serveur, voir `lib/server/links.ts`) : sous l'heure, la destination (« Voir le clip ») et `chevronRight` ; le clic ferme le panneau, marque la notification lue et ouvre la page. `applyRouteItem()` (`main.js`) remet les filtres à zéro, puis ouvre la fiche (campagne) ou met en évidence la ligne `[data-row="<id>"]` visible (`flashRow()` : centrée, focus, classe `row-flash` de `web/styles.css`, teinte fixe en mouvement réduit). L'adresse redevient `#/<espace>/<page>` ; déjà sur cette page, l'entrée d'historique est remplacée (pas de doublon pour Retour). Une notification enregistrée avant les liens reçoit un lien déduit de son texte (`inferLink()`, même fichier, appelé par `stateFor`). Une campagne en pause ou terminée ouverte ainsi par un clipper affiche son statut, sans « Rejoindre » ni « Soumettre un clip ».
 - **Accessibilité :**
   - bouton d'évitement « Aller au contenu » (`data-action="skip"`) ;
   - `main#main tabindex="-1"` ;

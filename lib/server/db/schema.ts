@@ -123,6 +123,8 @@ export const notifications = pgTable("notifications", {
   userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   icon: text("icon").notNull(),
   text: text("text").notNull(),
+  /** Route de l'app vers l'élément concerné (« #/clipper/publications/<id> »), null pour les anciennes notifications. */
+  link: text("link"),
   read: boolean("read").notNull().default(false),
   createdAt: createdAt(),
 }, (t) => [index("notifications_user_idx").on(t.userId)]);

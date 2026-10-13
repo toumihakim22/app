@@ -2,6 +2,7 @@
 // mêmes messages, mêmes effets), sur la base locale. Les règles de calcul viennent de lib/server/rules.ts.
 import type { CampaignStatus, Handles, Role, SignupPayload } from "../../lib/server/db/schema";
 import { GRADIENTS } from "../../lib/server/gradients";
+import { link } from "../../lib/server/links";
 import { belowMin, fundingCost, instantFee, payoutDelta, validateCampaignNumbers, viewsFor } from "../../lib/server/rules";
 import {
   ApiError, badRequest, forbidden, getSettings, insertCampaign, insertPublication, insertTransaction, insertUser, logActivity,
@@ -168,11 +169,11 @@ export function createCampaign({ db }: Ctx, user: UserRow, input: CampaignInput)
     status: isAdmin ? "Active" : "En attente", commissionRate: isAdmin ? 0 : settings.commissionRate,
   });
   if (isAdmin) {
-    notifyRole(db, "clipper", "🎯", `Nouvelle campagne : ${input.title.trim()} (${input.rate} DA /1K).`);
+    notifyRole(db, "clipper", "🎯", `Nouvelle campagne : ${input.title.trim()} (${input.rate} DA /1K).`, link.clipperCampaign(id));
     logActivity(db, "🎯", `Campagne « ${input.title.trim()} » publiée.`);
   } else {
-    notify(db, user.id, "⏳", `Votre campagne « ${input.title.trim()} » est en cours de vérification.`);
-    notifyRole(db, "admin", "🏢", `${user.name} a soumis la campagne « ${input.title.trim()} ».`);
+    notify(db, user.id, "⏳", `Votre campagne « ${input.title.trim()} » est en cours de vérification.`, link.agencyCampaign(id));
+    notifyRole(db, "admin", "🏢", `${user.name} a soumis la campagne « ${input.title.trim()} ».`, link.adminCampaign(id));
     logActivity(db, "🏢", `${user.name} a soumis la campagne « ${input.title.trim()} ».`);
   }
   return id;
@@ -207,14 +208,14 @@ export function setCampaignStatus({ db }: Ctx, user: UserRow, id: string, next: 
     if (refund > 0) {
       userOf(db, c.ownerId).credit += refund;
       patch.reserved = c.reserved - refund;
-      notify(db, c.ownerId, "💰", `${fmt(refund)} non consommés sur « ${c.title} » ont été rendus à votre crédit.`);
+      notify(db, c.ownerId, "💰", `${fmt(refund)} non consommés sur « ${c.title} » ont été rendus à votre crédit.`, link.agencyBudget(c.id));
     }
   }
   Object.assign(row, patch);
 
   const verb: Record<string, string> = { Active: c.status === "En attente" ? "a été approuvée et est en ligne" : "est de nouveau active", "En pause": "a été mise en pause", "Terminée": "est terminée", "Refusée": "a été refusée" };
-  if (isAdmin) notify(db, c.ownerId, next === "Active" ? "✅" : "⚠️", `Votre campagne « ${c.title} » ${verb[next] ?? "a changé de statut"}.`);
-  if (c.status === "En attente" && next === "Active") notifyRole(db, "clipper", "🎯", `Nouvelle campagne : ${c.title} (${c.rate} DA /1K).`);
+  if (isAdmin) notify(db, c.ownerId, next === "Active" ? "✅" : "⚠️", `Votre campagne « ${c.title} » ${verb[next] ?? "a changé de statut"}.`, link.agencyCampaign(c.id));
+  if (c.status === "En attente" && next === "Active") notifyRole(db, "clipper", "🎯", `Nouvelle campagne : ${c.title} (${c.rate} DA /1K).`, link.clipperCampaign(c.id));
   logActivity(db, "🎯", `Campagne « ${c.title} » : ${c.status} → ${next}.`);
 }
 
@@ -302,13 +303,14 @@ function credit(db: Store, p: PubRow, c: CampaignRow, amount: number, label: str
   p.paid += amount;
   c.spent = spent;
   if (spent >= c.budget) c.status = "Terminée";
+  const txId = newId();
   insertTransaction(db, {
-    id: newId(), ref: newRef(), userId: p.userId, type: "gain", label, amount, status: "Validé",
+    id: txId, ref: newRef(), userId: p.userId, type: "gain", label, amount, status: "Validé",
     availableAt: Date.now() + holdDays * 86_400_000, publicationId: p.id,
   });
-  notify(db, p.userId, "💸", `+${fmt(amount)} pour « ${p.title} ». Retirable dans ${holdDays} jours.`);
+  notify(db, p.userId, "💸", `+${fmt(amount)} pour « ${p.title} ». Retirable dans ${holdDays} jours.`, link.clipperTx(txId));
   if (spent >= c.budget) {
-    notify(db, c.ownerId, "🏁", `Le budget de « ${c.title} » est entièrement consommé : la campagne est terminée.`);
+    notify(db, c.ownerId, "🏁", `Le budget de « ${c.title} » est entièrement consommé : la campagne est terminée.`, link.agencyCampaign(c.id));
     logActivity(db, "🏁", `Campagne « ${c.title} » terminée (budget consommé).`);
   }
 }
@@ -321,7 +323,7 @@ export function reviewClip({ db }: Ctx, admin: UserRow, id: string, decision: { 
   if (!decision.approve) {
     p.status = "Refusée";
     p.reason = decision.reason;
-    notify(db, p.userId, "⚠️", `Clip « ${p.title} » refusé : ${decision.reason}.`);
+    notify(db, p.userId, "⚠️", `Clip « ${p.title} » refusé : ${decision.reason}.`, link.clip(p.id));
     logActivity(db, "🚫", `Clip « ${p.title} » refusé par ${admin.name}.`);
     return;
   }
@@ -331,7 +333,7 @@ export function reviewClip({ db }: Ctx, admin: UserRow, id: string, decision: { 
   p.approvedAt = Date.now();
   const amount = payoutDelta(p.views, c, 0);
   if (amount > 0) credit(db, p, c, amount, c.title, settings.holdDays);
-  else notify(db, p.userId, "✅", `Votre clip « ${p.title} » a été validé.`);
+  else notify(db, p.userId, "✅", `Votre clip « ${p.title} » a été validé.`, link.clip(p.id));
   logActivity(db, "✅", `Clip « ${p.title} » validé (${fmt(amount)}).`);
 }
 
@@ -360,19 +362,20 @@ export function requestWithdrawal({ db }: Ctx, user: UserRow, amount: number, in
   const fee = instant ? instantFee(amount, settings.instantFeePercent, settings.instantMinFee) : 0;
   const { available } = balances(db, user.id);
   if (amount > available) throw badRequest(`Solde disponible insuffisant (${fmt(available)})`);
+  const id = newId();
   insertTransaction(db, {
-    id: newId(), ref: newRef(), userId: user.id, type: "retrait", amount: -amount, fee, status: "En cours",
+    id, ref: newRef(), userId: user.id, type: "retrait", amount: -amount, fee, status: "En cours",
     method: user.payoutMethod, label: `Retrait ${instant ? "instantané " : ""}vers ${user.payoutMethod}`,
   });
-  notifyRole(db, "admin", "💸", `${user.name} demande un retrait de ${fmt(amount)}${instant ? " (instantané)" : ""}.`);
+  notifyRole(db, "admin", "💸", `${user.name} demande un retrait de ${fmt(amount)}${instant ? " (instantané)" : ""}.`, link.adminPayment(id));
   logActivity(db, "💸", `${user.name} a demandé un retrait de ${fmt(amount)}.`);
 }
 
 /** Une agence demande à recharger son crédit. Le crédit est ajouté quand l'équipe confirme la réception. */
 export function requestCredit({ db }: Ctx, user: UserRow, amount: number, method: string) {
-  const ref = newRef();
-  insertTransaction(db, { id: newId(), ref, userId: user.id, type: "recharge", amount, status: "En cours", method, label: `Recharge par ${method}` });
-  notifyRole(db, "admin", "🏦", `${user.name} annonce une recharge de ${fmt(amount)} par ${method} (réf. ${ref}).`);
+  const id = newId(), ref = newRef();
+  insertTransaction(db, { id, ref, userId: user.id, type: "recharge", amount, status: "En cours", method, label: `Recharge par ${method}` });
+  notifyRole(db, "admin", "🏦", `${user.name} annonce une recharge de ${fmt(amount)} par ${method} (réf. ${ref}).`, link.adminPayment(id));
   return ref;
 }
 
@@ -385,7 +388,7 @@ export function reviewTransaction({ db }: Ctx, admin: UserRow, id: string, appro
   if (t.type === "recharge" && approve) userOf(db, t.userId).credit += t.amount;
   const what = t.type === "retrait" ? `retrait de ${fmt(-t.amount)}` : `recharge de ${fmt(t.amount)}`;
   const net = t.type === "retrait" && approve && t.fee ? ` (${fmt(-t.amount - t.fee)} versés après ${fmt(t.fee)} de frais)` : "";
-  notify(db, t.userId, approve ? "✅" : "⚠️", `Votre ${what} a été ${approve ? "validé" : "refusé"}${net}.`);
+  notify(db, t.userId, approve ? "✅" : "⚠️", `Votre ${what} a été ${approve ? "validé" : "refusé"}${net}.`, link.userTx(t.type, t.id));
   logActivity(db, approve ? "✅" : "🚫", `${what[0].toUpperCase()}${what.slice(1)} ${approve ? "validé" : "refusé"} par ${admin.name}.`);
 }
 
@@ -416,7 +419,7 @@ export function setUserStatus({ db }: Ctx, admin: UserRow, id: string, status: "
   if (u.role === "admin") throw badRequest("Un administrateur ne peut pas être suspendu");
   u.status = status;
   if (status === "Suspendu" && db.session?.userId === id) destroySession(db);
-  notify(db, id, status === "Actif" ? "✅" : "⛔", status === "Actif" ? "Votre compte a été réactivé." : "Votre compte a été suspendu.");
+  notify(db, id, status === "Actif" ? "✅" : "⛔", status === "Actif" ? "Votre compte a été réactivé." : "Votre compte a été suspendu.", link.home(u.role));
   logActivity(db, status === "Actif" ? "✅" : "⛔", `${u.name} a été ${status === "Actif" ? "réactivé" : "suspendu"} par ${admin.name}.`);
 }
 

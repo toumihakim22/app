@@ -1,5 +1,6 @@
 // Routeur, coquilles (navigation) et gestion des événements de l'application (/espace).
 // Routes : #/connexion, #/inscription, #/inscription-agence, #/mot-de-passe, #/clipper/<page>, #/agence/<page>, #/admin/<page>.
+// Un 3e segment désigne un élément de la page (lien d'une notification) : #/clipper/publications/<id>, voir applyRouteItem().
 // La page d'accueil publique est servie par Next.js à l'adresse / ; dans la version autonome (fichier HTML unique),
 // elle est dans la même page et s'affiche sans route (voir web/offline/landing.js).
 
@@ -26,13 +27,15 @@ const offlineLanding = window.__CLIPBOOST_LANDING__;
 function parseRoute() {
   const h = location.hash;
   if (!h.startsWith("#/") || h === "#/") return { area: "home", view: "" };
-  const [area, view] = h.slice(2).split("/");
+  const [area, view, raw] = h.slice(2).split("/");
   if (area === "connexion" || area === "inscription" || area === "mot-de-passe") return { area: "auth", view: area };
   if (area === "inscription-agence") return { area: "auth", view: "inscription", role: "agence" };
-  if (area === "agence") return { area, view: AGENCY_VIEWS[view] ? view : "apercu" };
-  if (area === "clipper") return { area, view: CLIPPER_VIEWS[view] ? view : "accueil" };
-  if (area === "admin") return { area, view: ADMIN_VIEWS[view] ? view : "apercu" };
-  return { area: "home", view: "" };
+  const views = { agence: [AGENCY_VIEWS, "apercu"], clipper: [CLIPPER_VIEWS, "accueil"], admin: [ADMIN_VIEWS, "apercu"] }[area];
+  if (!views) return { area: "home", view: "" };
+  if (!views[0][view]) return { area, view: views[1] };
+  let item = "";
+  try { item = raw ? decodeURIComponent(raw) : ""; } catch (e) {}
+  return item ? { area, view, item } : { area, view };
 }
 
 function navigate(hash) {
@@ -53,9 +56,44 @@ function onRoute() {
   if (r.area === "auth" && u) return navigate(homeOf(u));
   if (r.area === "auth" && (prev.view !== r.view || r.role)) { const keepEmail = state.auth.email; resetAuth(); state.auth.email = keepEmail; }
   if (r.role) { state.auth.form.role = r.role; r.role = undefined; }
-  state.route = r; state.drawer = false; state.notifOpen = false; state.modal = null; state.pwdError = "";
+  const item = r.item;
+  state.route = { area: r.area, view: r.view }; state.drawer = false; state.notifOpen = false; state.modal = null; state.pwdError = "";
+  const row = item ? applyRouteItem(r.area, r.view, item) : "";
   render();
   window.scrollTo(0, 0);
+  if (!item) return;
+  if (row) flashRow(row);
+  // L'élément n'est appliqué qu'une fois : l'adresse redevient celle de la page (un rechargement ne le rouvre pas).
+  try { history.replaceState(history.state, "", `#/${r.area}/${r.view}`); } catch (e) {}
+}
+
+// Élément visé par l'adresse (lien d'une notification) : filtres remis à zéro pour qu'il soit affiché, puis
+// fiche ouverte (campagne) ou identifiant de la ligne à mettre en évidence (data-row). Élément disparu : la page seule.
+function applyRouteItem(area, view, id) {
+  if (area === "clipper") {
+    Object.assign(state.camp, { q: "", category: "Toutes", favOnly: false });
+    state.pub.status = "Toutes"; state.tx.type = "tous";
+    if (view === "campagnes") { if (campaignById(id)) state.modal = { type: "campaign", id }; return ""; }
+  } else if (area === "agence") {
+    Object.assign(state.ag, { q: "", status: "Toutes", clipStatus: "Toutes" });
+    if (view === "campagnes") { if (myCampaigns().some((c) => c.id === id)) state.modal = { type: "ag-open", id }; return ""; }
+  } else if (area === "admin") {
+    state.adm.campQ = ""; state.adm.campStatus = "Toutes";
+    const t = db.transactions.find((x) => x.id === id);
+    if (view === "retraits" && t) state.adm.payTab = t.type === "recharge" ? "recharges" : "retraits";
+  }
+  return id;
+}
+
+// Ligne ou carte visée : sa copie affichée (tableau ou liste) défile au centre, reçoit le focus et s'éclaire brièvement.
+function flashRow(id) {
+  const el = visibleAll(`[data-row="${String(id).replace(/["\\]/g, "\\$&")}"]`)[0];
+  if (!el) return;
+  el.setAttribute("tabindex", "-1");
+  el.classList.add("row-flash");
+  el.scrollIntoView({ block: "center" });
+  el.focus({ preventScroll: true });
+  setTimeout(() => el.classList.remove("row-flash"), 2400);
 }
 
 // ---------- Coquille commune aux espaces Clipper, Agence et Admin ----------
@@ -117,6 +155,14 @@ function shellTopbar(area) {
     </div></header>`;
 }
 
+// Destination d'une notification (libellé visible et nom accessible), selon la page de son lien.
+const NOTIF_DEST = {
+  "clipper/campagnes": "Voir la campagne", "clipper/publications": "Voir le clip", "clipper/portefeuille": "Voir l'opération", "clipper/accueil": "Ouvrir mon espace",
+  "agence/campagnes": "Voir la campagne", "agence/budget": "Voir le budget", "agence/apercu": "Ouvrir mon espace",
+  "admin/campagnes": "Voir la campagne", "admin/retraits": "Voir la demande",
+};
+const notifDest = (href) => { const [area, view] = String(href || "").replace(/^#\//, "").split("/"); return NOTIF_DEST[`${area}/${view}`] || "Ouvrir"; };
+
 // État vide propre à chaque rôle.
 const NOTIF_EMPTY = {
   clipper: "Vous serez prévenu ici quand un clip est validé ou un paiement envoyé.",
@@ -127,8 +173,9 @@ function notifPanel(list) {
   const anyUnread = list.some((n) => n.unread);
   return `<div id="notif-panel" tabindex="-1" class="absolute right-0 top-12 z-40 w-[min(24rem,calc(100vw-2rem))] overflow-hidden rounded-card border border-line bg-surface-raised shadow-popover animate-pop-in focus:outline-none" role="dialog" aria-label="Notifications">
     <div class="flex items-center justify-between gap-3 border-b border-line px-4 py-3"><p class="text-sm font-semibold text-fg">Notifications</p>${anyUnread ? `<button type="button" data-action="read-all" class="${btn("link", "", "text-small")}">Tout marquer comme lu</button>` : ""}</div>
-    ${list.length ? `<div class="max-h-96 divide-y divide-line overflow-y-auto">${list.map((n) => `<button type="button" data-action="read-one" data-id="${n.id}" class="relative flex w-full gap-3 px-4 py-3 pr-9 text-left transition-colors duration-150 hover:bg-subtle focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus ${n.unread ? "bg-brand-soft/50" : ""}">
-      ${eventIcon(n.icon)}<span class="min-w-0 flex-1"><span class="block text-small leading-5 ${n.unread ? "font-medium text-fg" : "text-fg-muted"}">${esc(n.text)}</span><span class="mt-0.5 block text-xs text-fg-subtle">${ago(n.at)}</span></span>
+    ${list.length ? `<div class="max-h-96 divide-y divide-line overflow-y-auto">${list.map((n) => `<button type="button" data-action="read-one" data-id="${n.id}" class="group relative flex w-full gap-3 px-4 py-3 pr-9 text-left transition-colors duration-150 hover:bg-subtle focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus ${n.unread ? "bg-brand-soft/50" : ""}">
+      ${eventIcon(n.icon)}<span class="min-w-0 flex-1"><span class="block text-small leading-5 ${n.unread ? "font-medium text-fg" : "text-fg-muted"}">${esc(n.text)}</span>
+        <span class="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-xs text-fg-subtle"><span>${ago(n.at)}</span>${n.link ? `<span aria-hidden="true">·</span><span class="inline-flex items-center gap-0.5 font-medium text-fg-muted transition-colors duration-150 group-hover:text-brand-fg">${notifDest(n.link)}${icon("chevronRight", "size-3.5")}</span>` : ""}</span></span>
       ${n.unread ? '<span class="absolute right-4 top-4 size-2 rounded-full bg-brand"></span><span class="sr-only">(non lue)</span>' : ""}</button>`).join("")}</div>`
       : emptyState("bell", "Aucune notification", NOTIF_EMPTY[state.route.area] || NOTIF_EMPTY.clipper, "", { inCard: true })}
   </div>`;
@@ -285,7 +332,21 @@ root.addEventListener("click", (e) => {
     case "drawer": state.drawer = !state.drawer; state.notifOpen = false; return render();
     case "notif": state.notifOpen = !state.notifOpen; return render();
     case "read-all": return act("POST", "/api/notifications/read", {});
-    case "read-one": return act("POST", "/api/notifications/read", { ids: [t.dataset.id] });
+    case "read-one": {
+      // Avec un lien : le panneau se ferme et la page de l'élément s'ouvre ; la lecture est enregistrée en arrière-plan.
+      const n = myNotifs().find((x) => x.id === t.dataset.id);
+      if (!n || !n.link) return act("POST", "/api/notifications/read", { ids: [t.dataset.id] });
+      state.notifOpen = false;
+      if (n.unread) { n.unread = false; api("POST", "/api/notifications/read", { ids: [n.id] }).catch(() => {}); }
+      // Déjà sur la page visée : l'entrée d'historique est remplacée (Retour ne repasse pas par la même page).
+      const [, area, view] = n.link.split("/");
+      if (location.hash === n.link || (area === state.route.area && view === state.route.view)) {
+        try { history.replaceState(history.state, "", n.link); } catch (e) {}
+        return onRoute();
+      }
+      location.hash = n.link;
+      return;
+    }
     case "close-modal": state.modal = null; return render();
     case "logout": return logout();
     case "toast": return toast(t.dataset.msg);

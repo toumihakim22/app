@@ -128,13 +128,13 @@ export const notFound = (message = "Introuvable") => new ApiError(404, message);
 
 export const getSettings = (db: Store): Settings => ({ ...DEFAULT_SETTINGS, ...db.settings });
 
-export function notify(db: Store, userId: string | null | undefined, icon: string, text: string) {
+export function notify(db: Store, userId: string | null | undefined, icon: string, text: string, link?: string) {
   if (!userId) return;
-  db.notifications.push({ id: newId(), userId, icon, text, read: false, createdAt: Date.now() });
+  db.notifications.push({ id: newId(), userId, icon, text, link: link ?? null, read: false, createdAt: Date.now() });
 }
 
-export function notifyRole(db: Store, role: schema.Role, icon: string, text: string) {
-  for (const u of db.users) if (u.role === role) notify(db, u.id, icon, text);
+export function notifyRole(db: Store, role: schema.Role, icon: string, text: string, link?: string) {
+  for (const u of db.users) if (u.role === role) notify(db, u.id, icon, text, link);
 }
 
 export function logActivity(db: Store, icon: string, text: string) {

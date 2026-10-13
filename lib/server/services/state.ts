@@ -3,6 +3,7 @@ import { getDb, schema } from "../db";
 import type { User } from "../auth";
 import { getSettings } from "../settings";
 import { balances } from "./money";
+import { inferLink, type LinkContext } from "../links";
 
 const day = (d: Date) => d.toISOString().slice(0, 10);
 const time = (d: Date) => d.toISOString().slice(11, 16);
@@ -74,6 +75,9 @@ export async function stateFor(user: User) {
   const balanceOf = new Map<string, Awaited<ReturnType<typeof balances>>>();
   for (const u of balanceTargets) balanceOf.set(u.id, await balances(db, u.id));
 
+  // Notifications antérieures aux liens : lien déduit du texte (voir inferLink).
+  const linkCtx: LinkContext = { campaigns: campaignRows, publications: pubRows, transactions: txRows };
+
   return {
     me: { ...fullUser(user), favorites: mine.filter((m) => m.favorite).map((m) => m.campaignId), joinedCampaigns: mine.filter((m) => m.joined).map((m) => m.campaignId), ...(balanceOf.get(user.id) ?? {}) },
     settings: { maintenance: settings.maintenance, signupsOpen: settings.signupsOpen, announcement: settings.announcement, minWithdraw: settings.minWithdraw, commissionRate: settings.commissionRate, minBudget: settings.minBudget, holdDays: settings.holdDays, earningDays: settings.earningDays, instantFeePercent: settings.instantFeePercent, instantMinFee: settings.instantMinFee },
@@ -81,7 +85,7 @@ export async function stateFor(user: User) {
     campaigns: campaignRows.map((c) => ({ ...c, createdAt: day(c.createdAt), clippers: clippersOf.get(c.id) ?? 0 })),
     publications: pubRows.map((p) => ({ id: p.id, userId: p.userId, campaign: p.campaignId, title: p.title, platform: p.platform, url: p.url, views: p.views, status: p.status, reason: p.reason, paid: p.paid, date: day(p.createdAt) })),
     transactions: txRows.map((t) => ({ id: t.id, ref: t.ref, userId: t.userId, type: t.type, label: t.label, amount: t.amount, fee: t.fee, status: t.status, method: t.method, date: day(t.createdAt), time: time(t.createdAt), availableAt: t.availableAt?.toISOString() ?? null })),
-    notifications: notifRows.map((n) => ({ id: n.id, icon: n.icon, text: n.text, unread: !n.read, at: n.createdAt.toISOString() })),
+    notifications: notifRows.map((n) => ({ id: n.id, icon: n.icon, text: n.text, link: n.link ?? inferLink(user.role, n.text, linkCtx), unread: !n.read, at: n.createdAt.toISOString() })),
     activity: activityRows.map((a) => ({ icon: a.icon, text: a.text, at: a.createdAt.toISOString() })),
     series,
   };
