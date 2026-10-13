@@ -36,6 +36,31 @@ test("données d'exemple, connexion et contrôle d'accès", async () => {
   assert.ok(!JSON.stringify([...storage.values()]).includes("Clipboost2026"), "mot de passe en clair");
 });
 
+test("agences des campagnes : profil public pour les clippers, présentation modifiable par l'agence", async () => {
+  type Agency = { id: string; name: string; bio: string };
+  assert.equal((await login("yacine@clipboost.dz")).status, 200);
+  let s = (await call("GET", "/api/state")).data;
+  // Seules les agences des campagnes visibles (Hoggar Boissons n'a qu'une campagne en attente) ; aucune donnée privée.
+  assert.deepEqual(s.agencies.map((a: Agency) => a.name), ["Tassili Sport"]);
+  for (const a of s.agencies) assert.deepEqual(Object.keys(a).sort(), ["bio", "country", "id", "joined", "name"]);
+  const tassili = s.agencies[0];
+  assert.match(tassili.bio, /^Équipementier sportif algérien/);
+  assert.ok(s.campaigns.filter((c: { ownerId: string | null }) => c.ownerId === tassili.id).length >= 2);
+  assert.ok(s.campaigns.some((c: { ownerId: string | null }) => c.ownerId === null), "campagnes gérées par ClipBoost (organisateur : la marque)");
+  assert.ok(!/agence@clipboost\.dz|Nassim|400000/.test(JSON.stringify(s.agencies)));
+
+  const bio = "Équipementier sportif algérien. Nouveaux défis chaque semaine !";
+  assert.equal((await login("agence@clipboost.dz")).status, 200);
+  assert.equal((await call("PATCH", "/api/me", { bio: "x".repeat(301) })).status, 400);
+  assert.equal((await call("PATCH", "/api/me", { bio: `  ${bio}  ` })).status, 200);
+  const agency = (await call("GET", "/api/state")).data;
+  assert.equal(agency.me.bio, bio);
+  assert.deepEqual(agency.agencies, []);
+  assert.equal((await login("yacine@clipboost.dz")).status, 200);
+  s = (await call("GET", "/api/state")).data;
+  assert.equal(s.agencies.find((a: Agency) => a.id === tassili.id).bio, bio);
+});
+
 test("inscription avec code, campagne financée, clip payé et retrait instantané", async () => {
   await call("POST", "/api/auth/logout");
   const signup = await call("POST", "/api/auth/signup", { role: "agence", name: "Atlas Média", contact: "Sara", email: "atlas@test.dz", country: "Algérie", password: "Atlas2026x", terms: true });

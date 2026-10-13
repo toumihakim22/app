@@ -7,7 +7,7 @@ const PAYOUT_METHODS = ["BaridiMob", "CCP", "RIB bancaire"];
 const emptyDb = () => ({
   me: null,
   settings: { maintenance: false, signupsOpen: true, announcement: "", minWithdraw: 2000, commissionRate: 15, minBudget: 50000, holdDays: 3, earningDays: 7, instantFeePercent: 2, instantMinFee: 100 },
-  users: [], campaigns: [], publications: [], transactions: [], notifications: [], activity: [],
+  users: [], campaigns: [], agencies: [], publications: [], transactions: [], notifications: [], activity: [],
   series: { daily: [], label: "" },
 });
 let db = emptyDb();

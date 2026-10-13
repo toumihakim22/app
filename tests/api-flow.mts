@@ -31,6 +31,12 @@ assert.equal((await agency("POST", "/api/auth/verify", { email: `atlas${stamp}@t
 ok(await agency("POST", "/api/auth/verify", { email: `atlas${stamp}@test.dz`, code: r.data.devCode }), "vérification");
 r = await agency("GET", "/api/state"); assert.equal(r.data.me.role, "agence"); step("inscription agence + code email");
 
+// 1 bis. Présentation de l'agence (bio publique, 300 caractères au plus).
+assert.equal((await agency("PATCH", "/api/me", { bio: "x".repeat(301) })).status, 400);
+ok(await agency("PATCH", "/api/me", { bio: "Agence de contenus sportifs à Alger." }), "présentation de l'agence");
+r = await agency("GET", "/api/state"); assert.equal(r.data.me.bio, "Agence de contenus sportifs à Alger."); assert.deepEqual(r.data.agencies, []);
+step("présentation de l'agence enregistrée");
+
 // 2. Règles de campagne : plafond > seuil, budget minimum.
 assert.equal((await agency("POST", "/api/campaigns", { title: "Test", category: "Sport", rate: 150, budget: 60000, minPayout: 300, maxPayout: 200, platforms: ["TikTok"], rules: [] })).status, 400);
 assert.equal((await agency("POST", "/api/campaigns", { title: "Test", category: "Sport", rate: 150, budget: 1000, minPayout: 300, maxPayout: 600, platforms: ["TikTok"], rules: [] })).status, 400);
@@ -65,6 +71,14 @@ ok(await clipper("POST", `/api/campaigns/${campaignId}/membership`, { joined: tr
 assert.equal((await clipper("POST", "/api/clips", { campaignId, title: "Mon clip", platform: "TikTok", url: "https://evil.example/video" })).status, 400);
 r = await clipper("POST", "/api/clips", { campaignId, title: "Mon clip", platform: "TikTok", url: `https://www.tiktok.com/@r/video/${stamp}` }); ok(r, "soumission");
 const clipId = r.data.id; step("clipper inscrit, campagne rejointe, clip soumis (lien contrôlé)");
+
+// 4 bis. Le clipper voit l'agence de la campagne : profil public seulement (aucun email, contact ni crédit).
+r = await clipper("GET", "/api/state");
+const atlas = r.data.agencies.find((a: { id: string }) => a.id === r.data.campaigns.find((c: { id: string }) => c.id === campaignId).ownerId);
+assert.deepEqual(atlas, { id: atlas.id, name: `Atlas Média ${stamp}`, country: "Algérie", bio: "Agence de contenus sportifs à Alger.", joined: atlas.joined });
+assert.match(atlas.joined, /^\d{4}-\d{2}-\d{2}$/);
+for (const a of r.data.agencies) assert.deepEqual(Object.keys(a).sort(), ["bio", "country", "id", "joined", "name"]);
+step("agences visibles par le clipper : profil public uniquement");
 
 // 5. Seuil : refus de validation sous le seuil, puis vues relevées, validation, plafond.
 await admin("POST", `/api/clips/${clipId}/views`, { views: 1500 });

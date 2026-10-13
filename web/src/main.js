@@ -1,6 +1,7 @@
 // Routeur, coquilles (navigation) et gestion des événements de l'application (/espace).
 // Routes : #/connexion, #/inscription, #/inscription-agence, #/mot-de-passe, #/clipper/<page>, #/agence/<page>, #/admin/<page>.
 // Un 3e segment désigne un élément de la page (lien d'une notification) : #/clipper/publications/<id>, voir applyRouteItem().
+// Exception : les pages de ITEM_PAGES, dont le 3e segment fait partie de l'adresse (#/clipper/agence/<clé>, voir onRoute()).
 // La page d'accueil publique est servie par Next.js à l'adresse / ; dans la version autonome (fichier HTML unique),
 // elle est dans la même page et s'affiche sans route (voir web/offline/landing.js).
 
@@ -10,7 +11,7 @@ const state = {
   drawer: false,
   notifOpen: false,
   modal: null,
-  camp: { q: "", category: "Toutes", sort: "recent", favOnly: false, layout: "grid" },
+  camp: { tab: "agences", aq: "", q: "", category: "Toutes", sort: "recent", favOnly: false, layout: "grid" },
   pub: { status: "Toutes" },
   tx: { type: "tous" },
   period: 30,
@@ -38,6 +39,11 @@ function parseRoute() {
   return item ? { area, view, item } : { area, view };
 }
 
+// Pages hors navigation dont le 3e segment est l'objet de la page (gardé dans l'adresse, rechargement possible) :
+// la valeur est l'entrée de navigation affichée comme courante.
+const ITEM_PAGES = { "clipper/agence": "campagnes" };
+const navView = (area, view) => ITEM_PAGES[`${area}/${view}`] || view;
+
 function navigate(hash) {
   if (location.hash === hash) render();
   else location.hash = hash;
@@ -56,8 +62,8 @@ function onRoute() {
   if (r.area === "auth" && u) return navigate(homeOf(u));
   if (r.area === "auth" && (prev.view !== r.view || r.role)) { const keepEmail = state.auth.email; resetAuth(); state.auth.email = keepEmail; }
   if (r.role) { state.auth.form.role = r.role; r.role = undefined; }
-  const item = r.item;
-  state.route = { area: r.area, view: r.view }; state.drawer = false; state.notifOpen = false; state.modal = null; state.pwdError = "";
+  const page = !!ITEM_PAGES[`${r.area}/${r.view}`], item = page ? "" : r.item;
+  state.route = page ? { area: r.area, view: r.view, item: r.item || "" } : { area: r.area, view: r.view }; state.drawer = false; state.notifOpen = false; state.modal = null; state.pwdError = "";
   const row = item ? applyRouteItem(r.area, r.view, item) : "";
   render();
   window.scrollTo(0, 0);
@@ -112,7 +118,7 @@ const MINI_HIDDEN = { clipper: ["accueil", "portefeuille"], agence: ["apercu", "
 
 // tools : boutons du tiroir (thème, fermer), alignés à droite sur la ligne du logo.
 function shellSidebar(area, tools = "") {
-  const nav = AREAS[area].nav(), u = userById(state.session), view = state.route.view;
+  const nav = AREAS[area].nav(), u = userById(state.session), view = navView(area, state.route.view);
   const mini = area !== "admin" && !MINI_HIDDEN[area].includes(view)
     ? `<a href="#/${area}/${area === "clipper" ? "portefeuille" : "budget"}" class="block rounded-tile border border-line bg-surface px-3 py-2.5 shadow-card transition-colors duration-150 hover:border-line-strong ${FOCUS}">
         <span class="block text-xs text-fg-subtle">${area === "clipper" ? "Solde disponible" : "Crédit disponible"}</span>
@@ -182,11 +188,11 @@ function notifPanel(list) {
 }
 
 function shellMobileNav(area) {
-  const ids = AREAS[area].mobile, nav = AREAS[area].nav(), inMore = !ids.includes(state.route.view);
+  const ids = AREAS[area].mobile, nav = AREAS[area].nav(), view = navView(area, state.route.view), inMore = !ids.includes(view);
   const TABI = "relative flex flex-col items-center justify-center gap-1 text-micro font-medium text-fg-subtle transition-colors [&_svg]:size-5 before:absolute before:inset-x-5 before:top-0 before:h-0.5 before:rounded-full aria-[current=page]:text-brand-fg aria-[current=page]:before:bg-brand";
   return `<nav class="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-surface/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-md lg:hidden" aria-label="Navigation mobile">
     <div class="grid h-16 grid-cols-5">
-      ${ids.map((id) => { const n = nav.find((x) => x.id === id); return `<a href="#/${area}/${id}" ${state.route.view === id ? 'aria-current="page"' : ""} class="${TABI} ${FOCUS}">${icon(n.icon)}${n.short || n.label}</a>`; }).join("")}
+      ${ids.map((id) => { const n = nav.find((x) => x.id === id); return `<a href="#/${area}/${id}" ${view === id ? 'aria-current="page"' : ""} class="${TABI} ${FOCUS}">${icon(n.icon)}${n.short || n.label}</a>`; }).join("")}
       <button type="button" data-action="drawer" aria-expanded="${state.drawer}" ${inMore ? 'aria-current="page"' : ""} class="${TABI} ${FOCUS}">${icon("more")}Plus</button>
     </div></nav>`;
 }
@@ -373,6 +379,7 @@ root.addEventListener("input", (e) => {
   if (e.target.form && e.target.form.dataset.live) runLive(e.target.form);
   const k = e.target.dataset.input;
   if (k === "camp-q") { state.camp.q = e.target.value; render(); }
+  if (k === "camp-aq") { state.camp.aq = e.target.value; render(); }
   if (k === "adm-user-q") { state.adm.userQ = e.target.value; render(); }
   if (k === "adm-camp-q") { state.adm.campQ = e.target.value; render(); }
   if (k === "ag-q") { state.ag.q = e.target.value; render(); }
@@ -392,7 +399,7 @@ root.addEventListener("change", (e) => {
 
 root.addEventListener("keydown", (e) => {
   if (e.target.dataset.input === "global-q" && e.key === "Enter") {
-    state.camp.q = e.target.value; state.camp.category = "Toutes"; state.camp.favOnly = false;
+    state.camp.q = e.target.value; state.camp.category = "Toutes"; state.camp.favOnly = false; state.camp.tab = "campagnes";
     navigate("#/clipper/campagnes");
   }
 });

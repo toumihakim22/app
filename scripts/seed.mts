@@ -35,8 +35,8 @@ if (process.argv.includes("--demo")) {
     const yacine = U("clipper", "Yacine Benali", "yacine@clipboost.dz", { level: "Clipper Argent", bio: "Monteur passionné de foot et d'humour.", handles: { tiktok: "@yacine.clips" }, payoutMethod: "CCP", payoutAccount: "0021234567 clé 89", createdAt: daysAgo(210) });
     const amira = U("clipper", "Amira Khelifi", "amira@clipboost.dz", { level: "Clipper Or", bio: "Lifestyle et mode à Oran.", handles: { instagram: "@amira.style" }, payoutMethod: "BaridiMob", payoutAccount: "00799999001234567890", createdAt: daysAgo(190) });
     const lina = U("clipper", "Lina Mansouri", "lina@clipboost.dz", { level: "Clipper Bronze", handles: { tiktok: "@lina.lol" }, createdAt: daysAgo(60) });
-    const tassili = U("agence", "Tassili Sport", "agence@clipboost.dz", { contact: "Nassim Ait Ali", credit: 400000, createdAt: daysAgo(240) });
-    const hoggar = U("agence", "Hoggar Boissons", "hoggar@clipboost.dz", { contact: "Meriem Saadi", credit: 0, createdAt: daysAgo(3) });
+    const tassili = U("agence", "Tassili Sport", "agence@clipboost.dz", { contact: "Nassim Ait Ali", bio: "Équipementier sportif algérien : maillots, ballons et tenues d'entraînement. Nous cherchons des clippers passionnés de foot pour faire vivre chaque match.", credit: 400000, createdAt: daysAgo(240) });
+    const hoggar = U("agence", "Hoggar Boissons", "hoggar@clipboost.dz", { contact: "Meriem Saadi", bio: "Boissons fraîches produites en Algérie, du Hoggar à la côte. Nos campagnes célèbrent les soirées d'été entre amis.", credit: 0, createdAt: daysAgo(3) });
     await db.insert(schema.users).values([yacine, amira, lina, tassili, hoggar]);
 
     const C = (ownerId: string | null, title: string, brand: string, category: string, rate: number, budget: number, status: schema.CampaignStatus, emoji: string, gradient: string, platforms: string[], rules: string[], extra: Partial<typeof schema.campaigns.$inferInsert> = {}) =>

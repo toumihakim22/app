@@ -43,6 +43,49 @@ const clOnHold = (t) => t.type === "gain" && t.availableAt && new Date(t.availab
 const clTxBadge = (t) => (clOnHold(t) ? badge("En rétention", "idle", { ic: "clock" }) : statusBadge(t.status));
 const clPeriodSeg = () => segmented("period", `${state.period} jours`, [["7 jours", "7 j"], ["30 jours", "30 j"]], "Période");
 
+// ---------- Organisateurs : agences et marques partenaires ----------
+// L'organisateur d'une campagne est l'agence qui la finance (profil public dans db.agencies) ; sans agence
+// (campagne créée par l'équipe ClipBoost), c'est l'agence visible qui porte le nom de sa marque, sinon la marque
+// elle-même, sous la clé « brand:<nom normalisé> » (toutes écritures : arabe, tifinagh…). Page : #/clipper/agence/<clé>.
+// Normalisation : sans accents ni signes diacritiques, en minuscules, espaces réduits (« Café  Noir » = « cafe noir »).
+const clNorm = (s) => String(s || "").normalize("NFKD").replace(/\p{M}/gu, "").toLowerCase().replace(/\s+/g, " ").trim();
+const clAgencyOf = (c) => {
+  const list = db.agencies || [];
+  return (c.ownerId ? list.find((a) => a.id === c.ownerId) : list.find((a) => clNorm(a.name) === clNorm(c.brand))) || null;
+};
+const clOrgKey = (c) => { const a = clAgencyOf(c); return c.ownerId || (a ? a.id : `brand:${clNorm(c.brand) || c.id}`); };
+const clOrgHref = (key) => `#/clipper/agence/${encodeURIComponent(key)}`;
+const clOrgName = (c) => { const a = clAgencyOf(c); return a ? a.name : c.brand; };
+// Ligne de type des cartes (la page de l'organisateur précise « Campagne gérée par ClipBoost »).
+const clOrgType = (o) => (o.agency ? `Agence · ${esc(o.country || "Algérie")}` : "Marque partenaire");
+// Présentation : la bio de l'agence, sinon une phrase factuelle (marque gérée par ClipBoost, ancienneté de l'agence).
+const clOrgAbout = (o) => (o.bio ? esc(o.bio) : o.agency ? `Agence membre de ClipBoost depuis le ${date(o.since)}.` : `Campagnes de la marque ${esc(o.name)}, publiées et vérifiées par l'équipe ClipBoost.`);
+// Pastille d'initiales (carré arrondi : une structure, pas une personne) ; même teinte que l'avatar de l'agence.
+const clOrgMark = (o, size) => `<span class="grid ${size} shrink-0 select-none place-items-center rounded-tile font-semibold text-on-brand ${AVATARS[[...String(o.key)].reduce((h, ch) => h + ch.charCodeAt(0), 0) % AVATARS.length]}" aria-hidden="true">${esc(initials(o.name))}</span>`;
+// Lien vers l'organisateur dans une carte ou une ligne : cible tactile HIT (§3.5) sans décaler la ligne ; le nom se
+// tronque dans un span intérieur (un overflow sur le lien rognerait sa zone de clic). wrap : le nom passe à la ligne.
+const clOrgLink = (c, extra = "", wrap = false) => `<a href="${clOrgHref(clOrgKey(c))}" ${extra} class="${HIT} ${wrap ? "break-words" : "flex min-w-0"} rounded-sm font-medium text-fg-muted underline-offset-2 transition-colors duration-150 hover:text-brand-fg hover:underline ${FOCUS}"><span class="${wrap ? "" : "truncate"}">${esc(clOrgName(c))}</span></a>`;
+
+/** Organisateurs des campagnes visibles : ceux qui ont une campagne active d'abord, puis par budget restant. */
+function clOrganisers() {
+  const map = new Map();
+  for (const c of db.campaigns) {
+    const key = clOrgKey(c);
+    if (!map.has(key)) {
+      const a = clAgencyOf(c);
+      map.set(key, { key, agency: !!(c.ownerId || a), name: a ? a.name : c.brand, country: a ? a.country : "", bio: a ? a.bio : "", joined: a ? a.joined : "", campaigns: [] });
+    }
+    map.get(key).campaigns.push(c);
+  }
+  return [...map.values()].map((o) => {
+    const active = o.campaigns.filter((c) => c.status === "Active"), rated = active.length ? active : o.campaigns;
+    const categories = [...new Set([...active, ...o.campaigns].map((c) => c.category))];
+    const since = o.joined || o.campaigns.map((c) => c.createdAt).sort()[0];
+    return { ...o, active, closed: o.campaigns.filter((c) => c.status !== "Active"), categories, since,
+      best: Math.max(0, ...rated.map((c) => c.rate)), remaining: clSum(active.map((c) => Math.max(0, c.budget - c.spent))), entries: clSum(o.campaigns.map((c) => c.clippers)) };
+  }).sort((a, b) => (b.active.length > 0) - (a.active.length > 0) || b.remaining - a.remaining || a.name.localeCompare(b.name, "fr"));
+}
+
 // Carte portefeuille : seule source du solde sur l'Accueil et le Portefeuille.
 function clWalletCard({ curve = false } = {}) {
   const bal = balance(), hold = db.settings.holdDays, min = db.settings.minWithdraw;
@@ -84,27 +127,30 @@ function txRow(t) {
   </li>`;
 }
 
-// Carte campagne (§4.4).
-function campaignCard(c) {
-  const u = me(), fav = u.favorites.has(c.id), joined = u.joinedCampaigns.has(c.id);
-  return `<article class="group flex flex-col ${CARD} ${CARD_HOVER} p-2">
+// Carte campagne (§4.4). o.org === false : sans le lien vers l'organisateur (sur sa propre page).
+// Campagne en pause ou terminée (page d'une agence) : statut et détail, sans favori ni participation.
+function campaignCard(c, o) {
+  const u = me(), fav = u.favorites.has(c.id), joined = u.joinedCampaigns.has(c.id), open = c.status === "Active", org = !(o && o.org === false);
+  return `<article class="group flex min-w-0 flex-col ${CARD} ${CARD_HOVER} p-2">
     <div class="relative">
       <button type="button" data-action="open-campaign" data-id="${c.id}" class="cover relative block aspect-[16/9] w-full overflow-hidden rounded-tile ${FOCUS}" ${coverAttr(c)} aria-label="Voir la campagne ${esc(c.title)}">
         <span class="absolute inset-0 grid place-items-center text-5xl drop-shadow-[0_6px_14px_rgb(0_0_0/0.22)]" aria-hidden="true">${c.emoji}</span>
         <span class="absolute left-2.5 top-2.5 inline-flex items-baseline gap-1 rounded-badge bg-night/80 px-2 py-1 text-small font-semibold tabular-nums text-on-brand backdrop-blur-sm">${fmt(c.rate)}${NB}DA<span class="text-[11px] font-medium text-on-brand/80">/ 1k${NB}vues</span></span>
         ${c.top ? `<span class="absolute bottom-2.5 left-2.5 inline-flex items-center gap-1 rounded-badge bg-on-brand/90 px-1.5 py-0.5 text-[11px] font-semibold text-night">${icon("star", "size-3", true)}Top campagne</span>` : ""}
       </button>
-      <button type="button" data-action="toggle-fav" data-id="${c.id}" aria-pressed="${fav}" aria-label="${fav ? "Retirer des favoris" : "Ajouter aux favoris"}" class="absolute right-2.5 top-2.5 grid size-10 place-items-center rounded-full bg-on-brand/90 md:size-8 text-night/70 shadow-control backdrop-blur-sm transition-colors hover:text-danger-solid aria-pressed:text-danger-solid ${FOCUS}">${icon("heart", "size-4", fav)}</button>
+      ${open ? `<button type="button" data-action="toggle-fav" data-id="${c.id}" aria-pressed="${fav}" aria-label="${fav ? "Retirer des favoris" : "Ajouter aux favoris"}" class="absolute right-2.5 top-2.5 grid size-10 place-items-center rounded-full bg-on-brand/90 md:size-8 text-night/70 shadow-control backdrop-blur-sm transition-colors hover:text-danger-solid aria-pressed:text-danger-solid ${FOCUS}">${icon("heart", "size-4", fav)}</button>` : ""}
     </div>
     <div class="flex flex-1 flex-col gap-3 px-2 pb-1 pt-3">
-      <div class="min-w-0"><p class="truncate text-xs text-fg-subtle">${esc(c.brand)} · ${esc(c.category)}</p><h3 class="mt-0.5 font-sans text-[15px] font-semibold leading-snug text-fg">${esc(c.title)}</h3></div>
+      <div class="min-w-0"><p class="flex min-w-0 items-baseline gap-1 text-xs text-fg-subtle">${org ? `${clOrgLink(c)}<span class="shrink-0">· ${esc(c.category)}</span>` : `<span class="truncate">${esc(c.category)}</span>`}</p><h3 class="mt-0.5 font-sans text-[15px] font-semibold leading-snug text-fg">${esc(c.title)}</h3></div>
       <dl class="grid grid-cols-[1fr_auto] gap-x-4 gap-y-1 text-small">
         <dt class="text-fg-subtle">Payé dès</dt><dd class="text-right font-medium tabular-nums text-fg">${plural(clThresholdViews(c), "vue", "vues")}</dd>
         <dt class="text-fg-subtle">Plafond par clip</dt><dd class="text-right font-medium tabular-nums text-fg">${da(c.maxPayout)}</dd>
         ${joined ? `<dt class="text-fg-subtle">Vos gains</dt><dd class="text-right font-medium">${money(clMyEarnings(c), { signed: true })}</dd>` : ""}
       </dl>
       ${progress(c.spent, c.budget)}
-      <div class="mt-auto pt-1">${joined
+      <div class="mt-auto pt-1">${!open
+        ? `<div class="flex items-center justify-between gap-2">${statusBadge(c.status)}<button type="button" data-action="open-campaign" data-id="${c.id}" class="${btn("soft", "sm")}">Détails</button></div>`
+        : joined
         ? `<button type="button" data-action="submit-clip" data-id="${c.id}" class="${btn("secondary", "sm", "w-full")}">${icon("plus")}Soumettre un clip</button>`
         : `<button type="button" data-action="join" data-id="${c.id}" class="${btn("soft", "sm", "w-full")}">Rejoindre</button>`}</div>
     </div>
@@ -123,8 +169,9 @@ function clFavButton(c, size = "sm") {
 }
 function campaignRow(c) {
   return `<tr class="${TBL.tr}">
-    <td class="${TBL.td}"><button type="button" data-action="open-campaign" data-id="${c.id}" class="flex min-w-0 items-center gap-3 rounded-tile text-left ${FOCUS}" aria-label="Voir la campagne ${esc(c.title)}">${coverThumb(c, "sm")}
-      <span class="min-w-0"><span class="block max-w-72 truncate font-medium text-fg">${esc(c.title)}</span><span class="${TBL.tdSub} truncate">${esc(c.brand)} · ${esc(c.category)}</span></span></button></td>
+    <td class="${TBL.td}"><div class="flex min-w-0 items-center gap-3"><button type="button" data-action="open-campaign" data-id="${c.id}" tabindex="-1" aria-hidden="true" class="shrink-0 rounded-tile">${coverThumb(c, "sm")}</button>
+      <div class="min-w-0"><button type="button" data-action="open-campaign" data-id="${c.id}" class="block max-w-72 truncate rounded-sm text-left font-medium text-fg underline-offset-2 hover:underline ${FOCUS}" aria-label="Voir la campagne ${esc(c.title)}">${esc(c.title)}</button>
+        <p class="mt-0.5 flex min-w-0 max-w-72 items-baseline gap-1 text-xs text-fg-subtle">${clOrgLink(c)}<span class="shrink-0">· ${esc(c.category)}</span></p></div></div></td>
     <td class="${TBL.td} ${TBL.tdNum}">${money(c.rate)}</td>
     <td class="${TBL.td} ${TBL.tdNum}">${money(c.maxPayout)}</td>
     <td class="${TBL.td} ${TBL.tdNum}">${fmt(c.clippers)}</td>
@@ -133,8 +180,9 @@ function campaignRow(c) {
 }
 function clCampaignItem(c) {
   return `<li class="${TBL.item}">
-    <div class="flex items-start gap-3"><button type="button" data-action="open-campaign" data-id="${c.id}" class="flex min-w-0 flex-1 items-start gap-3 rounded-tile text-left ${FOCUS}" aria-label="Voir la campagne ${esc(c.title)}">${coverThumb(c, "sm")}
-      <span class="min-w-0"><span class="block truncate text-sm font-medium text-fg">${esc(c.title)}</span><span class="block truncate text-xs text-fg-subtle">${esc(c.brand)} · ${esc(c.category)} · ${plural(c.clippers, "clipper", "clippers")}</span></span></button>${clFavButton(c, "md")}</div>
+    <div class="flex items-start gap-3"><button type="button" data-action="open-campaign" data-id="${c.id}" tabindex="-1" aria-hidden="true" class="shrink-0 rounded-tile">${coverThumb(c, "sm")}</button>
+      <div class="min-w-0 flex-1"><button type="button" data-action="open-campaign" data-id="${c.id}" class="block max-w-full truncate rounded-sm text-left text-sm font-medium text-fg ${FOCUS}" aria-label="Voir la campagne ${esc(c.title)}">${esc(c.title)}</button>
+        <p class="mt-0.5 flex min-w-0 items-baseline gap-1 text-xs text-fg-subtle">${clOrgLink(c)}<span class="shrink-0">· ${esc(c.category)} · ${plural(c.clippers, "clipper", "clippers")}</span></p></div>${clFavButton(c, "md")}</div>
     <div class="flex items-center justify-between gap-3"><span class="text-small font-medium tabular-nums text-fg">${rateShort(c.rate)}</span>${clCampaignAction(c, "md")}</div>
   </li>`;
 }
@@ -169,9 +217,17 @@ function publicationsTable(list, { showUser = false, actions = false, amountLabe
     const decisionMobile = !actions ? "" : pending
       ? `<div class="grid grid-cols-[auto_1fr_1fr] gap-2 sm:flex sm:justify-end">${eye("lg")}<button type="button" data-action="adm-reject" data-id="${p.id}" class="${btn("dangerSoft", "md")}">Refuser</button>${under ? threshold("grid content-center gap-1 rounded-control border border-line px-3 sm:w-40") : `<button type="button" data-action="adm-validate" data-id="${p.id}" class="${btn("primary", "md")}">Valider</button>`}</div>`
       : p.status === "Validée" ? `<div class="flex justify-end"><button type="button" data-action="adm-views" data-id="${p.id}" class="${btn("secondary", "md")}">${icon("eye")}Relever les vues</button></div>` : "";
-    const sub = `${esc(c.title)} · ${date(p.date)}`;
+    // Espace Clipper : la campagne du clip ouvre sa fiche (et, de là, la page de son organisateur). Cible tactile HIT :
+    // le titre se tronque dans un span intérieur et la ligne n'a pas d'overflow (la zone de clic n'est pas rognée).
+    const clipperArea = state.route.area === "clipper";
+    const campName = clipperArea
+      ? `<button type="button" data-action="open-campaign" data-id="${c.id}" class="${HIT} inline-flex min-w-0 max-w-full rounded-sm text-left underline-offset-2 transition-colors hover:text-fg hover:underline ${FOCUS}" aria-label="Voir la campagne ${esc(c.title)}"><span class="truncate">${esc(c.title)}</span></button>`
+      : `<span class="truncate">${esc(c.title)}</span>`;
+    const subLine = clipperArea
+      ? `<p class="flex min-w-0 items-center gap-1 text-xs text-fg-subtle">${campName}<span class="shrink-0 whitespace-nowrap">· ${date(p.date)}</span></p>`
+      : `<p class="truncate text-xs text-fg-subtle">${showUser && owner ? `${esc(owner.name)} · ` : ""}${esc(c.title)} · ${date(p.date)}</p>`;
     // Sous-ligne du tableau : seule la campagne se tronque ; la plateforme (colonne masquée sous xl) devient un pictogramme.
-    const subCell = `<span class="mt-0.5 flex min-w-0 items-center gap-1 text-xs text-fg-subtle"><span class="truncate">${esc(c.title)}</span><span class="shrink-0 whitespace-nowrap">· ${date(p.date)}</span><span class="inline-flex shrink-0 items-center gap-1 xl:hidden" title="${esc(p.platform)}">·${icon(PLATFORM_ICON[p.platform] || "film", "size-3.5")}<span class="sr-only">${esc(p.platform)}</span></span></span>`;
+    const subCell = `<span class="mt-0.5 flex min-w-0 items-center gap-1 text-xs text-fg-subtle">${campName}<span class="shrink-0 whitespace-nowrap">· ${date(p.date)}</span><span class="inline-flex shrink-0 items-center gap-1 xl:hidden" title="${esc(p.platform)}">·${icon(PLATFORM_ICON[p.platform] || "film", "size-3.5")}<span class="sr-only">${esc(p.platform)}</span></span></span>`;
     return {
       tr: `<tr data-row="${p.id}" class="${TBL.tr}">
         <td class="${TBL.td} w-full max-w-0"><div class="flex min-w-0 items-center gap-3">${coverThumb(c, "sm")}<div class="min-w-0 flex-1">${title}${subCell}${reason}</div></div></td>
@@ -183,7 +239,7 @@ function publicationsTable(list, { showUser = false, actions = false, amountLabe
       </tr>`,
       li: `<li data-row="${p.id}" class="${TBL.item}">
         <div class="flex items-start gap-3">${coverThumb(c, "sm")}<div class="min-w-0 flex-1"><p class="truncate text-sm font-medium text-fg">${p.url ? `<a href="${esc(p.url)}" target="_blank" rel="noopener noreferrer" class="underline-offset-2 hover:underline">${esc(p.title)}</a>` : esc(p.title)}</p>
-          <p class="truncate text-xs text-fg-subtle">${showUser && owner ? `${esc(owner.name)} · ` : ""}${sub}</p>${reason}</div>${actions && pending ? "" : statusBadge(p.status)}</div>
+          ${subLine}${reason}</div>${actions && pending ? "" : statusBadge(p.status)}</div>
         <div class="flex items-center justify-between gap-3 text-small"><span class="min-w-0 truncate text-fg-subtle">${plural(p.views, "vue", "vues")} · ${esc(p.platform)}</span><span class="shrink-0 font-medium">${amountMobile}</span></div>
         ${under && !actions ? thresholdBar("w-full") : ""}${decisionMobile}
       </li>`,
@@ -247,19 +303,71 @@ function cAccueil() {
     ${near ? `<div class="mt-4">${alertBox("info", `Plus que <strong class="font-semibold">${plural(near.left, "vue", "vues")}</strong> sur «${NB}${esc(near.c.title)}${NB}» pour être payé.`)}</div>` : ""}
     <div class="mt-4 grid grid-cols-2 gap-3 sm:gap-4 lg:mt-5 xl:grid-cols-4">${kpis.join("")}</div>
     <div class="mt-4 lg:mt-5">${chart}</div>
-    ${recommended.length ? `${sectionHeader("Campagnes recommandées", "#/clipper/campagnes")}
-    <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">${recommended.map(campaignCard).join("")}</div>` : ""}
+    ${recommended.length ? `${sectionHeader("Campagnes recommandées", "#/clipper/campagnes", "Tout voir", 'data-action="camp-tab" data-value="campagnes"')}
+    <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">${recommended.map(campaignCard).join("")}</div>` : ""}
     ${sectionHeader("Dernières publications", pubs.length ? "#/clipper/publications" : "")}
     ${pubs.length ? publicationsTable(pubs.slice(0, 4))
       : emptyState("film", "Aucun clip soumis", "Rejoignez une campagne, publiez votre clip puis soumettez son lien.", `<a href="#/clipper/campagnes" class="${btn("secondary")}">Voir les campagnes</a>`)}`;
 }
 
+// En-tête de Campagnes : titre et bascule Agences / Campagnes sur une ligne (aussi à 390 px), sous-titre dessous.
+function clCampHeader(text) {
+  const tab = state.camp.tab === "campagnes" ? "campagnes" : "agences";
+  return `<div class="flex items-center justify-between gap-3">
+      <h1 class="min-w-0 text-title-sm text-fg sm:text-title">Campagnes</h1>
+      ${segmented("camp-tab", tab, [["agences", "Agences"], ["campagnes", "Campagnes"]], "Parcourir par")}
+    </div>
+    <p class="mt-1 max-w-2xl text-sm text-fg-muted">${text}</p>`;
+}
+
+// Carte d'un organisateur (vue Agences) : toute la carte mène à sa page.
+function clAgencyCard(o) {
+  const n = o.active.length, dash = `<span class="font-normal text-fg-subtle">—</span>`;
+  const thumbs = o.active.slice(0, 3).map((c) => `<span class="cover grid size-5 place-items-center rounded-[4px] text-[11px] ring-2 ring-surface" ${coverAttr(c)}>${c.emoji}</span>`).join("");
+  return `<a href="${clOrgHref(o.key)}" data-org="${esc(o.key)}" class="group flex min-w-0 flex-col ${CARD} ${CARD_HOVER} p-4 sm:p-5">
+    <div class="flex items-start gap-3">
+      ${clOrgMark(o, "size-11 text-sm")}
+      <div class="min-w-0 flex-1 pt-0.5">
+        <h3 class="truncate font-sans text-[15px] font-semibold leading-snug text-fg">${esc(o.name)}</h3>
+        <p class="mt-0.5 truncate text-xs text-fg-subtle">${clOrgType(o)}</p>
+      </div>
+    </div>
+    <p class="mt-3 line-clamp-2 min-h-[2lh] text-small ${o.bio ? "text-fg-muted" : "text-fg-subtle"}">${clOrgAbout(o)}</p>
+    <dl class="mt-4 grid grid-cols-[1fr_auto] gap-x-4 gap-y-1.5 border-t border-line pt-3.5 text-small">
+      <dt class="text-fg-subtle">Campagnes actives</dt><dd class="flex items-center justify-end gap-2 font-medium tabular-nums text-fg">${thumbs ? `<span class="flex -space-x-1" aria-hidden="true">${thumbs}</span>` : ""}${n ? fmt(n) : `<span class="font-normal text-fg-subtle">Aucune</span>`}</dd>
+      <dt class="text-fg-subtle">Meilleur tarif</dt><dd class="text-right font-medium tabular-nums text-fg">${n ? rateShort(o.best) : dash}</dd>
+      <dt class="text-fg-subtle">Budget restant</dt><dd class="text-right font-medium">${n ? money(o.remaining) : dash}</dd>
+    </dl>
+    <div class="mt-auto flex items-center justify-between gap-3 pt-4">
+      <ul class="flex min-w-0 flex-wrap gap-1.5" aria-label="Catégories">${o.categories.map((cat) => `<li class="inline-flex h-6 items-center rounded-badge bg-muted px-2 text-xs font-medium text-fg-muted">${esc(cat)}</li>`).join("")}</ul>
+      <span class="inline-flex shrink-0 items-center gap-0.5 text-small font-medium text-brand-fg">Voir les projets${icon("chevronRight", "size-4 transition-transform duration-150 ease-standard group-hover:translate-x-0.5")}</span>
+    </div>
+  </a>`;
+}
+
+// Vue Agences : qui propose des projets de clipping. Recherche par nom ; les agences avec une campagne active d'abord.
+function clAgencies() {
+  const all = clOrganisers(), q = state.camp.aq.trim().toLowerCase();
+  const list = q ? all.filter((o) => o.name.toLowerCase().includes(q)) : all;
+  const active = activeCampaigns().length, withActive = all.filter((o) => o.active.length).length;
+  const results = !all.length
+    ? emptyState("building", "Aucune agence pour le moment", "Les agences apparaîtront ici dès leur première campagne en ligne.")
+    : !list.length
+      ? emptyState("search", "Aucune agence ne correspond", "Vérifiez l'orthographe ou effacez la recherche.", `<button type="button" data-action="reset-agencies" class="${btn("secondary")}">Effacer la recherche</button>`)
+      : `<div class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">${list.map(clAgencyCard).join("")}</div>`;
+  return `${clCampHeader(`${plural(withActive, "agence recrute", "agences recrutent")} des clippers sur ${plural(active, "campagne active", "campagnes actives")}. Ouvrez une agence pour voir ses projets.`)}
+    <div class="mt-6 flex items-center gap-2 md:gap-3">${searchInput("camp-aq", state.camp.aq, "Rechercher une agence", "Rechercher une agence par son nom", "min-w-0 flex-1 md:max-w-sm")}</div>
+    <p class="mb-3 mt-4 text-small text-fg-subtle" aria-live="polite">${plural(list.length, "agence", "agences")}</p>
+    ${results}`;
+}
+
 function cCampagnes() {
+  if (state.camp.tab !== "campagnes") return clAgencies();
   const f = state.camp, q = f.q.trim().toLowerCase(), u = me();
   let list = activeCampaigns().filter((c) =>
     (f.category === "Toutes" || c.category === f.category) &&
     (!f.favOnly || u.favorites.has(c.id)) &&
-    (!q || `${c.title} ${c.brand}`.toLowerCase().includes(q)));
+    (!q || `${c.title} ${c.brand} ${clOrgName(c)}`.toLowerCase().includes(q)));
   const sorters = { recent: (a, b) => b.createdAt.localeCompare(a.createdAt), rate: (a, b) => b.rate - a.rate, popular: (a, b) => b.clippers - a.clippers };
   list = list.slice().sort(sorters[f.sort]);
   const favCount = `<span class="tabular-nums opacity-80">${fmt(u.favorites.size)}</span>`;
@@ -287,12 +395,51 @@ function cCampagnes() {
           <thead><tr class="${TBL.headRow}"><th scope="col" class="${TBL.th}">Campagne</th><th scope="col" class="${TBL.th} ${TBL.thNum}">Tarif / 1${NB}000 vues</th><th scope="col" class="${TBL.th} ${TBL.thNum}">Plafond par clip</th><th scope="col" class="${TBL.th} ${TBL.thNum}">Clippers</th><th scope="col" class="${TBL.th} ${TBL.thNum}"><span class="sr-only">Actions</span></th></tr></thead>
           <tbody>${list.map(campaignRow).join("")}</tbody></table>
           <ul class="${TBL.list.replace("md:hidden", "xl:hidden")}">${list.map(clCampaignItem).join("")}</ul></div>`
-      : `<div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">${list.map(campaignCard).join("")}</div>`;
+      : `<div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">${list.map(campaignCard).join("")}</div>`;
 
-  return `${pageHeader("Campagnes", `${plural(activeCampaigns().length, "campagne active", "campagnes actives")} · tarif pour 1${NB}000 vues validées`)}
+  return `${clCampHeader(`${plural(activeCampaigns().length, "campagne active", "campagnes actives")} · tarif pour 1${NB}000 vues validées`)}
     ${toolbar}
     <p class="mb-3 mt-4 text-small text-fg-subtle" aria-live="polite">${plural(list.length, "résultat", "résultats")}</p>
     ${results}`;
+}
+
+// Page d'un organisateur (#/clipper/agence/<clé>) : présentation, chiffres clés et projets de clipping.
+function cAgence() {
+  const key = state.route.item || "", o = clOrganisers().find((x) => x.key === key);
+  const back = `href="#/clipper/campagnes" data-action="camp-tab" data-value="agences"`;
+  const crumb = (name) => `<nav aria-label="Fil d'Ariane"><ol class="flex min-w-0 items-center gap-1.5 text-small">
+      <li class="shrink-0"><a ${back} class="${HIT} inline-flex items-center gap-1 rounded-sm font-medium text-fg-muted transition-colors duration-150 hover:text-fg ${FOCUS}">${icon("arrowLeft", "size-4 sm:hidden")}Campagnes</a></li>
+      <li class="hidden shrink-0 text-fg-subtle sm:block" aria-hidden="true">${icon("chevronRight", "size-3.5")}</li>
+      <li class="hidden min-w-0 truncate text-fg-subtle sm:block" aria-current="page">${esc(name)}</li></ol></nav>`;
+  if (!o) {
+    return `${crumb("Agence introuvable")}
+      <h1 class="sr-only">Agence introuvable</h1>
+      <div class="mt-6">${emptyState("building", "Agence introuvable", "Cette agence n'existe pas ou n'a plus de campagne visible.", `<a ${back} class="${btn("secondary")}">Voir les agences</a>`)}</div>`;
+  }
+  const n = o.active.length;
+  const country = o.country || "Algérie";
+  const grid = (list) => `<div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">${list.map((c) => campaignCard(c, { org: false })).join("")}</div>`;
+  return `${crumb(o.name)}
+    <header class="mt-4 flex items-center gap-4">
+      ${clOrgMark(o, "size-14 text-lg sm:size-16 sm:text-xl")}
+      <div class="min-w-0 flex-1">
+        <h1 class="text-title-sm text-fg sm:text-title">${esc(o.name)}</h1>
+        <p class="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-small text-fg-muted">${o.agency
+          ? `${badge("Agence", "info")}<span class="inline-flex items-center gap-1.5">${esc(country)}${country === "Algérie" ? flagDz() : ""}</span>`
+          : `${badge("Marque partenaire", "brand")}<span>Campagne gérée par ClipBoost</span>`}</p>
+        <p class="mt-1 text-xs text-fg-subtle">${o.agency ? "Membre depuis le" : "Sur ClipBoost depuis le"} ${date(o.since)}</p>
+      </div>
+    </header>
+    ${o.bio || !o.agency ? `<p class="mt-4 max-w-2xl text-sm leading-6 text-fg-muted">${clOrgAbout(o)}</p>` : ""}
+    <div class="mt-6 grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
+      ${kpi({ label: "Campagnes actives", value: kpiValue(fmt(n)), sub: o.closed.length ? `+ ${plural(o.closed.length, "en pause ou terminée", "en pause ou terminées")}` : "Ouvertes aux clippers" })}
+      ${kpi({ label: "Meilleur tarif", value: n ? bigMoney(o.best) : kpiValue("—"), sub: `pour 1${NB}000 vues validées` })}
+      ${kpi({ label: "Budget restant", value: bigMoney(o.remaining), sub: "campagnes actives" })}
+      ${kpi({ label: "Participations", value: kpiValue(fmt(o.entries)), sub: "tous projets confondus" })}
+    </div>
+    ${sectionHeader("Projets de clipping en cours")}
+    ${n ? grid(o.active) : emptyState("target", "Aucun projet en cours", `${esc(o.name)} n'a pas de campagne ouverte pour le moment.`, `<a href="#/clipper/campagnes" data-action="camp-tab" data-value="campagnes" class="${btn("secondary")}">Voir toutes les campagnes</a>`)}
+    ${o.closed.length ? `${sectionHeader("Projets terminés ou en pause")}${grid(o.closed)}` : ""}`;
 }
 
 function cPublications() {
@@ -453,7 +600,8 @@ function cParametres() {
     </div>`;
 }
 
-const CLIPPER_VIEWS = { accueil: cAccueil, campagnes: cCampagnes, publications: cPublications, portefeuille: cPortefeuille, statistiques: cStatistiques, profil: cProfil, parametres: cParametres };
+// agence : page hors navigation (ITEM_PAGES dans main.js), « Campagnes » y reste l'entrée courante.
+const CLIPPER_VIEWS = { accueil: cAccueil, campagnes: cCampagnes, agence: cAgence, publications: cPublications, portefeuille: cPortefeuille, statistiques: cStatistiques, profil: cProfil, parametres: cParametres };
 
 // ---------- Récapitulatifs en direct (main.js appelle LIVE[nom] à chaque saisie) ----------
 LIVE.withdraw = (d) => {
@@ -489,7 +637,8 @@ function clipperModal() {
     const joined = u.joinedCampaigns.has(c.id), remaining = Math.max(0, c.budget - c.spent), open = c.status === "Active";
     const tile = (label, value, extra = "", cls = "") => `<div class="${TILE} ${cls}"><p class="text-xs text-fg-subtle">${label}</p><p class="mt-0.5 text-sm font-semibold tabular-nums text-fg">${value}</p>${extra}</div>`;
     return modalShell({
-      title: esc(c.title), description: `${esc(c.brand)} · ${esc(c.category)} · créée le ${date(c.createdAt)}`, size: "lg",
+      // Lien vers l'organisateur : la fiche se ferme (close-modal), puis la page de l'agence s'ouvre (ou reste affichée).
+      title: esc(c.title), description: `${clOrgLink(c, 'data-action="close-modal"', true)} · ${esc(c.category)} · créée le ${date(c.createdAt)}`, size: "lg",
       body: `<div class="cover relative grid aspect-[16/9] place-items-center overflow-hidden rounded-tile sm:aspect-[5/2]" ${coverAttr(c)}>
           <span class="text-6xl drop-shadow-[0_6px_14px_rgb(0_0_0/0.22)]" aria-hidden="true">${c.emoji}</span>
           ${c.top ? `<span class="absolute bottom-3 left-3 inline-flex items-center gap-1 rounded-badge bg-on-brand/90 px-1.5 py-0.5 text-[11px] font-semibold text-night">${icon("star", "size-3", true)}Top campagne</span>` : ""}</div>
@@ -590,6 +739,9 @@ function handleClipperAction(action, t) {
       if (i) { i.value = fmt(Math.floor(balance())); i.dispatchEvent(new Event("input", { bubbles: true })); i.focus(); }
       return;
     }
+    // Bascule Agences / Campagnes ; depuis la page d'une agence (lien « Campagnes »), le lien fait la navigation.
+    case "camp-tab": state.camp.tab = value === "campagnes" ? "campagnes" : "agences"; return state.route.view === "campagnes" ? render() : undefined;
+    case "reset-agencies": state.camp.aq = ""; return render();
     case "fav-only": state.camp.favOnly = !state.camp.favOnly; return render();
     case "camp-cat": state.camp.category = value; return render();
     case "layout": state.camp.layout = value; return render();

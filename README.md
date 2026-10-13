@@ -69,6 +69,7 @@ Les réglages sont modifiables par l'administrateur (page « Réglages du site �
 - **Gains** : 3 jours de rétention avant d'être retirables.
 - **Retraits** : minimum 2 000 DA vers BaridiMob, CCP ou RIB. Standard gratuit, ou instantané avec 2 % de frais (100 DA minimum).
 - **Crédit agence** : demande de recharge avec une référence, confirmée par l'administrateur à réception du paiement.
+- **Agences côté clipper** : la page Campagnes s'ouvre sur la liste des agences qui organisent les campagnes visibles (l'agence propriétaire, ou la marque pour une campagne créée par ClipBoost), puis chaque agence a sa page (`#/clipper/agence/<clé>`) avec sa présentation et ses projets de clipping. Le clipper ne reçoit que leur profil public (nom, pays, présentation, date d'inscription).
 
 Le code des règles est dans `lib/server/rules.ts` et `lib/server/services/`.
 

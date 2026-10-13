@@ -53,7 +53,8 @@ Tous les fichiers `web/src/*.js` sont concaténés **dans une seule fonction** p
 
 **Noms réservés à `ui.js`** (personne d'autre ne les déclare) :
 `NB`, `MINUS`, `fmt`, `da`, `daSigned`, `money`, `BIG`, `bigMoney`, `compact`, `pct`, `plural`, `rate`, `rateShort`, `code`, `groupAccount`, `icons`, `icon`, `EVENT_ICON`, `eventIcon`, `flagDz`, `logo`, `cx`, `FOCUS`, `BTN`, `btn`, `ICON_BTN`, `iconBtn`, `inputCls`, `inputLg`, `textareaCls`, `selectCls`, `CHEVRON`, `select`, `countrySelect`, `unitInput`, `searchInput`, `field`, `OPTIONAL`, `CHOICE`, `CHOICE_DANGER`, `SEG_CHOICE`, `RADIO`, `CHECKBOX`, `switchBtn`, `CARD`, `CARD_HOVER`, `TILE`, `card`, `cardHeader`, `kpiValue`, `DELTA`, `kpi`, `BADGE`, `TONE`, `DOT`, `STATUS_TONE`, `badge`, `statusBadge`, `PLATFORM_ICON`, `platformTag`, `roleBadge`, `COUNT`, `countBadge`, `opt`, `segmented`, `pills`, `chips`, `TABLIST`, `TAB`, `pageHeader`, `sectionHeader`, `emptyState`, `progress`, `coverAttr`, `THUMB`, `coverThumb`, `AVATARS`, `AVATAR_SIZE`, `avatar`, `TBL`, `TOAST`, `toast`, `MODAL_W`, `modalShell`, `summary`, `ALERT_ICON`, `alertBox`, `accountCard`, `siteBanner`, `themeToggle`, `LIVE`, `niceMax`, `seriesDates`, `dayLabel`, `barChart`, `cumulativeChart`, `barList`, `areaChart`, plus ceux déjà présents (`esc`, `MONTHS`, `date`, `ago`, `initials`, `campaignById`, `userById`, `rawEarnings`, `belowMin`, `isCapped`, `payoutOf`, `earningsOf`, `viewsFor`, `isEmail`, `copy`, `handlePasswordSubmit`, `homeOf`).
-**Réservés à `main.js` :** `NAV_ITEM`, `NAV_ICON`, `MINI_HIDDEN`, `focusReturn`, `placeOverlayFocus`, `focusTrap`, `runLive`, `applyRouteItem`, `flashRow`, `NOTIF_DEST`, `notifDest`.
+**Réservés à `main.js` :** `NAV_ITEM`, `NAV_ICON`, `MINI_HIDDEN`, `focusReturn`, `placeOverlayFocus`, `focusTrap`, `runLive`, `applyRouteItem`, `flashRow`, `NOTIF_DEST`, `notifDest`, `ITEM_PAGES`, `navView`.
+**Réservés à `clipper.js` (agences) :** `clNorm`, `clOrgKey`, `clOrgHref`, `clAgencyOf`, `clOrgName`, `clOrgType`, `clOrgAbout`, `clOrgMark`, `clOrgLink`, `clOrganisers`, `clCampHeader`, `clAgencyCard`, `clAgencies`, `cAgence`.
 **Récapitulatifs en direct :** un fichier de zone **n'ajoute qu'une propriété** à l'objet partagé (`LIVE.withdraw = …`, `LIVE.budget = …`, `LIVE.campaign = …`), il ne redéclare jamais `LIVE`.
 **Attention aux collisions connues :** `roleTag` existe déjà dans `admin.js` (d'où `roleBadge` dans `ui.js`) ; `campaignCard`, `campaignRow`, `incomeCard`, `txRow` existent dans `clipper.js`. Un fichier de zone qui a besoin d'un helper local le préfixe (`cl…`, `ag…`, `adm…`, `auth…`).
 
@@ -1204,8 +1205,8 @@ const pageHeader = (title, text, action = "") =>
   `<div class="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
     <div class="min-w-0"><h1 class="text-title-sm text-fg sm:text-title">${title}</h1>${text ? `<p class="mt-1 max-w-2xl text-sm text-fg-muted">${text}</p>` : ""}</div>
     ${action ? `<div class="flex shrink-0 flex-wrap items-center gap-2">${action}</div>` : ""}</div>`;
-const sectionHeader = (title, href = "", link = "Tout voir") =>
-  `<div class="mb-3 mt-8 flex items-end justify-between gap-3"><h2 class="text-heading text-fg">${title}</h2>${href ? `<a href="${href}" class="inline-flex items-center gap-1 rounded-sm text-small font-medium text-brand-fg underline-offset-4 hover:underline ${FOCUS}">${link}${icon("chevronRight", "size-3.5")}</a>` : ""}</div>`;
+const sectionHeader = (title, href = "", link = "Tout voir", attrs = "") =>
+  `<div class="mb-3 mt-8 flex items-end justify-between gap-3"><h2 class="text-heading text-fg">${title}</h2>${href ? `<a href="${href}" ${attrs} class="inline-flex items-center gap-1 rounded-sm text-small font-medium text-brand-fg underline-offset-4 hover:underline ${FOCUS}">${link}${icon("chevronRight", "size-3.5")}</a>` : ""}</div>`;
 // emptyState(icône, titre, texte, action HTML, { inCard }) : inCard = à l'intérieur d'une carte existante (pas de bordure).
 const emptyState = (ic, title, text = "", action = "", { inCard = false } = {}) =>
   `<div class="flex flex-col items-center justify-center px-6 text-center ${inCard ? "py-10" : "rounded-card border border-dashed border-line-strong bg-surface py-12"}">
@@ -1815,6 +1816,13 @@ Résultats de `validate_palette.js` :
   - règles en liste à coches (`icon("check", "size-4 text-income")`) ;
   - plateformes en `platformTag` ;
   - pied : `ghost` « Fermer » et `primary` « Rejoindre la campagne » ou « Soumettre un clip ».
+
+**Agences (vue par défaut de Campagnes) et page d'une agence (`cAgence`)**
+- En-tête de Campagnes : titre et `segmented("camp-tab", …)` « Agences | Campagnes » sur une même ligne (aussi à 390 px), sous-titre dessous. Le choix est gardé dans `state.camp.tab` ; « Campagnes » garde la barre d'outils et la grille ci-dessus.
+- **Organisateur** d'une campagne : l'agence propriétaire (`db.agencies`, profil public) ; sans propriétaire, l'agence visible qui porte le nom de la marque, sinon la marque elle-même (clé `brand:<nom normalisé>` par `clNorm` : accents et casse ignorés, toutes écritures, jamais de clé commune à deux marques ; type « Marque partenaire », « campagne gérée par ClipBoost » sur sa page).
+- **Vue Agences :** recherche par nom (`camp-aq`), « 3 agences », grille `grid-cols-1 sm:grid-cols-2 xl:grid-cols-3` de cartes-liens `min-w-0 CARD CARD_HOVER` (un nom long se tronque, jamais de défilement horizontal) : pastille d'initiales carrée (teinte de l'avatar), nom, ligne de type, présentation sur 2 lignes réservées (`min-h-[2lh]`, chiffres alignés d'une carte à l'autre), `dl` Campagnes actives (mini-couvertures) / Meilleur tarif (`rateShort`) / Budget restant (`money`), catégories et « Voir les projets ». Agences avec une campagne active d'abord, puis par budget restant.
+- **Page `#/clipper/agence/<clé>`** (hors navigation : `ITEM_PAGES` dans `main.js`, « Campagnes » reste courant, l'adresse survit au rechargement) : fil d'Ariane « Campagnes › nom » (retour à l'onglet Agences), en-tête (pastille `size-16`, nom, badge Agence ou Marque partenaire, pays, « Membre depuis… »), présentation, 4 `kpi` (Campagnes actives, Meilleur tarif, Budget restant, Participations : inscriptions cumulées de ses projets), « Projets de clipping en cours » (cartes §4.4 sans lien organisateur) et « Projets terminés ou en pause » (statut + `btn("soft", "sm")` « Détails »). Clé inconnue : fil d'Ariane, `h1` `sr-only` et `emptyState` « Agence introuvable ».
+- Partout ailleurs (carte, liste, fiche), le nom de l'organisateur est un lien vers sa page (`clOrgLink` : cible `HIT`, nom tronqué dans un span intérieur ; dans l'en-tête de la fiche, il passe à la ligne). « Tout voir » des campagnes recommandées de l'Accueil ouvre l'onglet Campagnes (`sectionHeader(…, attrs)`).
 
 **Mes publications (`cPublications`)**
 - `segmented("pub-status", …, [["Toutes","Toutes",4],["Validée","Validées",3],["En attente","En attente",1],["Refusée","Refusées",0]], "Statut")`.

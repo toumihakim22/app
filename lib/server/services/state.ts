@@ -12,6 +12,11 @@ function publicUser(u: typeof schema.users.$inferSelect) {
   return { id: u.id, role: u.role, name: u.name, country: u.country, status: u.status, level: u.level, joined: day(u.createdAt), handle: u.handles.tiktok ?? u.handles.instagram ?? u.handles.youtube ?? "" };
 }
 
+/** Profil public d'une agence (organisatrice de campagnes) : aucune donnée privée (email, contact, crédit). */
+function publicAgency(u: typeof schema.users.$inferSelect) {
+  return { id: u.id, name: u.name, country: u.country, bio: u.bio, joined: day(u.createdAt) };
+}
+
 function fullUser(u: typeof schema.users.$inferSelect) {
   return { ...publicUser(u), email: u.email, contact: u.contact, credit: u.credit, bio: u.bio, handles: u.handles, payoutMethod: u.payoutMethod, payoutAccount: u.payoutAccount, verified: true };
 }
@@ -29,7 +34,7 @@ function daily30(rows: { d: string; v: number }[]) {
 export async function stateFor(user: User) {
   const db = await getDb();
   const settings = await getSettings();
-  const isAdmin = user.role === "admin", isAgency = user.role === "agence";
+  const isAdmin = user.role === "admin", isAgency = user.role === "agence", isClipper = user.role === "clipper";
   const C = schema.campaigns, P = schema.publications, T = schema.transactions, M = schema.campaignMembers;
 
   const campaignRows = await db.select().from(C).where(
@@ -51,11 +56,15 @@ export async function stateFor(user: User) {
     ? await db.select().from(schema.users).orderBy(desc(schema.users.createdAt))
     : await db.select().from(schema.users).where(or(eq(schema.users.id, user.id), pubRows.length ? inArray(schema.users.id, [...new Set(pubRows.map((p) => p.userId))]) : sql`false`));
 
+  // Clipper : les agences qui organisent les campagnes visibles (page « Agences » de l'espace Clipper).
+  const ownerIds = isClipper ? [...new Set(campaignRows.flatMap((c) => (c.ownerId ? [c.ownerId] : [])))] : [];
+  const agencyRows = ownerIds.length ? await db.select().from(schema.users).where(inArray(schema.users.id, ownerIds)) : [];
+
   const txRows = await db.select().from(T).where(isAdmin ? ne(T.type, "gain") : eq(T.userId, user.id)).orderBy(desc(T.createdAt)).limit(isAdmin ? 500 : 200);
   const notifRows = await db.select().from(schema.notifications).where(eq(schema.notifications.userId, user.id)).orderBy(desc(schema.notifications.createdAt)).limit(30);
   const activityRows = isAdmin ? await db.select().from(schema.activity).orderBy(desc(schema.activity.createdAt)).limit(30) : [];
 
-  const mine = user.role === "clipper" ? await db.select().from(M).where(eq(M.userId, user.id)) : [];
+  const mine = isClipper ? await db.select().from(M).where(eq(M.userId, user.id)) : [];
   const since = new Date(Date.now() - 30 * 86_400_000);
 
   // Séries des graphiques.
@@ -83,6 +92,7 @@ export async function stateFor(user: User) {
     settings: { maintenance: settings.maintenance, signupsOpen: settings.signupsOpen, announcement: settings.announcement, minWithdraw: settings.minWithdraw, commissionRate: settings.commissionRate, minBudget: settings.minBudget, holdDays: settings.holdDays, earningDays: settings.earningDays, instantFeePercent: settings.instantFeePercent, instantMinFee: settings.instantMinFee },
     users: userRows.map((u) => ({ ...(isAdmin ? fullUser(u) : u.id === user.id ? fullUser(u) : publicUser(u)), ...(balanceOf.get(u.id) ?? {}) })),
     campaigns: campaignRows.map((c) => ({ ...c, createdAt: day(c.createdAt), clippers: clippersOf.get(c.id) ?? 0 })),
+    agencies: agencyRows.map(publicAgency).sort((a, b) => a.name.localeCompare(b.name, "fr") || a.id.localeCompare(b.id)),
     publications: pubRows.map((p) => ({ id: p.id, userId: p.userId, campaign: p.campaignId, title: p.title, platform: p.platform, url: p.url, views: p.views, status: p.status, reason: p.reason, paid: p.paid, date: day(p.createdAt) })),
     transactions: txRows.map((t) => ({ id: t.id, ref: t.ref, userId: t.userId, type: t.type, label: t.label, amount: t.amount, fee: t.fee, status: t.status, method: t.method, date: day(t.createdAt), time: time(t.createdAt), availableAt: t.availableAt?.toISOString() ?? null })),
     notifications: notifRows.map((n) => ({ id: n.id, icon: n.icon, text: n.text, link: n.link ?? inferLink(user.role, n.text, linkCtx), unread: !n.read, at: n.createdAt.toISOString() })),

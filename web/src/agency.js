@@ -288,6 +288,7 @@ function gProfil() {
       <h2 class="mt-4 text-section text-fg">${esc(u.name)}</h2>
       <p class="mt-0.5 text-small text-fg-muted">${u.contact ? `${esc(u.contact)} · ` : ""}${esc(u.country)}</p>
       <div class="mt-3">${roleBadge("agence")}</div>
+      ${u.bio ? `<p class="mt-4 text-sm text-fg-muted">${esc(u.bio)}</p>` : ""}
     </div>
     <dl class="mt-5 grid grid-cols-2 gap-2">
       <div class="${TILE}"><dt class="text-xs text-fg-subtle">Campagnes</dt><dd class="mt-0.5 text-sm font-semibold tabular-nums text-fg">${fmt(list.length)}</dd></div>
@@ -301,6 +302,7 @@ function gProfil() {
           ${field("Nom de l'agence ou de la marque", `<input name="name" value="${esc(u.name)}" autocomplete="organization" class="${inputCls}"/>`)}
           ${field("Nom du contact", `<input name="contact" value="${esc(u.contact || "")}" autocomplete="name" class="${inputCls}"/>`)}
           ${field("Pays", countrySelect("country", u.country))}
+          <div class="sm:col-span-2">${field(`Présentation de l'agence ${OPTIONAL}`, `<textarea name="bio" rows="3" maxlength="300" placeholder="Votre activité, vos marques, le type de clips que vous recherchez…" class="${textareaCls}">${esc(u.bio || "")}</textarea>`, "Visible par les clippers sur la page de votre agence. 300 caractères maximum.")}</div>
           <div class="flex justify-end border-t border-line pt-4 sm:col-span-2"><button class="${btn("primary")}">Enregistrer</button></div>
         </form>`, "p-5 self-start")}
       <div class="grid content-start gap-4 lg:gap-5">${identity}${accountCard(u)}</div>
@@ -578,6 +580,6 @@ function handleAgencySubmit(form, data) {
     return act("POST", "/api/credit", { amount: agNum(data.amount), method: data.method }, (r) => `Demande envoyée · référence ${r.ref} à indiquer dans votre paiement`, () => { state.modal = null; });
   }
   if (form === "ag-profile") {
-    return act("PATCH", "/api/me", { name: data.name, contact: data.contact, country: data.country }, "Profil de l'agence mis à jour");
+    return act("PATCH", "/api/me", { name: data.name, contact: data.contact, country: data.country, bio: data.bio }, "Profil de l'agence mis à jour");
   }
 }

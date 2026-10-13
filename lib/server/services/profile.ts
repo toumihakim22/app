@@ -12,8 +12,9 @@ export async function updateProfile(user: User, input: { name?: string; contact?
   if (input.name !== undefined) patch.name = input.name.trim();
   if (input.country !== undefined) patch.country = input.country;
   if (user.role === "agence" && input.contact !== undefined) patch.contact = input.contact.trim();
+  // Bio : présentation du clipper (vue par les marques) ou de l'agence (vue par les clippers sur sa page).
+  if (input.bio !== undefined && (user.role === "clipper" || user.role === "agence")) patch.bio = input.bio.trim();
   if (user.role === "clipper") {
-    if (input.bio !== undefined) patch.bio = input.bio.trim();
     if (input.handles !== undefined) patch.handles = input.handles;
     if (input.payoutMethod !== undefined) patch.payoutMethod = input.payoutMethod;
     if (input.payoutAccount !== undefined) patch.payoutAccount = input.payoutAccount.trim();

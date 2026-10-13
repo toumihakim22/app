@@ -329,8 +329,8 @@ const pageHeader = (title, text, action = "") =>
   `<div class="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
     <div class="min-w-0"><h1 class="text-title-sm text-fg sm:text-title">${title}</h1>${text ? `<p class="mt-1 max-w-2xl text-sm text-fg-muted">${text}</p>` : ""}</div>
     ${action ? `<div class="flex shrink-0 flex-wrap items-center gap-2">${action}</div>` : ""}</div>`;
-const sectionHeader = (title, href = "", link = "Tout voir") =>
-  `<div class="mb-3 mt-8 flex items-end justify-between gap-3"><h2 class="text-heading text-fg">${title}</h2>${href ? `<a href="${href}" class="inline-flex items-center gap-1 rounded-sm text-small font-medium text-brand-fg underline-offset-4 hover:underline ${FOCUS}">${link}${icon("chevronRight", "size-3.5")}</a>` : ""}</div>`;
+const sectionHeader = (title, href = "", link = "Tout voir", attrs = "") =>
+  `<div class="mb-3 mt-8 flex items-end justify-between gap-3"><h2 class="text-heading text-fg">${title}</h2>${href ? `<a href="${href}" ${attrs} class="inline-flex items-center gap-1 rounded-sm text-small font-medium text-brand-fg underline-offset-4 hover:underline ${FOCUS}">${link}${icon("chevronRight", "size-3.5")}</a>` : ""}</div>`;
 // emptyState(icône, titre, texte, action HTML, { inCard }) : inCard = à l'intérieur d'une carte existante (pas de bordure).
 const emptyState = (ic, title, text = "", action = "", { inCard = false } = {}) =>
   `<div class="flex flex-col items-center justify-center px-6 text-center ${inCard ? "py-10" : "rounded-card border border-dashed border-line-strong bg-surface py-12"}">

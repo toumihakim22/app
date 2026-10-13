@@ -10,6 +10,11 @@ function publicUser(u: UserRow) {
   return { id: u.id, role: u.role, name: u.name, country: u.country, status: u.status, level: u.level, joined: day(u.createdAt), handle: u.handles.tiktok ?? u.handles.instagram ?? u.handles.youtube ?? "" };
 }
 
+/** Profil public d'une agence (organisatrice de campagnes) : aucune donnée privée (email, contact, crédit). */
+function publicAgency(u: UserRow) {
+  return { id: u.id, name: u.name, country: u.country, bio: u.bio, joined: day(u.createdAt) };
+}
+
 function fullUser(u: UserRow) {
   return { ...publicUser(u), email: u.email, contact: u.contact, credit: u.credit, bio: u.bio, handles: u.handles, payoutMethod: u.payoutMethod, payoutAccount: u.payoutAccount, verified: true };
 }
@@ -27,7 +32,7 @@ function daily30(rows: { at: number; v: number }[]) {
  */
 export function stateFor(db: Store, user: UserRow) {
   const settings = getSettings(db);
-  const isAdmin = user.role === "admin", isAgency = user.role === "agence";
+  const isAdmin = user.role === "admin", isAgency = user.role === "agence", isClipper = user.role === "clipper";
 
   const campaignRows = newestFirst(db.campaigns.filter((c) => (isAdmin ? true : isAgency ? c.ownerId === user.id : ["Active", "En pause", "Terminée"].includes(c.status))));
   const campaignIds = new Set(campaignRows.map((c) => c.id));
@@ -40,11 +45,15 @@ export function stateFor(db: Store, user: UserRow) {
   const authors = new Set(pubRows.map((p) => p.userId));
   const userRows = isAdmin ? newestFirst(db.users) : db.users.filter((u) => u.id === user.id || authors.has(u.id));
 
+  // Clipper : les agences qui organisent les campagnes visibles (page « Agences » de l'espace Clipper).
+  const ownerIds = new Set(isClipper ? campaignRows.flatMap((c) => (c.ownerId ? [c.ownerId] : [])) : []);
+  const agencyRows = db.users.filter((u) => ownerIds.has(u.id));
+
   const txRows = newestFirst(db.transactions.filter((t) => (isAdmin ? t.type !== "gain" : t.userId === user.id))).slice(0, isAdmin ? 500 : 200);
   const notifRows = newestFirst(db.notifications.filter((n) => n.userId === user.id)).slice(0, 30);
   const activityRows = isAdmin ? newestFirst(db.activity).slice(0, 30) : [];
 
-  const mine = user.role === "clipper" ? db.members.filter((m) => m.userId === user.id) : [];
+  const mine = isClipper ? db.members.filter((m) => m.userId === user.id) : [];
   const since = Date.now() - 30 * 86_400_000;
 
   // Séries des graphiques.
@@ -73,6 +82,7 @@ export function stateFor(db: Store, user: UserRow) {
       minPayout: c.minPayout, maxPayout: c.maxPayout, commissionRate: c.commissionRate, reserved: c.reserved, status: c.status, top: c.top,
       emoji: c.emoji, gradient: c.gradient, platforms: c.platforms, rules: c.rules, createdAt: day(c.createdAt), clippers: clippersOf.get(c.id) ?? 0,
     })),
+    agencies: agencyRows.map(publicAgency).sort((a, b) => a.name.localeCompare(b.name, "fr") || a.id.localeCompare(b.id)),
     publications: pubRows.map((p) => ({ id: p.id, userId: p.userId, campaign: p.campaignId, title: p.title, platform: p.platform, url: p.url, views: p.views, status: p.status, reason: p.reason, paid: p.paid, date: day(p.createdAt) })),
     transactions: txRows.map((t) => ({ id: t.id, ref: t.ref, userId: t.userId, type: t.type, label: t.label, amount: t.amount, fee: t.fee, status: t.status, method: t.method, date: day(t.createdAt), time: time(t.createdAt), availableAt: t.availableAt === null ? null : new Date(t.availableAt).toISOString() })),
     notifications: notifRows.map((n) => ({ id: n.id, icon: n.icon, text: n.text, link: n.link ?? inferLink(user.role, n.text, linkCtx), unread: !n.read, at: new Date(n.createdAt).toISOString() })),
