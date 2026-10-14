@@ -14,7 +14,13 @@ function ago(iso) {
   if (s < 604800) return `Il y a ${Math.floor(s / 86400)} j`;
   return date(iso);
 }
-const initials = (name) => name.split(/\s+/).filter(Boolean).map((w) => w[0]).join("").slice(0, 2).toUpperCase();
+// Initiales de l'avatar, toujours 2 lettres : premières lettres des deux premiers mots (« Yacine Benali » → YB), ou deux
+// premières lettres d'un nom en un seul mot (« Yacine » → YA). Ponctuation ignorée (« L'Atelier » → LA, « @nova » → NO).
+const initials = (name) => {
+  const words = String(name || "").trim().split(/\s+/).map((w) => [...w.replace(/[^\p{L}\p{N}]/gu, "")]).filter((w) => w.length);
+  if (!words.length) return "?";
+  return (words.length > 1 ? words[0][0] + words[1][0] : words[0].slice(0, 2).join("")).toUpperCase();
+};
 const campaignById = (id) => db.campaigns.find((c) => c.id === id);
 const userById = (id) => db.users.find((u) => u.id === id);
 const rawEarnings = (p) => (p.views / 1000) * campaignById(p.campaign).rate;
@@ -31,12 +37,16 @@ function copy(text, msg) {
   toast(msg);
 }
 
+// Formulaire « password » de accountCard : changement (mot de passe actuel exigé) ou, pour un compte créé avec Google,
+// Apple ou Discord qui n'en a pas encore (me.hasPassword === false), premier mot de passe (current vide, ignoré par l'API).
 async function handlePasswordSubmit(data) {
+  const u = userById(state.session), had = !u || u.hasPassword !== false;
   try {
-    await api("POST", "/api/auth/password", { current: data.current || "", next: data.next || "" });
+    await api("POST", "/api/auth/password", { current: had ? data.current || "" : "", next: data.next || "" });
     state.pwdError = "";
+    if (!had) await refresh().catch(() => {});
     render();
-    toast("Mot de passe modifié");
+    toast(had ? "Mot de passe modifié" : "Mot de passe défini : vous pouvez aussi vous connecter avec votre email");
   } catch (e) {
     state.pwdError = e.message;
     render();
@@ -180,6 +190,9 @@ function logo(opts = {}) {
 // ---------- Classes de base ----------
 const cx = (...a) => a.filter(Boolean).join(" ");
 const FOCUS = "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus";
+// Anneau intérieur : pour un bouton posé dans un cadre défilant (segmented, chips, overflow-x-auto), qui rognerait
+// un anneau extérieur, ou collé au bord d'un panneau (menus).
+const FOCUS_INSET = "focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus";
 // Zone tactile élargie (≥ 40 px sous md) pour les liens texte, sans changer leur rendu.
 const HIT = "relative max-md:after:absolute max-md:after:-inset-x-2 max-md:after:-inset-y-3";
 
@@ -214,8 +227,8 @@ const iconBtn = (size = "md", outline = false, extra = "") => cx(ICON_BTN.base, 
 const inputCls = "block h-10 w-full rounded-control border border-line-strong bg-surface px-3 text-base text-fg shadow-control transition-[border-color,box-shadow] duration-150 placeholder:text-fg-subtle hover:border-line-control focus:border-focus focus:outline-hidden focus:ring-3 focus:ring-focus/20 disabled:cursor-not-allowed disabled:bg-subtle disabled:text-fg-disabled [&:read-only:not(select)]:bg-subtle aria-[invalid=true]:border-danger-solid aria-[invalid=true]:focus:ring-danger-solid/20 sm:text-sm";
 const inputLg = "h-12"; // même hauteur que btn(…, "lg") posé à côté (« Tout retirer »)
 const textareaCls = `${inputCls} h-auto min-h-24 resize-y py-2.5 leading-5`;
-const selectCls = `${inputCls} cursor-pointer appearance-none pr-9`;
-const CHEVRON = icon("chevronDown", "pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-fg-subtle");
+const selectCls = `${inputCls} cursor-pointer appearance-none pe-9`;
+const CHEVRON = icon("chevronDown", "pointer-events-none absolute end-3 top-1/2 size-4 -translate-y-1/2 text-fg-subtle");
 
 // select(name, value, options[[v, l]], { label, cls }) ; 4e argument texte = classes du conteneur (compatibilité).
 function select(name, value, options, opts = {}) {
@@ -227,10 +240,10 @@ const countrySelect = (name, value, opts = {}) =>
   `<span class="relative block"><select name="${name}" class="${selectCls}"${(typeof opts === "string" ? /rose|danger|invalid/.test(opts) : opts.invalid) ? ' aria-invalid="true"' : ""}>${COUNTRIES.map((c) => `<option${c === value ? " selected" : ""}>${esc(c)}</option>`).join("")}</select>${CHEVRON}</span>`;
 // Champ numérique avec unité en suffixe (DA, %, jours, vues). attrs : attributs bruts de l'input.
 const unitInput = (attrs, unit, { lg = false } = {}) =>
-  `<span class="relative block"><input ${attrs} inputmode="numeric" class="${inputCls} ${lg ? inputLg : ""} ${unit.length > 3 ? "pr-16" : "pr-12"} tabular-nums"/><span class="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm font-medium text-fg-subtle">${unit}</span></span>`;
+  `<span class="relative block"><input ${attrs} inputmode="numeric" class="${inputCls} ${lg ? inputLg : ""} ${unit.length > 3 ? "pe-16" : "pe-12"} tabular-nums"/><span class="pointer-events-none absolute inset-y-0 end-3 flex items-center text-sm font-medium text-fg-subtle">${unit}</span></span>`;
 // Bouton « Effacer » maison (la croix native de WebKit est masquée dans web/styles.css) : visible dès que le champ n'est plus vide.
 const searchInput = (name, value, placeholder, label, cls = "") =>
-  `<label class="relative block ${cls}"><span class="sr-only">${esc(label)}</span>${icon("search", "pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-fg-subtle")}<input data-input="${name}" type="search" value="${esc(value)}" placeholder="${esc(placeholder)}" class="peer ${inputCls} pl-9 pr-10 md:pr-9"/><span class="absolute inset-y-0 right-0 flex items-center pr-0 peer-placeholder-shown:hidden md:pr-1"><button type="button" data-action="clear-search" data-value="${name}" class="${iconBtn("sm", false, "text-fg-subtle")}" aria-label="Effacer la recherche">${icon("close")}</button></span></label>`;
+  `<label class="relative block ${cls}"><span class="sr-only">${esc(label)}</span>${icon("search", "pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2 text-fg-subtle")}<input data-input="${name}" type="search" value="${esc(value)}" placeholder="${esc(placeholder)}" class="peer ${inputCls} ps-9 pe-10 md:pe-9"/><span class="absolute inset-y-0 end-0 flex items-center pe-0 peer-placeholder-shown:hidden md:pe-1"><button type="button" data-action="clear-search" data-value="${name}" class="${iconBtn("sm", false, "text-fg-subtle")}" aria-label="Effacer la recherche">${icon("close")}</button></span></label>`;
 // field(libellé, champ, aide, erreur) : l'erreur remplace l'aide ; poser aria-invalid="true" sur le champ en erreur.
 // L'aide et l'erreur restent hors du <label> : elles ne s'ajoutent pas au nom accessible du champ.
 const field = (label, input, hint = "", error = "") =>
@@ -273,7 +286,7 @@ const RADIO = "mt-0.5 size-4 shrink-0 cursor-pointer accent-brand focus-visible:
 const CHECKBOX = `size-4 shrink-0 cursor-pointer rounded-[4px] accent-brand ${FOCUS}`;
 
 const switchBtn = (on, action, key, label) =>
-  `<button type="button" role="switch" aria-checked="${on}" data-action="${action}" data-key="${key}" aria-label="${esc(label)}" class="group relative inline-flex h-6 w-10 shrink-0 cursor-pointer items-center rounded-full bg-line-control transition-colors duration-150 ease-standard after:absolute after:-inset-2 aria-checked:bg-brand ${FOCUS}"><span class="pointer-events-none ml-0.5 size-5 rounded-full bg-on-brand shadow-control transition-transform duration-150 ease-standard group-aria-checked:translate-x-4"></span></button>`;
+  `<button type="button" role="switch" aria-checked="${on}" data-action="${action}" data-key="${key}" aria-label="${esc(label)}" class="group relative inline-flex h-6 w-10 shrink-0 cursor-pointer items-center rounded-full bg-line-control transition-colors duration-150 ease-standard after:absolute after:-inset-2 aria-checked:bg-brand ${FOCUS}"><span class="pointer-events-none ms-0.5 size-5 rounded-full bg-on-brand shadow-control transition-[margin-inline-start] duration-150 ease-standard group-aria-checked:ms-[1.125rem]"></span></button>`;
 
 // ---------- Cartes ----------
 const CARD = "rounded-card border border-line bg-surface shadow-card";
@@ -326,7 +339,7 @@ const opt = (o) => (Array.isArray(o) ? o : [o, o]);
 // (comme chips), pour qu'aucune option ne soit rognée dans le cadre ; à partir de sm, le contrôle segmenté.
 const SEG_WRAP = "inline-flex max-w-full items-center gap-0.5 overflow-x-auto rounded-control border border-line bg-subtle p-0.5 [scrollbar-width:none]";
 const SEG_WRAP_SCROLL = "max-sm:-mx-4 max-sm:flex max-sm:max-w-none max-sm:gap-2 max-sm:rounded-none max-sm:border-0 max-sm:bg-transparent max-sm:p-0 max-sm:px-4 max-sm:pb-1";
-const SEG_BTN = `inline-flex h-10 shrink-0 items-center gap-1.5 rounded-lg px-3 text-small font-medium text-fg-muted transition-colors duration-150 hover:text-fg aria-pressed:bg-surface-raised aria-pressed:text-fg aria-pressed:shadow-control md:h-8 ${FOCUS}`;
+const SEG_BTN = `inline-flex h-10 shrink-0 items-center gap-1.5 rounded-lg px-3 text-small font-medium text-fg-muted transition-colors duration-150 hover:text-fg aria-pressed:bg-surface-raised aria-pressed:text-fg aria-pressed:shadow-control md:h-8 ${FOCUS_INSET}`;
 const SEG_BTN_SCROLL = "max-sm:rounded-full max-sm:border max-sm:border-line-strong max-sm:bg-surface max-sm:px-3.5 max-sm:aria-pressed:border-brand-line max-sm:aria-pressed:bg-brand-soft max-sm:aria-pressed:text-brand-fg max-sm:aria-pressed:shadow-none";
 const segmented = (name, value, options, label = "Filtrer", { scroll = false } = {}) =>
   `<div class="${SEG_WRAP} ${scroll ? SEG_WRAP_SCROLL : ""}" role="group" aria-label="${esc(label)}">${options.map((o) => {
@@ -337,7 +350,7 @@ const pills = segmented; // compatibilité
 const chips = (name, value, options, label = "Filtrer") =>
   `<div class="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] sm:mx-0 sm:px-0" role="group" aria-label="${esc(label)}">${options.map((o) => {
     const [v, l, n] = opt(o);
-    return `<button type="button" data-action="${name}" data-value="${esc(v)}" aria-pressed="${String(v) === String(value)}" class="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-full border border-line-strong bg-surface px-3.5 text-small font-medium text-fg-muted transition-colors hover:border-line-control hover:text-fg aria-pressed:border-brand-line aria-pressed:bg-brand-soft aria-pressed:text-brand-fg md:h-8 ${FOCUS}">${esc(l)}${n !== undefined ? `<span class="tabular-nums">${fmt(n)}</span>` : ""}</button>`;
+    return `<button type="button" data-action="${name}" data-value="${esc(v)}" aria-pressed="${String(v) === String(value)}" class="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-full border border-line-strong bg-surface px-3.5 text-small font-medium text-fg-muted transition-colors hover:border-line-control hover:text-fg aria-pressed:border-brand-line aria-pressed:bg-brand-soft aria-pressed:text-brand-fg md:h-8 ${FOCUS_INSET}">${esc(l)}${n !== undefined ? `<span class="tabular-nums">${fmt(n)}</span>` : ""}</button>`;
   }).join("")}</div>`;
 // Onglets soulignés (sections d'une même page).
 const TABLIST = "flex gap-6 border-b border-line";
@@ -349,7 +362,7 @@ const pageHeader = (title, text, action = "") =>
     <div class="min-w-0"><h1 class="text-title-sm text-fg sm:text-title">${title}</h1>${text ? `<p class="mt-1 max-w-2xl text-sm text-fg-muted">${text}</p>` : ""}</div>
     ${action ? `<div class="flex shrink-0 flex-wrap items-center gap-2">${action}</div>` : ""}</div>`;
 const sectionHeader = (title, href = "", link = "Tout voir", attrs = "") =>
-  `<div class="mb-3 mt-8 flex items-end justify-between gap-3"><h2 class="text-heading text-fg">${title}</h2>${href ? `<a href="${href}" ${attrs} class="inline-flex items-center gap-1 rounded-sm text-small font-medium text-brand-fg underline-offset-4 hover:underline ${FOCUS}">${link}${icon("chevronRight", "size-3.5")}</a>` : ""}</div>`;
+  `<div class="mb-3 mt-8 flex items-end justify-between gap-3"><h2 class="text-heading text-fg">${title}</h2>${href ? `<a href="${href}" ${attrs} class="inline-flex items-center gap-1 rounded-sm text-small font-medium text-brand-fg underline-offset-4 hover:underline ${FOCUS}">${link}${icon("chevronRight", "size-3.5 rtl:-scale-x-100")}</a>` : ""}</div>`;
 // emptyState(icône, titre, texte, action HTML, { inCard }) : inCard = à l'intérieur d'une carte existante (pas de bordure).
 const emptyState = (ic, title, text = "", action = "", { inCard = false } = {}) =>
   `<div class="flex flex-col items-center justify-center px-6 text-center ${inCard ? "py-10" : "rounded-card border border-dashed border-line-strong bg-surface py-12"}">
@@ -400,13 +413,14 @@ const TBL = {
   wrap: "relative overflow-hidden rounded-card border border-line bg-surface shadow-card",
   table: "hidden w-full border-collapse text-sm md:table",
   headRow: "bg-subtle",
-  th: "h-9 whitespace-nowrap px-4 text-left align-middle text-xs font-medium text-fg-subtle first:pl-5 last:pr-5",
-  thNum: "text-right",
+  th: "h-9 whitespace-nowrap px-4 text-start align-middle text-xs font-medium text-fg-subtle first:ps-5 last:pe-5",
+  // Toujours posé avec th (`${TBL.th} ${TBL.thNum}`) : text-end! l'emporte sur text-start, que Tailwind émet après lui.
+  thNum: "text-end!",
   tr: "border-t border-line transition-colors duration-150 hover:bg-subtle/70",
-  td: "h-14 px-4 py-2 align-middle text-fg first:pl-5 last:pr-5",
-  tdNum: "text-right font-medium tabular-nums whitespace-nowrap",
+  td: "h-14 px-4 py-2 align-middle text-fg first:ps-5 last:pe-5",
+  tdNum: "text-end font-medium tabular-nums whitespace-nowrap",
   tdSub: "mt-0.5 block text-xs text-fg-subtle",
-  tdActions: "w-px whitespace-nowrap text-right",
+  tdActions: "w-px whitespace-nowrap text-end",
   list: "divide-y divide-line md:hidden",
   item: "flex flex-col gap-3 px-4 py-3.5",
 };
@@ -451,8 +465,8 @@ function modalShell(arg, legacySize = "max-w-lg") {
       <span class="mx-auto mt-2 h-1 w-9 shrink-0 rounded-full bg-line-strong sm:hidden" aria-hidden="true"></span>
       ${title ? `<header class="flex items-start justify-between gap-4 border-b border-line px-5 py-4 sm:px-6">
         <div class="min-w-0"><h2 id="modal-title" class="text-heading text-fg">${title}</h2>${description ? `<p class="mt-0.5 text-small text-fg-muted">${description}</p>` : ""}</div>
-        <button type="button" data-action="close-modal" class="${iconBtn("sm", false, "-mr-1.5 -mt-0.5")}" aria-label="Fermer">${icon("close")}</button>
-      </header>` : `<button type="button" data-action="close-modal" class="${iconBtn("sm", false, "absolute right-3 top-3 z-10")}" aria-label="Fermer">${icon("close")}</button>`}
+        <button type="button" data-action="close-modal" class="${iconBtn("sm", false, "-me-1.5 -mt-0.5")}" aria-label="Fermer">${icon("close")}</button>
+      </header>` : `<button type="button" data-action="close-modal" class="${iconBtn("sm", false, "absolute end-3 top-3 z-10")}" aria-label="Fermer">${icon("close")}</button>`}
       <div class="min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-6">${body}</div>
       ${footer ? `<footer class="flex flex-col-reverse gap-2 border-t border-line bg-subtle px-5 pt-3.5 pb-[max(0.875rem,env(safe-area-inset-bottom))] sm:flex-row sm:items-center sm:justify-end sm:px-6 sm:pb-3.5">${footer}</footer>` : ""}
     </${tag}></div>`;
@@ -462,24 +476,45 @@ const LIVE = {};
 // Récapitulatif d'argent (au-dessus du pied des modales qui touchent à l'argent).
 // rows : [[libellé, valeurHTML, fort?]] ; la ligne forte est séparée par un trait.
 const summary = (rows) =>
-  `<dl class="mt-5 grid gap-2 rounded-tile bg-subtle p-4 text-sm">${rows.map(([l, v, strong]) => `<div class="flex items-baseline justify-between gap-4 ${strong ? "mt-1 border-t border-line pt-3 font-semibold text-fg" : "text-fg-muted"}"><dt>${l}</dt><dd class="tabular-nums text-right ${strong ? "" : "text-fg"}">${v}</dd></div>`).join("")}</dl>`;
+  `<dl class="mt-5 grid gap-2 rounded-tile bg-subtle p-4 text-sm">${rows.map(([l, v, strong]) => `<div class="flex items-baseline justify-between gap-4 ${strong ? "mt-1 border-t border-line pt-3 font-semibold text-fg" : "text-fg-muted"}"><dt>${l}</dt><dd class="tabular-nums text-end ${strong ? "" : "text-fg"}">${v}</dd></div>`).join("")}</dl>`;
 // Alerte en ligne : alert("info" | "warning" | "danger" | "success", texteHTML)
 const ALERT_ICON = { info: "info", warning: "alert", danger: "alert", success: "check" };
 const alertBox = (tone, html) =>
   `<div class="flex items-start gap-2.5 rounded-control border px-3.5 py-3 text-sm ${TONE[tone]}" role="${tone === "danger" ? "alert" : "note"}">${icon(ALERT_ICON[tone], "mt-0.5 size-4 shrink-0")}<div class="min-w-0">${html}</div></div>`;
 
-// ---------- Carte « Compte et connexion » (Profil clipper et Profil agence) ----------
+// ---------- Carte « Compte et connexion » (Profil et Paramètres du clipper et de l'agence, Mon compte de l'admin) ----------
+// Email (badge « Vérifiée » si u.emailVerified), connexions Google / Apple / Discord liées au compte (u.providers),
+// puis le mot de passe : changement (actuel + nouveau) si le compte en a un (u.hasPassword), sinon « Définir un mot
+// de passe » (compte créé avec Google, Apple ou Discord : le nouveau seul, voir handlePasswordSubmit). Déconnexion en bas.
+const PROVIDER_NAMES = { google: "Google", apple: "Apple", discord: "Discord" };
+// ["Google", "Apple", "Discord"] → « Google, Apple et Discord ».
+const listAnd = (a) => (a.length > 1 ? `${a.slice(0, -1).join(", ")} et ${a[a.length - 1]}` : a[0] || "");
 function accountCard(u) {
-  const pe = state.pwdError;
+  const pe = state.pwdError, hasPwd = u.hasPassword !== false;
+  const names = listAnd((u.providers || []).map((p) => PROVIDER_NAMES[p] || p));
+  const linked = names ? `<p class="mt-3 flex items-start gap-2 text-small text-fg-muted">${icon("checkCircle", "mt-0.5 size-4 shrink-0 text-success-fg")}<span>Connexion avec ${esc(names)} activée</span></p>` : "";
+  // Erreur du serveur posée sur le bon champ : « Mot de passe actuel incorrect » → actuel, sinon → nouveau.
+  const badCurrent = hasPwd && /actuel/i.test(pe), inv = (on) => (pe && on ? ' aria-invalid="true"' : "");
+  const next = (attrs = "") => field("Nouveau mot de passe", `<input name="next" type="password" autocomplete="new-password" class="${inputCls}"${attrs}/>`, "8 caractères minimum, avec au moins une lettre et un chiffre.");
+  const pwd = hasPwd
+    ? `<p class="text-sm font-semibold text-fg">Mot de passe</p>
+      ${pe ? alertBox("danger", esc(tServer(pe))) : ""}
+      ${field("Mot de passe actuel", `<input name="current" type="password" autocomplete="current-password" class="${inputCls}"${inv(badCurrent)}/>`)}
+      ${next(inv(!badCurrent))}
+      <button class="${btn("secondary", "md", "w-full")}">Changer le mot de passe</button>`
+    : `<div><p class="text-sm font-semibold text-fg">Définir un mot de passe</p>
+        <p class="mt-0.5 text-small text-fg-muted">${names ? `Vous vous connectez avec ${esc(names)}. ` : ""}Ajoutez un mot de passe pour pouvoir aussi vous connecter avec votre adresse email.</p></div>
+      ${pe ? alertBox("danger", esc(tServer(pe))) : ""}
+      ${next(inv(true))}
+      <button class="${btn("secondary", "md", "w-full")}">Définir le mot de passe</button>`;
   return card(`${cardHeader("Compte et connexion")}
     <div class="mt-4 flex items-center gap-3 rounded-tile bg-subtle p-3">
       <span class="grid size-10 shrink-0 place-items-center rounded-tile border border-line bg-surface text-fg-muted">${icon("mail", "size-[18px]")}</span>
-      <p class="min-w-0 flex-1 truncate text-sm font-medium text-fg">${esc(u.email)}</p>${badge("Vérifié", "success", { ic: "check" })}</div>
-    <form data-form="password" class="mt-5 grid gap-4" novalidate>
-      ${pe ? alertBox("danger", esc(pe)) : ""}
-      ${field("Mot de passe actuel", `<input name="current" type="password" autocomplete="current-password" class="${inputCls}"${pe ? ' aria-invalid="true"' : ""}/>`)}
-      ${field("Nouveau mot de passe", `<input name="next" type="password" autocomplete="new-password" class="${inputCls}"/>`, "8 caractères minimum, avec au moins une lettre et un chiffre.")}
-      <button class="${btn("secondary", "md", "w-full")}">Changer le mot de passe</button>
+      <p class="min-w-0 flex-1 break-all text-sm font-medium text-fg"><span dir="ltr">${esc(u.email)}</span></p>${u.emailVerified ? badge("Vérifiée", "success", { ic: "check" }) : ""}</div>
+    ${linked}
+    <form data-form="password" class="mt-5 grid gap-4 border-t border-line pt-5" novalidate>
+      <input type="text" name="username" autocomplete="username" value="${esc(u.email)}" hidden/>
+      ${pwd}
     </form>
     <button type="button" data-action="logout" class="${btn("dangerSoft", "md", "mt-3 w-full")}">${icon("logout")}Se déconnecter</button>`);
 }
@@ -598,7 +633,7 @@ document.addEventListener("click", (e) => {
   if (fieldEl) setImageField(fieldEl, "");
 });
 
-// ---------- Graphiques (voir §6) ----------
+// ---------- Graphiques (voir §6) : toujours de gauche à droite (dir="ltr"), même en arabe ----------
 const niceMax = (v) => { if (v <= 0) return 1; const p = 10 ** Math.floor(Math.log10(v)), m = v / p; return (m <= 1 ? 1 : m <= 2 ? 2 : m <= 2.5 ? 2.5 : m <= 5 ? 5 : 10) * p; };
 const seriesDates = (n, end = new Date()) => Array.from({ length: n }, (_, i) => new Date(end.getFullYear(), end.getMonth(), end.getDate() - (n - 1 - i)));
 // Graduation : même unité sur tout l'axe (« 5 k » à côté de « 10 k », jamais « 5 000 »).
@@ -612,7 +647,7 @@ function barChart(values, { tone = "income", unit = "DA", unitPlural = "", integ
   const dates = seriesDates(n), bar = tone === "income" ? "bg-chart-income" : "bg-chart-brand";
   const fv = (v) => (unit === "DA" ? da(v) : plural(v, unit, unitPlural || `${unit}s`));
   const ticks = integer && max < 4 ? [max, 0] : [max, max / 2, 0];
-  return `<figure class="grid grid-cols-[auto_minmax(0,1fr)] gap-x-2">
+  return `<figure class="grid grid-cols-[auto_minmax(0,1fr)] gap-x-2" dir="ltr">
     <div class="${h} flex flex-col justify-between text-right text-micro leading-none tabular-nums text-fg-subtle" aria-hidden="true">${ticks.map((t) => `<span>${axisTick(t, max)}</span>`).join("")}</div>
     <div class="relative ${h} border-b border-chart-axis bg-[linear-gradient(to_bottom,var(--color-chart-grid)_1px,transparent_1px)] bg-[size:100%_50%]" aria-hidden="true">
       <div class="absolute inset-0 flex items-end gap-[2px] px-0.5">${values.map((v, i) =>
@@ -634,7 +669,7 @@ function cumulativeChart(daily, { h = "h-24", label = "Gains cumulés", end = tr
   for (let i = 1; i < pts.length; i++) { const [x0, y0] = pts[i - 1], [x1, y1] = pts[i], m = (x0 + x1) / 2; d += ` C ${m} ${y0.toFixed(2)}, ${m} ${y1.toFixed(2)}, ${x1} ${y1.toFixed(2)}`; }
   const [ex, ey] = pts.at(-1);
   const stroke = onNight ? "stroke-night-income" : "stroke-chart-income", fill = onNight ? "fill-night-income/15" : "fill-chart-income/12", dot = onNight ? "bg-night-income ring-night" : "bg-chart-income ring-surface";
-  return `<div class="relative ${h}" role="img" aria-label="${esc(`${label} : ${da(s)} sur ${daily.length} jours`)}">
+  return `<div class="relative ${h}" dir="ltr" role="img" aria-label="${esc(`${label} : ${da(s)} sur ${daily.length} jours`)}">
     <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" class="absolute inset-0 size-full overflow-visible" aria-hidden="true">
       <path d="${d} L ${W} ${H} L 0 ${H} Z" class="${fill}"/>
       <path d="${d}" class="fill-none ${stroke}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/></svg>

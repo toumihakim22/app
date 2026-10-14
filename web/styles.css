@@ -12,6 +12,18 @@
   @media (min-width: 64rem) { html { scroll-padding-bottom: 1rem; } }
   /* Croix native des champs de recherche masquée : l'app pose son propre bouton « Effacer » (searchInput). */
   input[type="search"]::-webkit-search-cancel-button { -webkit-appearance: none; appearance: none; }
+  /* Arabe : Geist et Plus Jakarta Sans n'ont pas l'alphabet arabe ; les lettres latines et les chiffres gardent
+     Geist, l'arabe passe à une police arabe du système (Noto Sans Arabic, Segoe UI, Tahoma, Geeza Pro). */
+  html:lang(ar) {
+    --font-sans: "Geist Variable", "Noto Sans Arabic", "Segoe UI", Tahoma, "Geeza Pro", system-ui, sans-serif;
+    --font-display: "Plus Jakarta Sans Variable", "Noto Sans Arabic", "Segoe UI", Tahoma, "Geeza Pro", system-ui, sans-serif;
+  }
+}
+
+/* Tiroir mobile en arabe : il est posé à droite (start-0) et entre donc par la droite. */
+@layer utilities {
+  [dir="rtl"] .animate-drawer-in { animation-name: drawer-in-rtl; }
+  @keyframes drawer-in-rtl { from { transform: translateX(100%); } to { transform: none; } }
 }
 
 /* Élément ouvert depuis une notification (#/<espace>/<page>/<id>, main.js flashRow) : bref éclairage en teinte de marque.

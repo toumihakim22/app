@@ -53,7 +53,8 @@ Tous les fichiers `web/src/*.js` sont concaténés **dans une seule fonction** p
 
 **Noms réservés à `ui.js`** (personne d'autre ne les déclare) :
 `NB`, `MINUS`, `fmt`, `da`, `daSigned`, `money`, `BIG`, `bigMoney`, `compact`, `pct`, `plural`, `rate`, `rateShort`, `code`, `groupAccount`, `icons`, `icon`, `EVENT_ICON`, `eventIcon`, `flagDz`, `logo`, `cx`, `FOCUS`, `BTN`, `btn`, `ICON_BTN`, `iconBtn`, `inputCls`, `inputLg`, `textareaCls`, `selectCls`, `CHEVRON`, `select`, `countrySelect`, `unitInput`, `searchInput`, `field`, `OPTIONAL`, `CHOICE`, `CHOICE_DANGER`, `SEG_CHOICE`, `RADIO`, `CHECKBOX`, `switchBtn`, `CARD`, `CARD_HOVER`, `TILE`, `card`, `cardHeader`, `kpiValue`, `DELTA`, `kpi`, `BADGE`, `TONE`, `DOT`, `STATUS_TONE`, `badge`, `statusBadge`, `PLATFORM_ICON`, `platformTag`, `roleBadge`, `COUNT`, `countBadge`, `opt`, `segmented`, `pills`, `chips`, `TABLIST`, `TAB`, `pageHeader`, `sectionHeader`, `emptyState`, `progress`, `coverAttr`, `THUMB`, `coverThumb`, `AVATARS`, `AVATAR_SIZE`, `avatar`, `TBL`, `TOAST`, `toast`, `MODAL_W`, `modalShell`, `summary`, `ALERT_ICON`, `alertBox`, `accountCard`, `siteBanner`, `themeToggle`, `LIVE`, `niceMax`, `seriesDates`, `dayLabel`, `barChart`, `cumulativeChart`, `barList`, `areaChart`, plus ceux déjà présents (`esc`, `MONTHS`, `date`, `ago`, `initials`, `campaignById`, `userById`, `rawEarnings`, `belowMin`, `isCapped`, `payoutOf`, `earningsOf`, `viewsFor`, `isEmail`, `copy`, `handlePasswordSubmit`, `homeOf`).
-**Réservés à `main.js` :** `NAV_ITEM`, `NAV_ICON`, `MINI_HIDDEN`, `focusReturn`, `placeOverlayFocus`, `focusTrap`, `runLive`, `applyRouteItem`, `flashRow`, `NOTIF_DEST`, `notifDest`, `ITEM_PAGES`, `navView`.
+**Réservés à `main.js` :** `NAV_ITEM`, `NAV_ICON`, `MINI_HIDDEN`, `focusReturn`, `placeOverlayFocus`, `focusTrap`, `runLive`, `applyRouteItem`, `flashRow`, `NOTIF_DEST`, `notifDest`, `ITEM_PAGES`, `navView`, `ROUTE_ALIASES`, `accountMenu`, `MENU_ROW`, `MENU_ITEM`, `MENU_ICON`, `POPOVERS`, `topDialog`, `actionKey`, `fieldKey`, `visibleAll`, `FIRST_FIELD`, `focusModal`, `draftOwner`, `restoringDraft`, `draftControls`, `modalForms`, `modalFormOf`, `modalHasDraft`, `captureDraft`, `restoreDraft`, `openStacked`, `closeStacked`, `dismissModal`, `pointerDownTarget`, `shellAction`, `areaInput`.
+**Ajoutés à `ui.js` (réservés) :** `FOCUS_INSET`, `coverArt`, `verifiedBadge`, `nameWithBadge`, `THEME_MODES`, `themeModeSwitch`, `langSwitch`, `IMAGE_SHAPES`, `IMAGE_MAX_CHARS`, `imageField`, `readImage`, `setImageField`, `PROVIDER_NAMES`, `listAnd`.
 **Réservés à `clipper.js` (agences) :** `clNorm`, `clOrgKey`, `clOrgHref`, `clAgencyOf`, `clOrgName`, `clOrgType`, `clOrgAbout`, `clOrgMark`, `clOrgLink`, `clOrganisers`, `clCampHeader`, `clAgencyCard`, `clAgencies`, `cAgence`.
 **Récapitulatifs en direct :** un fichier de zone **n'ajoute qu'une propriété** à l'objet partagé (`LIVE.withdraw = …`, `LIVE.budget = …`, `LIVE.campaign = …`), il ne redéclare jamais `LIVE`.
 **Attention aux collisions connues :** `roleTag` existe déjà dans `admin.js` (d'où `roleBadge` dans `ui.js`) ; `campaignCard`, `campaignRow`, `incomeCard`, `txRow` existent dans `clipper.js`. Un fichier de zone qui a besoin d'un helper local le préfixe (`cl…`, `ag…`, `adm…`, `auth…`).
@@ -1655,6 +1656,64 @@ modalShell({
 - **Ajouter du budget (C) :** `LIVE.budget` calcule « 50 000 DA + commission 15 % = 57 500 DA débités » (`withCommission`), avec `alertBox("warning")` si le crédit est insuffisant.
 - **Recharger (C) :** 3 `CHOICE` (Virement bancaire, Edahabia, CIB) et un toast qui montre la référence.
 
+### 4.8 Menu du compte, photos, badge vérifié, thème et langue, modales (brouillons, empilement)
+
+Pièces partagées ajoutées avec le lot « 16 demandes » (octobre 2026). Les noms ci-dessous sont réservés à leur fichier (§0.2).
+
+**Menu du compte (`main.js` : `accountMenu`, `state.menuOpen`, panneau `#account-menu`)**
+- La barre du haut ne porte plus, à droite, que la cloche et **le bouton avatar** (`data-action="account-menu"`, `aria-haspopup="dialog"`, `aria-expanded`, `title` = nom complet) : photo de profil, sinon **2 initiales** (`initials()` de `ui.js` : premières lettres des deux premiers mots, ou deux premières lettres d'un nom en un seul mot ; ponctuation ignorée). Plus de nom en clair, plus de bascule de thème.
+- Panneau `absolute end-0 top-12 w-[min(20rem,calc(100vw-2rem))] rounded-card bg-surface-raised shadow-popover animate-pop-in`, hauteur bornée (`max-h-[calc(100dvh-8.5rem)]`, `lg:max-h-[calc(100dvh-4.5rem)]`) : il ne passe jamais sous la navigation mobile. Contenu, dans l'ordre :
+  1. en-tête : `avatar(u, "md")`, nom entier (`nameWithBadge(u)`, `break-words`), email (`break-all`, `dir="ltr"`), rôle en `badge()` (clipper : son niveau, icône `medal` ; agence : `info` + `building` ; admin : `brand` + `shield`) ;
+  2. « Mon profil » (`#/clipper/profil`, `#/agence/profil`) ou « Mon compte » (`#/admin/compte`) ;
+  3. « Paramètres » (`#/clipper/parametres`, `#/agence/parametres`) ou « Réglages du site » (`#/admin/parametres`) ;
+  4. ligne « Langue » + `langSwitch()` (FR / EN / ع) ;
+  5. « Mentions légales », « Aide et support » (`data-action="soon"` → toast `info` « Bientôt disponible », pages à créer) ;
+  6. « Se déconnecter » (`text-danger-fg hover:bg-danger-bg`) ;
+  7. pied `bg-subtle` : « Thème » + `themeModeSwitch()` (soleil, lune, écran : clair, sombre, système).
+- Lignes : `MENU_ITEM` (`h-10 rounded-lg px-2.5`, icône 18 px `text-fg-subtle`, `aria-current="page"` sur la page affichée), anneau de focus **intérieur** (`FOCUS_INSET`).
+- Comportement identique au panneau des notifications, et les deux sont **exclusifs** : focus sur la première action à l'ouverture, retour au bouton à la fermeture ; fermeture par un clic à l'extérieur (l'action cliquée s'exécute quand même), Échap, un changement de page ou un lien du menu ; la langue et le thème le laissent ouvert (le bouton de langue garde le focus après le réaffichage). Un panneau ouvert fait passer la barre du haut en `z-40`.
+
+**Barre latérale et tiroir (`main.js` : `shellSidebar`)**
+- `w-[17rem]` (au lieu de `w-60`) ; conteneur `sticky top-0 h-dvh flex flex-col overflow-y-auto`. Trois blocs : logo (`shrink-0`), navigation (`min-h-32 flex-1 overflow-y-auto`, seule partie qui défile, `-mx-3 px-3` pour ne pas rogner l'anneau de focus), bloc du bas `shrink-0` **toujours visible** sans faire défiler la page.
+- Bloc du compte : nom (`nameWithBadge(u, "size-3.5")`, `break-words`) et email (`break-all`) **renvoyés à la ligne**, jamais tronqués.
+- Clipper : plus de mini-solde ni de « Soumettre un clip ». Agence : crédit disponible (masqué sur Accueil et Budget, `MINI_HIDDEN`) et « Nouvelle campagne ». Admin : rien.
+- Les bandeaux du site (`siteBanner()`) sont dans la colonne du contenu, au-dessus de la barre du haut : la barre latérale garde toute la hauteur.
+- Tiroir mobile : `w-80 max-w-[85vw]`, `start-0` (à droite en arabe, animation `drawer-in-rtl` de `web/styles.css`), marges de zone sûre ; un seul outil, le bouton Fermer.
+
+**Photos (`ui.js` : `imageField`, `readImage`, `setImageField`, `avatar`, `coverThumb`, `coverArt`)**
+- `imageField({ name, value, shape, label, hint, fallback })` : aperçu, « Choisir une photo » / « Changer la photo » (input fichier `sr-only` dans un `btn("secondary", "sm")`), « Retirer », et un `<input type="hidden" name>` qui porte la valeur envoyée à l'API : data URL (nouvelle photo), adresse actuelle (inchangée) ou `""` (retirée).
+- Formes : `avatar` (rond, 320 px), `cover` (bandeau 3:1, 1 500 px), `campaign` (16:9, 1 280 px). L'image est recadrée au centre et compressée en JPEG dans le navigateur (`readImage`, ≤ 2 Mo de data URL) ; JPEG, PNG ou WebP de 15 Mo au plus.
+- `setImageField(champ, valeur)` met à jour l'aperçu et déclenche `input` sur le champ caché (récapitulatifs, brouillons).
+- Affichage : `avatar(u, size)` et `coverThumb(c)` / `coverArt(c)` montrent la photo si elle existe, sinon initiales ou couverture en dégradé (`.cover:has(> img)` retire le filtre sombre). Couverture d'agence : `<img class="size-full object-cover">` dans un cadre 3:1, dégradé en repli.
+
+**Badge vérifié (`ui.js` : `verifiedBadge(cls, label)`, `nameWithBadge(u, cls)`)**
+- Sceau bleu Meta (`text-verified`, `--color-verified: #1d9bf0`) avec coche blanche, `role="img"` et libellé « Agence vérifiée ». Couleur fixe, identique en clair et en sombre.
+- `nameWithBadge(u)` = nom échappé + espace insécable + badge si `u.verified`. À utiliser partout où le nom d'une agence s'affiche (barre latérale, menu du compte, barre du haut de l'agence, cartes et fiches).
+
+**Thème et langue (`ui.js` : `themeModeSwitch({ labels, cls })`, `langSwitch({ full, cls })`)**
+- Contrôles segmentés (`SEG_WRAP`, `SEG_BTN`, `aria-pressed`). Thème : boutons `[data-theme-set="light|dark|system"]` gérés par `web/theme.js` (qui met aussi à jour `aria-pressed` et la couleur de la barre du navigateur, `meta theme-color`). Langue : `[data-lang-set="fr|en|ar"]` gérés par `web/src/i18n.js` (`setLang` : mémorisé dans le navigateur et sur le compte, puis réaffichage).
+- `SEG_BTN` et `chips()` ont un anneau de focus intérieur (`FOCUS_INSET`) : leur cadre `overflow-x-auto` rognait l'anneau extérieur.
+- Arabe : `html[dir="rtl"]`, police arabe du système en repli (`html:lang(ar)` dans `web/styles.css`). L'accueil public de la version autonome reste en français, de gauche à droite (`applyLangAttrs()` respecte `html[data-view="landing"]`, `web/offline/landing.js` force `lang="fr" dir="ltr"`, le script de tête de `web/index.html` n'applique la langue qu'aux routes `#/…` et à `/espace`). Graphiques en `dir="ltr"`.
+
+**Carte « Compte et connexion » (`ui.js` : `accountCard(u)`, `handlePasswordSubmit`)**
+- Email (`break-all`) + `badge("Vérifiée", "success")` si `u.emailVerified` ; ligne « Connexion avec Google / Apple / Discord activée » si `u.providers` n'est pas vide.
+- Mot de passe : avec `u.hasPassword`, « Mot de passe actuel » + « Nouveau mot de passe » ; sans (compte créé avec Google, Apple ou Discord), « Définir un mot de passe » : le nouveau seul, avec une phrase d'explication ; l'API reçoit `{ current: "", next }`, puis les données sont rechargées. L'erreur du serveur est posée sur le bon champ (`aria-invalid`).
+
+**Modales : brouillons, champs conditionnels, empilement (`main.js`)**
+- **Brouillon** : chaque saisie dans un formulaire de modale (`form[data-form]` dans `[aria-modal="true"]`, ou qui l'est lui-même) est copiée dans `state.modal.draft = { nom: valeur }` par `captureDraft(form)` (écouteurs `input` / `change` sur `window`, donc après ceux des espaces). Case à cocher → booléen (plusieurs cases du même nom → tableau des valeurs cochées), radio → valeur choisie, autres → `.value`. Ignorés : `type=file`, `type=password`, `[data-nodraft]` (champs de carte bancaire, `autocomplete="cc-number|cc-exp|cc-csc|cc-name"`), champs cachés sauf celui d'un `imageField`.
+- **Restauration** : après chaque `render()` qui affiche la même modale (même objet, ou nouvel objet de même `type` et même `id`), `restoreDraft()` remet la saisie (photo : `setImageField`), puis `runLive(form)`. Un rechargement des données, un champ conditionnel, une erreur du serveur ou le retour d'une modale empilée ne perdent jamais la saisie. Repartir d'un formulaire vierge : `state.modal = { type, id, draft: {} }`. Imposer une valeur : l'écrire dans le champ et déclencher `input`.
+- **Champ conditionnel** : un contrôle `[data-rerender]` (ou dans un conteneur `[data-rerender]`) d'un formulaire de modale capture le brouillon puis réaffiche la modale à chaque `change` ; le rendu lit `state.modal.draft` (catégorie « Autre » → « Précisez la catégorie », « Toutes les plateformes » / « Une seule »). Le focus revient sur le même contrôle (`fieldKey`).
+- **Modale empilée** : `openStacked({ type, … })` ouvre une modale par-dessus la courante (`state.modal.back`) et réaffiche. ✕, « Annuler » (`close-modal`) et Échap ramènent à la modale d'en dessous avec sa saisie ; après une action réussie, `closeStacked()` dans le `after` d'`act()` (réaffiche, sans effet de bord avec le réaffichage d'`act()`). Le focus revient sur le bouton qui l'avait ouverte, sinon sur le premier champ. Cas d'usage : « Recharger le crédit » depuis le formulaire de campagne.
+- **Fond sombre** : un clic ferme la modale seulement si l'appui a commencé sur le fond (une sélection de texte commencée dans la boîte ne ferme rien) **et** si rien n'a été saisi (`state.modal.draft`) ; sinon seuls ✕, « Annuler » et Échap la ferment.
+- **Échap** ferme la couche du dessus : modale empilée → modale d'en dessous → plus de modale ; sinon le panneau ouvert (notifications, menu du compte) ; sinon le tiroir.
+
+**Routes (`main.js`)**
+- `ROUTE_ALIASES` : `#/clipper/campagnes[/<id>]` → Découvrir, `#/clipper/statistiques` → Accueil ; une ancienne adresse ou une page inconnue est remplacée par celle de la page affichée (`history.replaceState`).
+- `ITEM_PAGES` : `clipper/agence` (navigation : Agences), `admin/utilisateur` (navigation : Utilisateurs).
+- `applyRouteItem` : `#/clipper/decouvrir/<id>` → fiche `campaign` ; `#/agence/campagnes/<id>` → `ag-open` ; `#/admin/campagnes/<id>` → fiche d'examen `adm-camp` ; `#/admin/moderation/<id>` → fiche `adm-clip` (liste filtrée sur le statut du clip) ; `#/admin/retraits/<id>` → onglet et ligne ; les autres pages mettent la ligne `[data-row]` en évidence.
+- Recherche rapide du clipper (barre du haut, ≥ md) : Entrée → `#/clipper/decouvrir` avec la recherche ; absente de Découvrir.
+- Crochets facultatifs pour les espaces : `handleAuthAction(action, el)` (clic `data-action` inconnu sur les écrans de connexion), `handleClipperInput` / `handleAgencyInput` / `handleAdminInput(clé, champ, événement)` (champ `data-input` inconnu de la coquille) ; un formulaire des écrans de connexion est toujours passé à `handleAuthSubmit`.
+
 ---
 
 ## 5. Visualisation de données
@@ -1728,29 +1787,28 @@ Résultats de `validate_palette.js` :
 
 - **Une coquille pour les 3 rôles**, sur `bg-canvas`. L'admin se reconnaît au `roleBadge("admin")` à côté du logo et à l'intitulé « Administration ». La barre latérale encre disparaît.
 - **Racine :** `flex min-h-dvh bg-canvas`.
-- **Barre latérale :** `sticky top-0 h-dvh w-60` (corrige la bande blanche sous la barre). Elle contient :
+- **Barre latérale :** `sticky top-0 h-dvh w-[17rem] flex flex-col` (détail au §4.8 : seule la navigation défile, le bloc du bas reste visible, nom et email renvoyés à la ligne). Elle contient :
   - logo et tag ;
   - intitulé `text-micro uppercase` ;
   - navigation `NAV_ITEM` (état via `aria-current="page"`, icône active en `text-brand-fg`) ;
   - compteurs admin en `countBadge(n, "queue")`, violet doux et **jamais rouge** ;
   - en bas, dans l'ordre :
-    1. mini-solde (lien vers Portefeuille ou Budget, masqué selon `MINI_HIDDEN`) ;
-    2. action globale `primary` (« Soumettre un clip » pour le clipper, « Nouvelle campagne » pour l'agence ; aucune pour l'admin) ;
-    3. « Voir le site public » ;
-    4. ligne compte avec déconnexion.
+    1. agence seulement : crédit disponible (lien vers Budget, masqué selon `MINI_HIDDEN`) et action globale `primary` « Nouvelle campagne » (le clipper n'a plus ni mini-solde ni « Soumettre un clip » ; l'admin, rien) ;
+    2. « Voir le site public » ;
+    3. ligne compte avec déconnexion.
 - **Action principale dans l'en-tête de page :** seulement sous `lg` (`<span class="lg:hidden">${btn(…)}</span>`). On n'a jamais deux fois le même bouton à l'écran.
 - **Barre du haut `h-14` :**
   - sous `lg` : logo `sm` + tag ;
-  - clipper : recherche à partir de `md` ;
-  - agence : « Agence · Nom » ; admin : « Administration » ;
-  - à droite : thème (à partir de `sm`), notifications (point violet si non lu, nombre dans l'`aria-label`), compte.
+  - clipper : recherche à partir de `md` (absente de Découvrir) ;
+  - agence : « Agence · Nom » (avec badge vérifié) ; admin : « Administration » ;
+  - à droite : notifications (point violet si non lu, nombre dans l'`aria-label`) et bouton avatar qui ouvre le **menu du compte** (§4.8 : profil, paramètres, langue, mentions légales, aide, déconnexion, thème). Plus de bascule de thème dans la barre.
   - **Pas de hamburger.**
 - **Navigation mobile :** 4 onglets plus « Plus », qui ouvre le tiroir. Libellés courts :
-  - Clipper : Accueil, Campagnes, Clips, Portefeuille ;
-  - Agence : Aperçu, Campagnes, Clips, Budget ;
+  - Clipper : Accueil, Découvrir, Clips, Portefeuille ;
+  - Agence : Accueil, Campagnes, Clips, Budget ;
   - Admin : Aperçu, Utilisateurs, Campagnes, Clips.
   - « Plus » porte `aria-current="page"` quand la vue courante n'est pas dans les 4.
-- **Tiroir :** même contenu que la barre latérale, plus le bouton thème et un bouton fermer, `animate-drawer-in`.
+- **Tiroir :** même contenu que la barre latérale, plus un bouton Fermer (le thème est dans le menu du compte), `animate-drawer-in` (par la droite en arabe).
 - **Notifications :**
   - panneau `rounded-card bg-surface-raised shadow-popover animate-pop-in` ;
   - pictogramme `eventIcon(n.icon)` (l'emoji du serveur devient une icône au trait dans une pastille teintée) ;
@@ -1763,7 +1821,7 @@ Résultats de `validate_palette.js` :
   - `main#main tabindex="-1"` ;
   - focus envoyé dans la modale ou le tiroir à l'ouverture, puis rendu à l'élément d'origine à la fermeture ;
   - tabulation bouclée ;
-  - Échap ferme (écouteur existant).
+  - Échap ferme la couche du dessus (modale empilée, modale, panneau, tiroir).
 - **Bandeaux du site** (`siteBanner()`) : maintenance en `warning` avec icône `alert`, annonce en `brand-soft` avec icône `megaphone`. Plus de bandeau rose plein ni d'emoji.
 
 ### 6.2 Espace Clipper (lot B, `web/src/clipper.js`)

@@ -76,8 +76,10 @@ async function act(method, path, body, success, after) {
     if (success) toast(typeof success === "function" ? success(res) : success);
     return res;
   } catch (e) {
+    // Session expirée : retour à la connexion (onRoute() referme modale, menus et tiroir).
     if (e.status === 401) { await refresh().catch(() => {}); state.modal = null; navigate("#/connexion"); }
-    toast(e.message, "danger");
+    // Message du serveur (français) traduit à l'affichage dans la langue choisie.
+    toast(tServer(e.message), "danger");
     return null;
   } finally {
     busy = false;

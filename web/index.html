@@ -7,7 +7,9 @@
   <meta name="color-scheme" content="light dark" />
   <title>ClipBoost</title>
   <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-  <script>(function(){var d=document.documentElement;try{var t=localStorage.getItem("clipboost-theme");var dark=t==="dark"||(t!=="light"&&matchMedia("(prefers-color-scheme: dark)").matches);if(dark){d.classList.add("dark");document.querySelector('meta[name="theme-color"]').setAttribute("content","#0b0d12")}var l=localStorage.getItem("clipboost-lang");if(l==="en"||l==="ar"){d.lang=l;d.dir=l==="ar"?"rtl":"ltr"}}catch(e){}})();</script>
+  <!-- Avant l'affichage : thème sombre (clé clipboost-theme) ; langue et sens d'écriture (clé clipboost-lang) seulement pour
+       l'application (/espace, routes #/…) : l'accueil public de la version autonome (sans route) reste en français. -->
+  <script>(function(){var d=document.documentElement;try{var t=localStorage.getItem("clipboost-theme");var dark=t==="dark"||(t!=="light"&&matchMedia("(prefers-color-scheme: dark)").matches);if(dark){d.classList.add("dark");document.querySelector('meta[name="theme-color"]').setAttribute("content","#0b0d12")}var h=location.hash,app=(h.indexOf("#/")===0&&h.length>2)||location.pathname.indexOf("/espace")===0;var l=localStorage.getItem("clipboost-lang");if(app&&(l==="en"||l==="ar")){d.lang=l;d.dir=l==="ar"?"rtl":"ltr"}}catch(e){}})();</script>
   <!--STYLES-->
 </head>
 <body class="font-sans antialiased">

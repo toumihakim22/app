@@ -33,12 +33,20 @@ export async function requestWithdrawal(user: User, amount: number, instant: boo
   });
 }
 
-/** Une agence demande à recharger son crédit (virement ou carte). Le crédit est ajouté quand l'équipe confirme la réception. */
-export async function requestCredit(user: User, amount: number, method: string) {
+export type CardInfo = { brand: "Visa" | "Mastercard"; last4: string };
+
+/**
+ * Une agence demande à recharger son crédit (virement ou carte). Le crédit est ajouté quand l'équipe confirme la réception.
+ * Carte Visa / Mastercard : seules la marque et les 4 derniers chiffres sont connus, ajoutés au libellé (« … · Visa •••• 4242 »).
+ */
+export async function requestCredit(user: User, amount: number, method: string, card?: CardInfo) {
   const db = await getDb();
   const id = newId(), ref = newRef();
-  await db.insert(schema.transactions).values({ id, ref, userId: user.id, type: "recharge", amount, status: "En cours", method, label: `Recharge par ${method}` });
-  await notifyRole(db, "admin", "🏦", `${user.name} annonce une recharge de ${fmt(amount)} par ${method} (réf. ${ref}).`, link.adminPayment(id));
+  const label = `Recharge par ${method}${card && method === "carte Visa / Mastercard" ? ` · ${card.brand} •••• ${card.last4}` : ""}`;
+  await db.transaction(async (tx) => {
+    await tx.insert(schema.transactions).values({ id, ref, userId: user.id, type: "recharge", amount, status: "En cours", method, label });
+    await notifyRole(tx, "admin", "🏦", `${user.name} annonce une recharge de ${fmt(amount)} par ${method} (réf. ${ref}).`, link.adminPayment(id));
+  });
   return ref;
 }
 

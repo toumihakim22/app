@@ -52,10 +52,12 @@ function tServer(s) {
 
 const isRtl = () => LOCALES[LANG].dir === "rtl";
 
+// Langue et sens d'écriture du document. L'accueil public de la version autonome (html[data-view="landing"], voir
+// web/offline/landing.js) reste en français, de gauche à droite ; render() (main.js) les réapplique à chaque écran de l'app.
 function applyLangAttrs() {
-  const d = document.documentElement;
-  d.lang = LANG;
-  d.dir = LOCALES[LANG].dir;
+  const d = document.documentElement, landing = d.getAttribute("data-view") === "landing";
+  d.lang = landing ? "fr" : LANG;
+  d.dir = landing ? "ltr" : LOCALES[LANG].dir;
 }
 
 // Changement de langue : mémorisé dans le navigateur et sur le compte (si connecté), puis la page est réaffichée.

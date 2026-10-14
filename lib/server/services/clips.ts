@@ -1,5 +1,6 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { getDb, schema } from "../db";
+import { PLATFORM_HOSTS } from "../gradients";
 import type { User } from "../auth";
 import { logActivity, notify } from "../events";
 import { badRequest, notFound } from "../http";
@@ -10,36 +11,53 @@ import { getSettings } from "../settings";
 
 const fmt = (n: number) => `${n.toLocaleString("fr-FR").replace(/ | /g, " ")} DA`;
 
-// Le lien doit pointer vers la plateforme déclarée.
-const HOSTS: Record<string, RegExp> = {
-  TikTok: /(^|\.)tiktok\.com$/,
-  Instagram: /(^|\.)instagram\.com$/,
-  YouTube: /(^|\.)(youtube\.com|youtu\.be)$/,
-};
-
-export async function submitClip(user: User, input: { campaignId: string; title: string; platform: string; url: string }) {
+/**
+ * Un clip publié sur une ou plusieurs plateformes de la campagne : une publication par lien, toutes du même lot (`batch`).
+ * Tous les liens sont contrôlés avant le moindre enregistrement : plateforme acceptée par la campagne,
+ * lien https vers cette plateforme (PLATFORM_HOSTS), lien jamais soumis.
+ */
+export async function submitClip(user: User, input: { campaignId: string; title: string; links: { platform: string; url: string }[] }) {
   const db = await getDb();
   const [c] = await db.select().from(schema.campaigns).where(eq(schema.campaigns.id, input.campaignId));
   if (!c) throw notFound("Campagne introuvable");
   if (c.status !== "Active") throw badRequest("Cette campagne n'accepte plus de clips");
-  if (!c.platforms.includes(input.platform)) throw badRequest(`Cette campagne n'accepte pas ${input.platform}`);
   const [member] = await db.select().from(schema.campaignMembers)
     .where(and(eq(schema.campaignMembers.campaignId, c.id), eq(schema.campaignMembers.userId, user.id), eq(schema.campaignMembers.joined, true)));
   if (!member) throw badRequest("Rejoignez la campagne avant de soumettre un clip");
-  let url: URL;
+  const links = input.links.map(({ platform, url: raw }) => {
+    if (!c.platforms.includes(platform)) throw badRequest(`Cette campagne n'accepte pas ${platform}`);
+    let url: URL | null = null;
+    try {
+      url = new URL(raw.trim());
+    } catch {
+      // Lien illisible : même message qu'un lien vers un autre site.
+    }
+    if (!url || url.protocol !== "https:" || !PLATFORM_HOSTS[platform]?.test(url.hostname)) throw badRequest(`Le lien doit être un lien ${platform} (https://…)`);
+    return { platform, url: url.toString() };
+  });
+  const urls = links.map((l) => l.url);
+  if (new Set(urls).size !== urls.length) throw badRequest("Le même lien est indiqué deux fois");
+  const [dup] = await db.select({ url: schema.publications.url }).from(schema.publications).where(inArray(schema.publications.url, urls)).limit(1);
+  if (dup) throw badRequest(`Ce lien a déjà été soumis : ${dup.url}`);
+  const title = input.title.trim(), batch = newId();
+  const ids = links.map(() => newId());
   try {
-    url = new URL(input.url.trim());
-  } catch {
-    throw badRequest("Lien invalide");
+    await db.transaction(async (tx) => {
+      await tx.insert(schema.publications).values(links.map((l, i) => ({ id: ids[i], userId: user.id, campaignId: c.id, title, platform: l.platform, url: l.url, batch })));
+      await logActivity(tx, "🎬", `${user.name} a soumis le clip « ${title} » (${c.title}).`);
+    });
+  } catch (err) {
+    // Le même lien soumis au même instant par une autre requête (index unique sur l'URL).
+    if (isUniqueViolation(err)) throw badRequest("Ce lien a déjà été soumis");
+    throw err;
   }
-  if (url.protocol !== "https:" || !HOSTS[input.platform]?.test(url.hostname)) throw badRequest(`Le lien doit être un lien ${input.platform} (https://…)`);
-  const [dup] = await db.select({ id: schema.publications.id }).from(schema.publications).where(eq(schema.publications.url, url.toString()));
-  if (dup) throw badRequest("Ce clip a déjà été soumis");
-  const id = newId();
-  await db.insert(schema.publications).values({ id, userId: user.id, campaignId: c.id, title: input.title.trim(), platform: input.platform, url: url.toString() });
-  await logActivity(db, "🎬", `${user.name} a soumis le clip « ${input.title.trim()} » (${c.title}).`);
-  return id;
+  return { id: ids[0], ids };
 }
+
+const isUniqueViolation = (err: unknown): boolean => {
+  const e = err as { code?: string; cause?: unknown } | null;
+  return !!e && (e.code === "23505" || (e.cause !== undefined && e.cause !== err && isUniqueViolation(e.cause)));
+};
 
 /**
  * Relevé des vues d'un clip (par l'équipe, ou plus tard par une tâche planifiée branchée sur les API des plateformes).

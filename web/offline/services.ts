@@ -1,9 +1,10 @@
 // Logique métier de la version autonome : la copie fidèle de lib/server/services/*.ts (mêmes contrôles,
 // mêmes messages, mêmes effets), sur la base locale. Les règles de calcul viennent de lib/server/rules.ts.
-import type { CampaignStatus, Handles, Role, SignupPayload } from "../../lib/server/db/schema";
-import { GRADIENTS } from "../../lib/server/gradients";
+import type { CampaignStatus, Handles, Locale, Role, SignupPayload } from "../../lib/server/db/schema";
+import { GRADIENTS, PLATFORM_HOSTS } from "../../lib/server/gradients";
 import { link } from "../../lib/server/links";
 import { belowMin, fundingCost, instantFee, payoutDelta, validateCampaignNumbers, viewsFor } from "../../lib/server/rules";
+import { IMAGE_DATA_URL, type OAuthProvider } from "../../lib/server/validation";
 import {
   ApiError, badRequest, forbidden, getSettings, insertCampaign, insertPublication, insertTransaction, insertUser, logActivity,
   newId, newRef, notFound, notify, notifyRole, randomInt, type CampaignRow, type PubRow, type Store, type UserRow,
@@ -14,6 +15,41 @@ import { hashPassword, sha256Hex, strongEnough, verifyPassword } from "./passwor
 export type Ctx = { db: Store; commit: () => void };
 
 const fmt = (n: number) => `${n.toLocaleString("fr-FR").replace(/ | /g, " ")} DA`;
+
+/** Motif saisi par l'équipe, repris dans une phrase qui se termine déjà par un point : sans point final en double. */
+const clause = (reason: string) => reason.trim().replace(/[\s.]+$/, "");
+
+// ---------- Images (lib/server/media.ts) ----------
+
+// Signature des formats acceptés : le contenu doit correspondre au type annoncé par la data URL.
+const MAGIC: Record<string, (b: Uint8Array) => boolean> = {
+  jpeg: (b) => b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff,
+  png: (b) => [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a].every((x, i) => b[i] === x),
+  webp: (b) => String.fromCharCode(...b.subarray(0, 4)) === "RIFF" && String.fromCharCode(...b.subarray(8, 12)) === "WEBP",
+};
+
+/**
+ * Nouvelle valeur d'une colonne image (photo de profil, couverture d'agence, photo de campagne), mêmes règles que
+ * storeImage sur le serveur : undefined garde l'image actuelle, "" ou null la retire, la valeur actuelle la garde ;
+ * une nouvelle image est une data URL JPEG, PNG ou WebP dont le contenu correspond au type annoncé. Hors ligne,
+ * la data URL elle-même est enregistrée ; une adresse « /api/media/… » (image du serveur) n'existe pas ici.
+ */
+export function storeImage(value: string | null | undefined, current: string | null): string | null {
+  if (value === undefined) return current;
+  if (value === "" || value === null) return null;
+  if (value === current) return current;
+  const type = IMAGE_DATA_URL.exec(value)?.[1];
+  if (!type) throw badRequest("Image invalide");
+  const start = value.indexOf(",") + 1;
+  let head: Uint8Array;
+  try {
+    head = Uint8Array.from(atob(value.slice(start, start + 16)), (ch) => ch.charCodeAt(0));
+  } catch {
+    throw badRequest("Image invalide (JPEG, PNG ou WebP)");
+  }
+  if (!MAGIC[type](head)) throw badRequest("Image invalide (JPEG, PNG ou WebP)");
+  return value;
+}
 
 // ---------- Sessions (lib/server/auth.ts) ----------
 
@@ -105,9 +141,9 @@ const NO_USER_HASH = "sha256$AAAAAAAAAAAAAAAAAAAAAA==$AAAA";
 export async function login({ db }: Ctx, emailInput: string, password: string) {
   const email = normalizeEmail(emailInput);
   const user = db.users.find((u) => u.email === email);
-  // On vérifie un mot de passe même si le compte n'existe pas, comme sur le serveur.
-  const ok = await verifyPassword(password, user?.passwordHash ?? NO_USER_HASH);
-  if (!user || !ok) throw badRequest("Email ou mot de passe incorrect");
+  // On vérifie un mot de passe même si le compte n'existe pas, ou s'il n'en a pas (créé avec Google, Apple ou Discord).
+  const ok = await verifyPassword(password, user?.passwordHash || NO_USER_HASH);
+  if (!user || !user.passwordHash || !ok) throw badRequest("Email ou mot de passe incorrect");
   if (user.status === "Suspendu") throw forbidden("Votre compte est suspendu. Contactez le support.");
   if (getSettings(db).maintenance && user.role !== "admin") throw forbidden("ClipBoost est en maintenance, réessayez plus tard");
   createSession(db, user.id);
@@ -134,16 +170,45 @@ export async function resetPassword(ctx: Ctx, emailInput: string, code: string, 
 
 export async function changePassword({ db }: Ctx, userId: string, current: string, next: string) {
   const user = userOf(db, userId);
-  if (!(await verifyPassword(current, user.passwordHash))) throw badRequest("Mot de passe actuel incorrect");
+  // Un compte créé avec Google, Apple ou Discord n'a pas encore de mot de passe : il en définit un sans « current ».
+  if (user.passwordHash && !(await verifyPassword(current, user.passwordHash))) throw badRequest("Mot de passe actuel incorrect");
   if (!strongEnough(next)) throw badRequest("Le nouveau mot de passe doit contenir au moins 8 caractères, dont une lettre et un chiffre");
   user.passwordHash = await hashPassword(next);
+}
+
+/**
+ * Connexion Google, Apple ou Discord simulée (POST /api/auth/oauth/demo) : aucun échange avec le fournisseur, le
+ * compte est identifié par « demo:<email> ». Même résolution que le serveur (lib/server/oauth.ts) : compte déjà relié,
+ * sinon compte existant avec cet email (relié au passage), sinon création avec le rôle choisi si mode « signup ».
+ */
+export function oauthDemo({ db }: Ctx, input: { provider: OAuthProvider; name: string; email: string; role: "clipper" | "agence"; mode: "login" | "signup" }) {
+  const settings = getSettings(db);
+  const email = normalizeEmail(input.email), subject = `demo:${email}`;
+  const linked = db.oauth.find((a) => a.provider === input.provider && a.subject === subject);
+  let user = (linked && db.users.find((u) => u.id === linked.userId)) || db.users.find((u) => u.email === email);
+  if (user?.role === "admin") throw forbidden("Les comptes administrateurs se connectent avec leur mot de passe.");
+  if (user?.status === "Suspendu") throw forbidden("Ce compte est suspendu.");
+  if (settings.maintenance) throw forbidden("ClipBoost est en maintenance, réessayez plus tard");
+  if (!user) {
+    if (input.mode !== "signup") throw badRequest("Aucun compte ClipBoost n'est associé à cette adresse. Inscrivez-vous d'abord.");
+    if (!settings.signupsOpen) throw forbidden("Les inscriptions sont fermées pour le moment.");
+    // Aucun mot de passe (passwordHash vide) : l'utilisateur pourra en définir un dans ses paramètres.
+    user = insertUser(db, { id: newId(), role: input.role, email, passwordHash: "", name: input.name.trim(), country: "Algérie" });
+    logActivity(db, input.role === "agence" ? "🏢" : "👤", `${user.name} s'est inscrit${input.role === "agence" ? " (agence)" : ""}.`);
+  }
+  if (!linked || linked.userId !== user.id) {
+    if (linked) db.oauth.splice(db.oauth.indexOf(linked), 1);
+    db.oauth.push({ provider: input.provider, subject, userId: user.id, email, createdAt: Date.now() });
+  }
+  createSession(db, user.id);
+  return user;
 }
 
 // ---------- Campagnes (campaigns.ts) ----------
 
 export type CampaignInput = {
   title: string; brand?: string; category: string; rate: number; budget: number; minPayout: number; maxPayout: number;
-  emoji: string; platforms: string[]; rules: string[];
+  emoji: string; platforms: string[]; rules: string[]; image?: string | null;
 };
 
 function getCampaign(db: Store, id: string) {
@@ -160,12 +225,13 @@ export function createCampaign({ db }: Ctx, user: UserRow, input: CampaignInput)
   const n = db.campaigns.length;
   const isAdmin = user.role === "admin";
   if (isAdmin && !input.brand?.trim()) throw badRequest("Indiquez la marque");
+  const image = storeImage(input.image, null);
   const id = newId();
   insertCampaign(db, {
     id, ownerId: isAdmin ? null : user.id, brand: isAdmin ? input.brand!.trim() : user.name,
     title: input.title.trim(), category: input.category, rate: input.rate, budget: input.budget,
     minPayout: input.minPayout, maxPayout: input.maxPayout, emoji: input.emoji,
-    platforms: input.platforms, rules: input.rules, gradient: GRADIENTS[n % GRADIENTS.length],
+    platforms: input.platforms, rules: input.rules, gradient: GRADIENTS[n % GRADIENTS.length], image,
     status: isAdmin ? "Active" : "En attente", commissionRate: isAdmin ? 0 : settings.commissionRate,
   });
   if (isAdmin) {
@@ -180,10 +246,59 @@ export function createCampaign({ db }: Ctx, user: UserRow, input: CampaignInput)
 }
 
 /**
- * Changements de statut : approbation (budget + commission prélevés sur le crédit de l'agence),
- * refus, pause, reprise, fin (le budget non consommé et sa commission sont rendus à l'agence).
+ * L'agence modifie sa campagne tant que l'équipe ne l'a pas examinée (« En attente »), ou la corrige après un refus :
+ * elle repart alors en vérification (« En attente »), sans le motif du refus. La marque reste le nom de l'agence.
  */
-export function setCampaignStatus({ db }: Ctx, user: UserRow, id: string, next: CampaignStatus) {
+export function updateCampaign({ db }: Ctx, user: UserRow, id: string, input: CampaignInput) {
+  const c = getCampaign(db, id);
+  if (c.ownerId !== user.id) throw forbidden();
+  if (c.status !== "En attente" && c.status !== "Refusée") throw badRequest("Cette campagne ne peut plus être modifiée");
+  const error = validateCampaignNumbers(input, getSettings(db).minBudget);
+  if (error) throw badRequest(error);
+  const image = storeImage(input.image, c.image);
+  const title = input.title.trim(), relaunch = c.status === "Refusée";
+  Object.assign(c, {
+    title, category: input.category, rate: input.rate, budget: input.budget, minPayout: input.minPayout, maxPayout: input.maxPayout,
+    emoji: input.emoji, platforms: input.platforms, rules: input.rules, image, updatedAt: Date.now(),
+  } satisfies Partial<CampaignRow>);
+  if (relaunch) {
+    c.status = "En attente";
+    c.reviewNote = null;
+    notify(db, user.id, "⏳", `Votre campagne « ${title} » a été relancée : elle est en cours de vérification.`, link.agencyCampaign(id));
+    notifyRole(db, "admin", "✏️", `${user.name} a modifié et relancé la campagne « ${title} ».`, link.adminCampaign(id));
+    logActivity(db, "✏️", `${user.name} a modifié et relancé la campagne « ${title} ».`);
+  } else {
+    notifyRole(db, "admin", "✏️", `${user.name} a modifié la campagne « ${title} ».`, link.adminCampaign(id));
+    logActivity(db, "✏️", `${user.name} a modifié la campagne « ${title} ».`);
+  }
+}
+
+/**
+ * L'agence annule sa campagne avant la vérification (« En attente ») ou supprime une campagne refusée.
+ * Jamais une campagne financée ou qui a déjà payé des clips.
+ */
+export function deleteCampaign({ db }: Ctx, user: UserRow, id: string) {
+  const c = getCampaign(db, id);
+  if (c.ownerId !== user.id) throw forbidden();
+  if ((c.status !== "En attente" && c.status !== "Refusée") || c.reserved !== 0 || c.spent !== 0) throw badRequest("Cette campagne ne peut pas être supprimée");
+  // Comme les clés étrangères du serveur : membres et clips supprimés avec la campagne, transactions détachées.
+  const pubIds = new Set(db.publications.filter((p) => p.campaignId === id).map((p) => p.id));
+  db.campaigns = db.campaigns.filter((x) => x.id !== id);
+  db.members = db.members.filter((m) => m.campaignId !== id);
+  db.publications = db.publications.filter((p) => p.campaignId !== id);
+  for (const t of db.transactions) if (t.publicationId && pubIds.has(t.publicationId)) t.publicationId = null;
+  if (c.status === "En attente") {
+    notifyRole(db, "admin", "🗑️", `${user.name} a annulé la campagne « ${c.title} » avant sa vérification.`, "#/admin/campagnes");
+    logActivity(db, "🗑️", `${user.name} a annulé la campagne « ${c.title} » avant sa vérification.`);
+  } else logActivity(db, "🗑️", `${user.name} a supprimé la campagne refusée « ${c.title} ».`);
+}
+
+/**
+ * Changements de statut : approbation (budget + commission prélevés sur le crédit de l'agence),
+ * refus motivé (seulement avant l'approbation), pause, reprise, fin (le budget non consommé et sa commission
+ * sont rendus à l'agence).
+ */
+export function setCampaignStatus({ db }: Ctx, user: UserRow, id: string, next: CampaignStatus, reason?: string) {
   const row = getCampaign(db, id), c = { ...row };
   const isAdmin = user.role === "admin";
   if (!isAdmin) {
@@ -191,10 +306,18 @@ export function setCampaignStatus({ db }: Ctx, user: UserRow, id: string, next: 
     const allowed = (c.status === "Active" && next === "En pause") || (c.status === "En pause" && next === "Active");
     if (!allowed) throw badRequest("Action impossible sur cette campagne");
   }
+  // Refus : seulement avant l'approbation (une campagne en ligne se termine, ce qui rend son budget), avec un motif.
+  const motive = reason?.trim() ?? "";
+  if (next === "Refusée") {
+    if (c.status !== "En attente") throw badRequest("Seule une campagne en attente peut être refusée");
+    if (motive.length < 3) throw badRequest("Indiquez le motif du refus");
+  }
   if (c.status === next) return;
   if (c.status === "Terminée" || c.status === "Refusée") throw badRequest("Cette campagne est close");
 
   const patch: Partial<CampaignRow> = { status: next };
+  if (next === "Refusée") Object.assign(patch, { reviewNote: motive, updatedAt: Date.now() });
+  if (c.status === "En attente" && next === "Active") patch.reviewNote = null;
   if (isAdmin && c.status === "En attente" && next === "Active" && c.ownerId) {
     const cost = fundingCost(c.budget, c.commissionRate);
     const owner = userOf(db, c.ownerId);
@@ -213,7 +336,7 @@ export function setCampaignStatus({ db }: Ctx, user: UserRow, id: string, next: 
   }
   Object.assign(row, patch);
 
-  const verb: Record<string, string> = { Active: c.status === "En attente" ? "a été approuvée et est en ligne" : "est de nouveau active", "En pause": "a été mise en pause", "Terminée": "est terminée", "Refusée": "a été refusée" };
+  const verb: Record<string, string> = { Active: c.status === "En attente" ? "a été approuvée et est en ligne" : "est de nouveau active", "En pause": "a été mise en pause", "Terminée": "est terminée", "Refusée": `a été refusée : ${clause(motive)}` };
   if (isAdmin) notify(db, c.ownerId, next === "Active" ? "✅" : "⚠️", `Votre campagne « ${c.title} » ${verb[next] ?? "a changé de statut"}.`, link.agencyCampaign(c.id));
   if (c.status === "En attente" && next === "Active") notifyRole(db, "clipper", "🎯", `Nouvelle campagne : ${c.title} (${c.rate} DA /1K).`, link.clipperCampaign(c.id));
   logActivity(db, "🎯", `Campagne « ${c.title} » : ${c.status} → ${next}.`);
@@ -255,32 +378,39 @@ export function setTop({ db }: Ctx, id: string, top: boolean) {
 
 // ---------- Clips (clips.ts) ----------
 
-// Le lien doit pointer vers la plateforme déclarée.
-const HOSTS: Record<string, RegExp> = {
-  TikTok: /(^|\.)tiktok\.com$/,
-  Instagram: /(^|\.)instagram\.com$/,
-  YouTube: /(^|\.)(youtube\.com|youtu\.be)$/,
-};
-
-export function submitClip({ db }: Ctx, user: UserRow, input: { campaignId: string; title: string; platform: string; url: string }) {
+/**
+ * Un clip publié sur une ou plusieurs plateformes de la campagne : un lien par plateforme, chacun enregistré comme
+ * une publication (vues, examen et paiement propres), reliées par le même identifiant de lot. Tous les liens sont
+ * vérifiés avant d'enregistrer quoi que ce soit.
+ */
+export function submitClip({ db }: Ctx, user: UserRow, input: { campaignId: string; title: string; links: { platform: string; url: string }[] }) {
   const c = db.campaigns.find((x) => x.id === input.campaignId);
   if (!c) throw notFound("Campagne introuvable");
   if (c.status !== "Active") throw badRequest("Cette campagne n'accepte plus de clips");
-  if (!c.platforms.includes(input.platform)) throw badRequest(`Cette campagne n'accepte pas ${input.platform}`);
+  for (const l of input.links) if (!c.platforms.includes(l.platform)) throw badRequest(`Cette campagne n'accepte pas ${l.platform}`);
   const member = db.members.find((m) => m.campaignId === c.id && m.userId === user.id && m.joined);
   if (!member) throw badRequest("Rejoignez la campagne avant de soumettre un clip");
-  let url: URL;
-  try {
-    url = new URL(input.url.trim());
-  } catch {
-    throw badRequest("Lien invalide");
-  }
-  if (url.protocol !== "https:" || !HOSTS[input.platform]?.test(url.hostname)) throw badRequest(`Le lien doit être un lien ${input.platform} (https://…)`);
-  if (db.publications.some((p) => p.url === url.toString())) throw badRequest("Ce clip a déjà été soumis");
-  const id = newId();
-  insertPublication(db, { id, userId: user.id, campaignId: c.id, title: input.title.trim(), platform: input.platform, url: url.toString() });
-  logActivity(db, "🎬", `${user.name} a soumis le clip « ${input.title.trim()} » (${c.title}).`);
-  return id;
+  const links = input.links.map((l) => {
+    let url: URL;
+    try {
+      url = new URL(l.url.trim());
+    } catch {
+      throw badRequest("Lien invalide");
+    }
+    // Le lien doit pointer vers la plateforme déclarée (lib/server/gradients.ts).
+    if (url.protocol !== "https:" || !PLATFORM_HOSTS[l.platform]?.test(url.hostname)) throw badRequest(`Le lien doit être un lien ${l.platform} (https://…)`);
+    const href = url.toString();
+    if (db.publications.some((p) => p.url === href)) throw badRequest(`Ce lien a déjà été soumis : ${href}`);
+    return { platform: l.platform, url: href };
+  });
+  const title = input.title.trim(), batch = newId();
+  const ids = links.map((l) => {
+    const id = newId();
+    insertPublication(db, { id, userId: user.id, campaignId: c.id, title, platform: l.platform, url: l.url, batch });
+    return id;
+  });
+  logActivity(db, "🎬", `${user.name} a soumis le clip « ${title} » (${c.title}).`);
+  return ids;
 }
 
 /** Relevé des vues d'un clip. Pendant la fenêtre de gains, un clip validé est payé pour ses vues supplémentaires. */
@@ -371,10 +501,14 @@ export function requestWithdrawal({ db }: Ctx, user: UserRow, amount: number, in
   logActivity(db, "💸", `${user.name} a demandé un retrait de ${fmt(amount)}.`);
 }
 
-/** Une agence demande à recharger son crédit. Le crédit est ajouté quand l'équipe confirme la réception. */
-export function requestCredit({ db }: Ctx, user: UserRow, amount: number, method: string) {
+/**
+ * Une agence demande à recharger son crédit. Le crédit est ajouté quand l'équipe confirme la réception,
+ * quel que soit le moyen de paiement. Carte Visa / Mastercard : la marque et les 4 derniers chiffres dans le libellé.
+ */
+export function requestCredit({ db }: Ctx, user: UserRow, amount: number, method: string, card?: { brand: string; last4: string }) {
   const id = newId(), ref = newRef();
-  insertTransaction(db, { id, ref, userId: user.id, type: "recharge", amount, status: "En cours", method, label: `Recharge par ${method}` });
+  const label = `Recharge par ${method}${method === "carte Visa / Mastercard" && card ? ` · ${card.brand} •••• ${card.last4}` : ""}`;
+  insertTransaction(db, { id, ref, userId: user.id, type: "recharge", amount, status: "En cours", method, label });
   notifyRole(db, "admin", "🏦", `${user.name} annonce une recharge de ${fmt(amount)} par ${method} (réf. ${ref}).`, link.adminPayment(id));
   return ref;
 }
@@ -394,10 +528,17 @@ export function reviewTransaction({ db }: Ctx, admin: UserRow, id: string, appro
 
 // ---------- Profil et administration (profile.ts) ----------
 
-export function updateProfile({ db }: Ctx, user: UserRow, input: { name?: string; contact?: string; country?: string; bio?: string; handles?: Handles; payoutMethod?: string; payoutAccount?: string }) {
+export function updateProfile({ db }: Ctx, user: UserRow, input: {
+  name?: string; contact?: string; country?: string; bio?: string; handles?: Handles; payoutMethod?: string; payoutAccount?: string;
+  avatar?: string | null; cover?: string | null; locale?: Locale;
+}) {
   const patch: Partial<UserRow> = {};
   if (input.name !== undefined) patch.name = input.name.trim();
   if (input.country !== undefined) patch.country = input.country;
+  // Photo de profil (tous les comptes, l'admin compris), couverture (agences seulement), langue de l'interface.
+  if (input.avatar !== undefined) patch.avatar = storeImage(input.avatar, user.avatar);
+  if (user.role === "agence" && input.cover !== undefined) patch.cover = storeImage(input.cover, user.cover);
+  if (input.locale !== undefined) patch.locale = input.locale;
   if (user.role === "agence" && input.contact !== undefined) patch.contact = input.contact.trim();
   // Bio : présentation du clipper (vue par les marques) ou de l'agence (vue par les clippers sur sa page).
   if (input.bio !== undefined && (user.role === "clipper" || user.role === "agence")) patch.bio = input.bio.trim();
@@ -422,6 +563,41 @@ export function setUserStatus({ db }: Ctx, admin: UserRow, id: string, status: "
   if (status === "Suspendu" && db.session?.userId === id) destroySession(db);
   notify(db, id, status === "Actif" ? "✅" : "⛔", status === "Actif" ? "Votre compte a été réactivé." : "Votre compte a été suspendu.", link.home(u.role));
   logActivity(db, status === "Actif" ? "✅" : "⛔", `${u.name} a été ${status === "Actif" ? "réactivé" : "suspendu"} par ${admin.name}.`);
+}
+
+// ---------- Badge de vérification des agences (verification.ts) ----------
+
+/** Une agence demande le badge bleu, avec un message facultatif pour l'équipe (et redemande après un refus). */
+export function requestVerification({ db }: Ctx, user: UserRow, message?: string) {
+  if (user.verification === "pending") throw badRequest("Votre demande est déjà en cours d'examen");
+  if (user.verification === "verified") throw badRequest("Votre agence est déjà vérifiée");
+  Object.assign(userOf(db, user.id), { verification: "pending", verificationNote: message?.trim() || null } satisfies Partial<UserRow>);
+  notifyRole(db, "admin", "🛡️", `${user.name} demande le badge de vérification.`, link.adminUser(user.id));
+  logActivity(db, "🛡️", `${user.name} demande le badge de vérification.`);
+}
+
+/** L'équipe accorde le badge (avec ou sans demande), refuse une demande (motif obligatoire) ou retire le badge. */
+export function reviewVerification({ db }: Ctx, admin: UserRow, id: string, input: { decision: "approve" | "reject" | "revoke"; reason?: string }) {
+  const u = db.users.find((x) => x.id === id);
+  if (!u) throw notFound("Utilisateur introuvable");
+  if (u.role !== "agence") throw badRequest("Seules les agences peuvent être vérifiées");
+  const reason = input.reason?.trim() ?? "";
+  const allowed = { approve: u.verification !== "verified", reject: u.verification === "pending", revoke: u.verification === "verified" }[input.decision];
+  if (!allowed) throw badRequest("Action impossible pour ce compte");
+  if (input.decision === "approve") {
+    Object.assign(u, { verification: "verified", verificationNote: null } satisfies Partial<UserRow>);
+    notify(db, u.id, "🛡️", "Votre agence est maintenant vérifiée : le badge bleu s'affiche à côté de son nom.", link.agencyProfile());
+    logActivity(db, "🛡️", `Badge de vérification accordé à ${u.name} par ${admin.name}.`);
+  } else if (input.decision === "reject") {
+    if (reason.length < 3) throw badRequest("Indiquez le motif du refus");
+    Object.assign(u, { verification: "rejected", verificationNote: reason } satisfies Partial<UserRow>);
+    notify(db, u.id, "⚠️", `Votre demande de badge de vérification a été refusée : ${clause(reason)}.`, link.agencyProfile());
+    logActivity(db, "🛡️", `Demande de badge de ${u.name} refusée par ${admin.name}.`);
+  } else {
+    Object.assign(u, { verification: "none", verificationNote: reason || null } satisfies Partial<UserRow>);
+    notify(db, u.id, "⚠️", clause(reason) ? `Le badge de vérification de votre agence a été retiré : ${clause(reason)}.` : "Le badge de vérification de votre agence a été retiré.", link.agencyProfile());
+    logActivity(db, "🛡️", `Badge de vérification retiré à ${u.name} par ${admin.name}.`);
+  }
 }
 
 export function markNotificationsRead({ db }: Ctx, userId: string, ids?: string[]) {

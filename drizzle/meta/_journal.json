@@ -15,6 +15,13 @@
       "when": 1791887818527,
       "tag": "0001_notification_link",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1791946565168,
+      "tag": "0002_badges_media_oauth",
+      "breakpoints": true
     }
   ]
 }

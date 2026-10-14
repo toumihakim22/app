@@ -1,5 +1,6 @@
 // Base de données de la version autonome (fichier HTML unique) : les mêmes tables que PostgreSQL,
-// dans un objet JSON enregistré dans le localStorage du navigateur.
+// dans un objet JSON enregistré dans le localStorage du navigateur. Sans table media : une image
+// (photo de profil, couverture, photo de campagne) est gardée en data URL dans sa propre colonne.
 import type * as schema from "../../lib/server/db/schema";
 import { DEFAULT_SETTINGS, type Settings } from "../../lib/server/settings";
 import { seed } from "./seed";
@@ -8,12 +9,14 @@ import { seed } from "./seed";
 type Row<T, K extends keyof T> = Omit<T, K> & { [P in K]: null extends T[P] ? number | null : number };
 export type UserRow = Row<typeof schema.users.$inferSelect, "createdAt">;
 export type CodeRow = Row<typeof schema.emailCodes.$inferSelect, "createdAt" | "expiresAt">;
-export type CampaignRow = Row<typeof schema.campaigns.$inferSelect, "createdAt">;
+export type CampaignRow = Row<typeof schema.campaigns.$inferSelect, "createdAt" | "updatedAt">;
 export type MemberRow = Row<typeof schema.campaignMembers.$inferSelect, "createdAt">;
 export type PubRow = Row<typeof schema.publications.$inferSelect, "createdAt" | "approvedAt">;
 export type TxRow = Row<typeof schema.transactions.$inferSelect, "createdAt" | "availableAt">;
 export type NotifRow = Row<typeof schema.notifications.$inferSelect, "createdAt">;
 export type ActivityRow = Row<typeof schema.activity.$inferSelect, "createdAt">;
+/** Compte Google, Apple ou Discord relié (connexion simulée : sujet « demo:<email> »). */
+export type OAuthRow = Row<typeof schema.oauthAccounts.$inferSelect, "createdAt">;
 
 export type Store = {
   version: number;
@@ -25,34 +28,61 @@ export type Store = {
   transactions: TxRow[];
   notifications: NotifRow[];
   activity: ActivityRow[];
+  oauth: OAuthRow[];
   settings: Partial<Settings>;
   /** Session du navigateur (l'équivalent du cookie cb_session). */
   session: { userId: string; expiresAt: number } | null;
 };
 
+// Les colonnes ajoutées depuis la première version sont complétées au chargement (voir upgrade()) : la clé
+// ne change pas, pour que les données déjà enregistrées dans le navigateur soient conservées.
 const VERSION = 1;
 export const STORAGE_KEY = `clipboost-offline-v${VERSION}`;
 
 export const emptyStore = (): Store => ({
   version: VERSION, users: [], emailCodes: [], campaigns: [], members: [], publications: [], transactions: [],
-  notifications: [], activity: [], settings: {}, session: null,
+  notifications: [], activity: [], oauth: [], settings: {}, session: null,
 });
 
 // ---------- Persistance ----------
 
+// Pas d'écriture de test ici : un stockage presque plein la ferait échouer et ferait passer la page sur
+// une base vide en mémoire (les données d'exemple), alors que la vraie base est toujours lisible.
 function storage(): Storage | null {
   try {
     const s = globalThis.localStorage;
-    s.setItem(`${STORAGE_KEY}-test`, "1");
-    s.removeItem(`${STORAGE_KEY}-test`);
+    s.getItem(STORAGE_KEY);
     return s;
   } catch {
     return null;
   }
 }
 
-// Sans localStorage (navigation privée stricte), les données vivent le temps de la page.
+// Sans localStorage utilisable (navigation privée stricte), les données vivent le temps de la page.
 let memory: string | null = null;
+
+/**
+ * Base enregistrée par une version précédente du fichier : les colonnes ajoutées depuis reçoivent leur
+ * valeur par défaut (comme une migration SQL). Sans effet sur une base à jour ; refait à chaque chargement,
+ * il couvre aussi les lignes écrites entre-temps par un ancien fichier ouvert dans un autre onglet.
+ */
+function upgrade(s: Store): Store {
+  s.oauth ??= [];
+  for (const u of s.users) {
+    u.avatar ??= null;
+    u.cover ??= null;
+    u.verification ??= "none";
+    u.verificationNote ??= null;
+    u.locale ??= "fr";
+  }
+  for (const c of s.campaigns) {
+    c.image ??= null;
+    c.reviewNote ??= null;
+    c.updatedAt ??= c.createdAt;
+  }
+  for (const p of s.publications) p.batch ??= null;
+  return s;
+}
 
 /**
  * Copie de travail de la base pour une requête : relue à chaque fois, pour que plusieurs onglets
@@ -63,25 +93,41 @@ export async function load(): Promise<Store> {
   if (raw) {
     try {
       const s = JSON.parse(raw) as Store;
-      if (s.version === VERSION) return s;
+      if (s.version === VERSION) return upgrade(s);
     } catch {
       // données illisibles : on repart des données d'exemple
     }
   }
   const s = await seed();
+  // Copie illisible ou d'un format inconnu : effacée d'abord, pour que sa place serve aux données d'exemple.
+  if (raw) {
+    memory = null;
+    storage()?.removeItem(STORAGE_KEY);
+  }
   save(s);
   return s;
 }
 
+/** Erreur d'une requête que le navigateur ne peut pas enregistrer (images surtout : elles sont gardées dans la base). */
+export const STORAGE_FULL = "Espace de stockage du navigateur plein : choisissez une image plus légère.";
+
+/**
+ * Enregistre la base. Si le navigateur refuse (quota du localStorage atteint), la requête échoue avec
+ * STORAGE_FULL et la base enregistrée reste celle d'avant la requête, comme une transaction annulée.
+ */
 export function save(s: Store) {
   const raw = JSON.stringify(s);
   const ls = storage();
   if (ls) {
     try {
       ls.setItem(STORAGE_KEY, raw);
+      memory = null;
       return;
     } catch {
-      // stockage plein : on garde au moins les données en mémoire
+      // Une base est déjà enregistrée : le stockage est plein. On ne garde pas ces changements en mémoire,
+      // le prochain chargement relirait la base enregistrée et ils disparaîtraient sans prévenir.
+      if (ls.getItem(STORAGE_KEY) !== null) throw new ApiError(413, STORAGE_FULL);
+      // Rien n'a jamais pu être enregistré (stockage indisponible) : les données vivent le temps de la page.
     }
   }
   memory = raw;
@@ -144,20 +190,24 @@ export function logActivity(db: Store, icon: string, text: string) {
 // ---------- Insertion avec les valeurs par défaut des colonnes ----------
 
 export function insertUser(db: Store, v: Pick<UserRow, "id" | "role" | "email" | "passwordHash" | "name"> & Partial<UserRow>) {
-  const row: UserRow = { contact: null, country: "Algérie", status: "Actif", level: "Nouveau", credit: 0, payoutMethod: null, payoutAccount: null, handles: {}, bio: "", createdAt: Date.now(), ...v };
+  const row: UserRow = {
+    contact: null, country: "Algérie", status: "Actif", level: "Nouveau", credit: 0, payoutMethod: null, payoutAccount: null, handles: {}, bio: "",
+    avatar: null, cover: null, verification: "none", verificationNote: null, locale: "fr", createdAt: Date.now(), ...v,
+  };
   db.users.push(row);
   return row;
 }
 
-type CampaignInsert = Omit<CampaignRow, "spent" | "commissionRate" | "reserved" | "top" | "emoji" | "createdAt"> & Partial<CampaignRow>;
+type CampaignInsert = Omit<CampaignRow, "spent" | "commissionRate" | "reserved" | "top" | "emoji" | "image" | "reviewNote" | "createdAt" | "updatedAt"> & Partial<CampaignRow>;
 export function insertCampaign(db: Store, v: CampaignInsert) {
-  const row: CampaignRow = { spent: 0, commissionRate: 0, reserved: 0, top: false, emoji: "🎬", createdAt: Date.now(), ...v };
+  const createdAt = v.createdAt ?? Date.now();
+  const row: CampaignRow = { spent: 0, commissionRate: 0, reserved: 0, top: false, emoji: "🎬", image: null, reviewNote: null, createdAt, updatedAt: createdAt, ...v };
   db.campaigns.push(row);
   return row;
 }
 
 export function insertPublication(db: Store, v: Pick<PubRow, "id" | "userId" | "campaignId" | "title" | "platform" | "url"> & Partial<PubRow>) {
-  const row: PubRow = { views: 0, status: "En attente", reason: null, paid: 0, approvedAt: null, createdAt: Date.now(), ...v };
+  const row: PubRow = { batch: null, views: 0, status: "En attente", reason: null, paid: 0, approvedAt: null, createdAt: Date.now(), ...v };
   db.publications.push(row);
   return row;
 }
