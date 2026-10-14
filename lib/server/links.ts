@@ -3,14 +3,20 @@
 import type { PublicationStatus, Role } from "./db/schema";
 
 export const link = {
-  /** Nouvelle campagne pour les clippers : ouvre sa fiche. */
-  clipperCampaign: (campaignId: string) => `#/clipper/campagnes/${campaignId}`,
+  /** Nouvelle campagne pour les clippers : ouvre sa fiche (page Découvrir). */
+  clipperCampaign: (campaignId: string) => `#/clipper/decouvrir/${campaignId}`,
   /** Campagne de l'agence (vérification, statut, budget consommé) : ouvre ses détails. */
   agencyCampaign: (campaignId: string) => `#/agence/campagnes/${campaignId}`,
   /** Budget rendu à l'agence : la ligne de la campagne dans Budget. */
   agencyBudget: (id: string) => `#/agence/budget/${id}`,
-  /** Campagne soumise par une agence : la ligne dans l'administration. */
+  /** Campagne soumise, modifiée ou relancée par une agence : sa fiche d'examen dans l'administration. */
   adminCampaign: (campaignId: string) => `#/admin/campagnes/${campaignId}`,
+  /** Clip à examiner : sa fiche dans la modération. */
+  adminClip: (publicationId: string) => `#/admin/moderation/${publicationId}`,
+  /** Profil d'un utilisateur dans l'administration (demande de badge de vérification). */
+  adminUser: (userId: string) => `#/admin/utilisateur/${userId}`,
+  /** Profil de l'agence (badge de vérification accordé, refusé ou retiré). */
+  agencyProfile: () => "#/agence/profil",
   /** Clip validé ou refusé. */
   clip: (publicationId: string) => `#/clipper/publications/${publicationId}`,
   /** Gain, retrait : l'opération dans le portefeuille du clipper. */
@@ -41,7 +47,7 @@ export function inferLink(role: Role, text: string, ctx: LinkContext): string | 
   let m: RegExpMatchArray | null;
   if (/^Votre compte a été (réactivé|suspendu)\.$/.test(text)) return link.home(role);
   if (role === "clipper") {
-    if ((m = text.match(/^Nouvelle campagne : (.+) \([^()]+ DA \/1K\)\.$/))) { const c = campaign(m[1]); return c ? link.clipperCampaign(c.id) : "#/clipper/campagnes"; }
+    if ((m = text.match(/^Nouvelle campagne : (.+) \([^()]+ DA \/1K\)\.$/))) { const c = campaign(m[1]); return c ? link.clipperCampaign(c.id) : "#/clipper/decouvrir"; }
     if ((m = text.match(/^\+.+ pour « (.+) »\. Retirable/))) {
       const p = pub(m[1]), t = p && ctx.transactions.find((x) => x.type === "gain" && x.publicationId === p.id);
       return t ? link.clipperTx(t.id) : "#/clipper/portefeuille";
@@ -53,8 +59,9 @@ export function inferLink(role: Role, text: string, ctx: LinkContext): string | 
     if ((m = text.match(/ non consommés sur « (.+) » ont été rendus/))) { const c = campaign(m[1]); return c ? link.agencyBudget(c.id) : "#/agence/budget"; }
     if ((m = text.match(/^(?:Votre campagne|Le budget de) « (.+) » /))) { const c = campaign(m[1]); return c ? link.agencyCampaign(c.id) : "#/agence/campagnes"; }
     if (text.startsWith("Votre recharge ")) return "#/agence/budget";
+    if (/vérifi/.test(text) && /(agence|badge)/i.test(text)) return link.agencyProfile();
   } else if (role === "admin") {
-    if ((m = text.match(/ a soumis la campagne « (.+) »\.$/))) { const c = campaign(m[1]); return c ? link.adminCampaign(c.id) : "#/admin/campagnes"; }
+    if ((m = text.match(/ a (?:soumis|modifié|modifié et relancé) la campagne « (.+) »\.$/))) { const c = campaign(m[1]); return c ? link.adminCampaign(c.id) : "#/admin/campagnes"; }
     if ((m = text.match(/ annonce une recharge de .+\(réf\. ([^)]+)\)\.$/))) { const t = ctx.transactions.find((x) => x.ref === m![1]); return t ? link.adminPayment(t.id) : "#/admin/retraits"; }
     if (/ demande un retrait de /.test(text)) return "#/admin/retraits";
   }

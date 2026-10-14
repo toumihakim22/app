@@ -110,6 +110,8 @@
   --color-avatar-4: #0369a1;
   --color-avatar-5: #be185d;
   --color-avatar-6: #475569;
+  /* Badge de vérification (agences) : bleu « vérifié » des réseaux sociaux, identique en clair et en sombre. */
+  --color-verified: #1d9bf0;
 
   --color-brand-50: #f5f3ff;
   --color-brand-100: #ede9fe;
@@ -213,4 +215,17 @@
   .cover[data-cat="Mode"]    { --cover-from: #f472b6; --cover-to: #be185d; }
   .cover[data-cat="Musique"] { --cover-from: #a78bfa; --cover-to: #6d28d9; }
   .cover[data-cat="Humour"]  { --cover-from: #22d3ee; --cover-to: #0e7490; }
+  .cover[data-cat="Beauté"]  { --cover-from: #fda4af; --cover-to: #db2777; }
+  .cover[data-cat="Gaming"]  { --cover-from: #818cf8; --cover-to: #312e81; }
+  .cover[data-cat="Cinéma"]  { --cover-from: #f87171; --cover-to: #7f1d1d; }
+  .cover[data-cat="Voyage"]  { --cover-from: #38bdf8; --cover-to: #0369a1; }
+  .cover[data-cat="Automobile"] { --cover-from: #94a3b8; --cover-to: #1e293b; }
+  .cover[data-cat="Éducation"] { --cover-from: #fcd34d; --cover-to: #b45309; }
+  .cover[data-cat="Santé"]   { --cover-from: #4ade80; --cover-to: #15803d; }
+  .cover[data-cat="Finance"] { --cover-from: #2dd4bf; --cover-to: #134e4a; }
+  .cover[data-cat="Immobilier"] { --cover-from: #d6d3d1; --cover-to: #57534e; }
+  .cover[data-cat="Lifestyle"] { --cover-from: #f9a8d4; --cover-to: #7c3aed; }
+  .cover[data-cat="Événementiel"] { --cover-from: #fb923c; --cover-to: #9d174d; }
+  /* Photo de campagne : posée sur la couverture (img en absolute inset-0), sans le filtre d'assombrissement du mode sombre. */
+  .cover:has(> img) { filter: none; }
 }

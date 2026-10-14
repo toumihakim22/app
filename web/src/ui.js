@@ -129,6 +129,24 @@ const icons = {
   tiktok: '<path d="M14 3v11.5a3.5 3.5 0 1 1-3.5-3.5M14 3c.4 2.6 2.2 4.4 5 4.6"/>',
   instagram: '<rect x="3.5" y="3.5" width="17" height="17" rx="5"/><circle cx="12" cy="12" r="4"/><path d="M17 7h.01"/>',
   youtube: '<rect x="2.5" y="5.5" width="19" height="13" rx="4"/><path d="M10 9.5v5l4.5-2.5z"/>',
+  facebook: '<path d="M14 21v-7.5h2.6l.4-3H14V8.6c0-.9.3-1.6 1.6-1.6H17V4.3a20 20 0 0 0-2.3-.1C12.4 4.2 11 5.6 11 8.2v2.3H8.5v3H11V21"/>',
+  sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
+  moon: '<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>',
+  monitor: '<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/>',
+  image: '<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M21 16l-5-5-9 9"/>',
+  camera: '<path d="M4 8h3l2-3h6l2 3h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13" r="3.5"/>',
+  upload: '<path d="M12 16V4M7 9l5-5 5 5M4 20h16"/>',
+  trash: '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>',
+  pencil: '<path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16v4z"/><path d="M13.5 6.5l4 4"/>',
+  send: '<path d="M21 3L10 14M21 3l-7 18-4-7-7-4z"/>',
+  refresh: '<path d="M4 12a8 8 0 1 0 2.3-5.7M4 4v4h4"/>',
+  card: '<rect x="2.5" y="5" width="19" height="14" rx="2"/><path d="M2.5 10h19M6 15h4"/>',
+  help: '<circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6v.6M12 17h.01"/>',
+  fileText: '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h6"/>',
+  compass: '<circle cx="12" cy="12" r="9"/><path d="M15.5 8.5l-2 5-5 2 2-5z"/>',
+  layers: '<path d="M12 3l9 5-9 5-9-5z"/><path d="M3 13l9 5 9-5"/>',
+  checkCircle: '<circle cx="12" cy="12" r="9"/><path d="M8 12l3 3 5-6"/>',
+  xCircle: '<circle cx="12" cy="12" r="9"/><path d="M9 9l6 6M15 9l-6 6"/>',
 };
 const icon = (name, cls = "size-5", fill = false) =>
   `<svg viewBox="0 0 24 24" class="${cls}" ${fill ? 'fill="currentColor"' : 'fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"'} aria-hidden="true" focusable="false">${icons[name] || ""}</svg>`;
@@ -136,7 +154,8 @@ const icon = (name, cls = "size-5", fill = false) =>
 // Événements (notifications, activité) : la base stocke un emoji, l'interface affiche une icône au trait.
 const EVENT_ICON = { "✅": ["check", "bg-success-bg text-success-fg"], "🚫": ["ban", "bg-danger-bg text-danger-fg"], "⛔": ["ban", "bg-danger-bg text-danger-fg"], "⚠": ["alert", "bg-warning-bg text-warning-fg"],
   "⏳": ["clock", "bg-muted text-fg-muted"], "⚙": ["gear", "bg-muted text-fg-muted"], "🎬": ["film", "bg-muted text-fg-muted"], "🎯": ["target", "bg-muted text-fg-muted"],
-  "🏁": ["flag", "bg-muted text-fg-muted"], "🏢": ["building", "bg-muted text-fg-muted"], "🏦": ["bank", "bg-muted text-fg-muted"], "💰": ["wallet", "bg-muted text-fg-muted"], "💸": ["wallet", "bg-muted text-fg-muted"] };
+  "🏁": ["flag", "bg-muted text-fg-muted"], "🏢": ["building", "bg-muted text-fg-muted"], "🏦": ["bank", "bg-muted text-fg-muted"], "💰": ["wallet", "bg-muted text-fg-muted"], "💸": ["wallet", "bg-muted text-fg-muted"],
+  "🛡": ["shield", "bg-info-bg text-info-fg"], "✏": ["pencil", "bg-muted text-fg-muted"], "🗑": ["trash", "bg-muted text-fg-muted"] };
 const eventIcon = (emoji) => {
   const [ic, tone] = EVENT_ICON[String(emoji || "").replace(/️/g, "")] || ["bell", "bg-muted text-fg-muted"];
   return `<span class="grid size-8 shrink-0 place-items-center rounded-full ${tone}" aria-hidden="true">${icon(ic, "size-4")}</span>`;
@@ -292,7 +311,7 @@ const STATUS_TONE = {
 const badge = (text, tone = "idle", { dot = false, ic = "" } = {}) =>
   `<span class="${BADGE} ${TONE[tone]}">${ic ? icon(ic, "size-3") : dot ? `<span class="size-1.5 rounded-full ${DOT[tone]}" aria-hidden="true"></span>` : ""}${text}</span>`;
 const statusBadge = (s) => badge(esc(s), STATUS_TONE[s] || "idle", s === "En pause" ? { ic: "pause" } : { dot: true });
-const PLATFORM_ICON = { TikTok: "tiktok", Instagram: "instagram", YouTube: "youtube" };
+const PLATFORM_ICON = { TikTok: "tiktok", Instagram: "instagram", YouTube: "youtube", Facebook: "facebook" };
 const platformTag = (p) => `<span class="inline-flex h-6 items-center gap-1.5 whitespace-nowrap rounded-badge bg-muted px-2 text-xs font-medium text-fg-muted">${icon(PLATFORM_ICON[p] || "film", "size-3.5")}${esc(p)}</span>`;
 // Liseré : brand-soft et info-bg se confondent avec le fond canvas en clair (même correction que countBadge).
 const roleBadge = (role) => ({ agence: `<span class="inline-flex h-5 items-center rounded-[4px] bg-info-bg px-1.5 text-micro font-semibold text-info-fg ring-1 ring-inset ring-info-border">Agence</span>`, admin: `<span class="inline-flex h-5 items-center rounded-[4px] bg-brand-soft px-1.5 text-micro font-semibold text-brand-fg ring-1 ring-inset ring-brand-line/70">Admin</span>` }[role] || "");
@@ -348,15 +367,32 @@ function progress(spent, budget, { label = true, aria = "Budget utilisé" } = {}
 // ---------- Couvertures de campagne (catégorie → teinte, voir .cover dans app/theme.css) ----------
 const coverAttr = (c) => `data-cat="${CATEGORIES.includes(c.category) ? c.category : "Autre"}"`;
 const THUMB = { xs: "size-5 rounded-[4px] text-[11px]", sm: "size-10 rounded-tile text-lg", md: "size-12 rounded-tile text-2xl", lg: "size-14 rounded-tile text-2xl" };
-const coverThumb = (c, size = "sm") => `<span class="cover grid ${THUMB[size]} shrink-0 place-items-center" ${coverAttr(c)} aria-hidden="true">${c.emoji}</span>`;
+// Vignette : la photo de la campagne si elle en a une, sinon l'emoji sur la teinte de sa catégorie.
+const coverThumb = (c, size = "sm") => c.image
+  ? `<span class="cover relative grid ${THUMB[size]} shrink-0 overflow-hidden" ${coverAttr(c)} aria-hidden="true"><img src="${esc(c.image)}" alt="" loading="lazy" decoding="async" class="absolute inset-0 size-full object-cover"/></span>`
+  : `<span class="cover grid ${THUMB[size]} shrink-0 place-items-center" ${coverAttr(c)} aria-hidden="true">${c.emoji}</span>`;
+// Contenu d'une grande couverture (.cover relative overflow-hidden) : photo plein cadre, sinon l'emoji centré.
+// emojiCls : taille de l'emoji (« text-5xl »). Les puces posées par-dessus (tarif, Top campagne) se placent après.
+const coverArt = (c, emojiCls = "text-5xl") => c.image
+  ? `<img src="${esc(c.image)}" alt="" loading="lazy" decoding="async" class="absolute inset-0 size-full object-cover"/>`
+  : `<span class="absolute inset-0 grid place-items-center ${emojiCls} drop-shadow-[0_6px_14px_rgb(0_0_0/0.22)]" aria-hidden="true">${c.emoji}</span>`;
 
 // ---------- Avatar : 6 fonds AA (texte blanc ≥ 5:1), admin = violet ----------
 const AVATARS = ["bg-avatar-1", "bg-avatar-2", "bg-avatar-3", "bg-avatar-4", "bg-avatar-5", "bg-avatar-6"];
 const AVATAR_SIZE = { xs: "size-6 text-[10px]", sm: "size-8 text-xs", md: "size-9 text-small", lg: "size-16 text-xl", xl: "size-20 text-2xl" };
+// Photo de profil (u.avatar) si elle existe, sinon les initiales (2 lettres) sur une teinte stable.
 function avatar(u, size = "md") {
+  const cls = AVATAR_SIZE[size] || size;
+  if (u && u.avatar) return `<img src="${esc(u.avatar)}" alt="" loading="lazy" decoding="async" class="inline-block ${cls} shrink-0 select-none rounded-full bg-muted object-cover" aria-hidden="true"/>`;
   const tone = u.role === "admin" ? "bg-avatar-1" : AVATARS[[...String(u.id)].reduce((h, ch) => h + ch.charCodeAt(0), 0) % AVATARS.length];
-  return `<span class="inline-grid ${AVATAR_SIZE[size] || size} shrink-0 select-none place-items-center rounded-full font-semibold text-on-brand ${tone}" aria-hidden="true">${esc(initials(u.name))}</span>`;
+  return `<span class="inline-grid ${cls} shrink-0 select-none place-items-center rounded-full font-semibold text-on-brand ${tone}" aria-hidden="true">${esc(initials(u.name))}</span>`;
 }
+
+// Badge de vérification (agence vérifiée par l'équipe ClipBoost) : sceau bleu et coche blanche, à côté du nom.
+const verifiedBadge = (cls = "size-4", label = "Agence vérifiée") =>
+  `<svg viewBox="0 0 24 24" class="${cls} inline-block shrink-0 align-[-0.125em] text-verified" role="img" aria-label="${esc(label)}"><title>${esc(label)}</title><path fill="currentColor" d="M10.80 1.91Q12.00 0.80 13.20 1.91Q14.41 3.02 16.00 2.66Q17.60 2.30 18.09 3.86Q18.58 5.42 20.14 5.91Q21.70 6.40 21.34 8.00Q20.98 9.59 22.09 10.80Q23.20 12.00 22.09 13.20Q20.98 14.41 21.34 16.00Q21.70 17.60 20.14 18.09Q18.58 18.58 18.09 20.14Q17.60 21.70 16.00 21.34Q14.41 20.98 13.20 22.09Q12.00 23.20 10.80 22.09Q9.59 20.98 8.00 21.34Q6.40 21.70 5.91 20.14Q5.42 18.58 3.86 18.09Q2.30 17.60 2.66 16.00Q3.02 14.41 1.91 13.20Q0.80 12.00 1.91 10.80Q3.02 9.59 2.66 8.00Q2.30 6.40 3.86 5.91Q5.42 5.42 5.91 3.86Q6.40 2.30 8.00 2.66Q9.59 3.02 10.80 1.91Z"/><path d="M8.2 12.3l2.6 2.6 5-5.3" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+// Nom + badge si l'utilisateur (ou l'agence publique) est vérifié : u.verified === true.
+const nameWithBadge = (u, cls = "size-4") => `${esc(u.name)}${u && u.verified ? `${NB}${verifiedBadge(cls)}` : ""}`;
 
 // ---------- Tableau (≥ md) et liste (< md) dans le même conteneur ----------
 const TBL = {
@@ -455,11 +491,112 @@ function siteBanner() {
   if (s.announcement) parts.push(`<div class="flex items-center justify-center gap-2 border-b border-brand-line bg-brand-soft px-4 py-2 text-center text-small font-medium text-brand-fg">${icon("megaphone", "size-4 shrink-0")}${esc(s.announcement)}</div>`);
   return parts.join("");
 }
+// Thème : clair, sombre ou système (web/theme.js gère les clics sur [data-theme-set] et l'état aria-pressed).
+const THEME_MODES = [["light", "sun", "Clair"], ["dark", "moon", "Sombre"], ["system", "monitor", "Système"]];
+function themeModeSwitch({ labels = false, cls = "" } = {}) {
+  const m = window.clipboostTheme ? window.clipboostTheme.mode() : "system";
+  return `<div class="${SEG_WRAP} ${cls}" role="group" aria-label="Thème">${THEME_MODES.map(([v, ic, l]) =>
+    `<button type="button" data-theme-set="${v}" aria-pressed="${m === v}" title="${l}" class="${SEG_BTN} flex-1 justify-center [&_svg]:size-4">${icon(ic)}${labels ? `<span>${l}</span>` : `<span class="sr-only">${l}</span>`}</button>`).join("")}</div>`;
+}
+// Langue : boutons [data-lang-set] (web/src/i18n.js). full : libellés complets (« Français »), sinon FR / EN / ع.
+function langSwitch({ full = false, cls = "" } = {}) {
+  return `<div class="${SEG_WRAP} ${cls}" role="group" aria-label="Langue">${Object.entries(LOCALES).map(([k, l]) =>
+    `<button type="button" data-lang-set="${k}" aria-pressed="${LANG === k}" lang="${k}" title="${l.label}" class="${SEG_BTN} flex-1 justify-center">${full ? l.label : `<span aria-hidden="true">${l.short}</span><span class="sr-only">${l.label}</span>`}</button>`).join("")}</div>`;
+}
 const themeToggle = (cls = "") =>
   `<button type="button" data-theme-toggle class="${iconBtn("md", false, cls)}" aria-label="Changer de thème (clair ou sombre)">
     <svg viewBox="0 0 24 24" class="dark:hidden" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
     <svg viewBox="0 0 24 24" class="hidden dark:block" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
   </button>`;
+
+// ---------- Photos : choix, recadrage et compression dans le navigateur ----------
+// imageField({ name, value, shape, label, hint, fallback }) : aperçu, bouton « Choisir une photo », « Retirer », et un
+// <input type="hidden" name> qui porte la valeur envoyée à l'API : data URL (nouvelle photo), adresse actuelle
+// (inchangée) ou "" (retirée). Chaque changement déclenche un événement input sur ce champ caché (récapitulatifs, brouillons).
+// shape : "avatar" (carré 320 px, rond), "cover" (bandeau 3:1, 1 500 px), "campaign" (16:9, 1 280 px).
+// fallback : HTML affiché sans photo (initiales, couverture en dégradé) ; il remplit le cadre de l'aperçu.
+const IMAGE_SHAPES = {
+  avatar: { w: 320, h: 320, box: "size-20 rounded-full", row: true },
+  cover: { w: 1500, h: 500, box: "aspect-[3/1] w-full rounded-tile", row: false },
+  campaign: { w: 1280, h: 720, box: "aspect-[16/9] w-full rounded-tile", row: false },
+};
+const IMAGE_MAX_CHARS = 2000000;
+function imageField({ name, value = "", shape = "avatar", label = "Photo", hint = "", fallback = "" }) {
+  const S = IMAGE_SHAPES[shape] || IMAGE_SHAPES.avatar, id = `img-${name}`;
+  const preview = value ? `<img src="${esc(value)}" alt="" class="absolute inset-0 size-full object-cover"/>` : fallback;
+  const buttons = `<div class="flex flex-wrap items-center gap-2">
+      <label class="${btn("secondary", "sm")} cursor-pointer has-focus-visible:outline-2 has-focus-visible:outline-offset-2 has-focus-visible:outline-focus">${icon("camera")}<span data-image-pick-label>${value ? "Changer la photo" : "Choisir une photo"}</span>
+        <input id="${id}" type="file" accept="image/jpeg,image/png,image/webp" class="sr-only" data-image-input="${name}" data-image-shape="${shape}"/></label>
+      <button type="button" data-image-clear="${name}" class="${btn("ghost", "sm")}" ${value ? "" : "hidden"}>${icon("trash")}Retirer</button>
+    </div>`;
+  return `<div class="grid gap-2" data-field data-image-field="${name}">
+    <span class="text-small font-medium text-fg">${label}</span>
+    <div class="${S.row ? "flex items-center gap-4" : "grid gap-3"}">
+      <div class="relative grid shrink-0 place-items-center overflow-hidden bg-muted ${S.box}" data-image-preview>${preview}</div>
+      ${buttons}
+    </div>
+    <template data-image-fallback>${fallback}</template>
+    <input type="hidden" name="${name}" value="${esc(value)}"/>
+    ${hint ? `<span class="text-xs text-fg-subtle">${hint}</span>` : ""}
+  </div>`;
+}
+
+// Recadrage au centre au format demandé, sans agrandir une petite image, puis JPEG (fond blanc pour la transparence).
+async function readImage(file, shape) {
+  const S = IMAGE_SHAPES[shape] || IMAGE_SHAPES.avatar, ratio = S.w / S.h;
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise((resolve, reject) => { const i = new Image(); i.onload = () => resolve(i); i.onerror = reject; i.src = url; });
+    const iw = img.naturalWidth, ih = img.naturalHeight;
+    let sw = iw, sh = iw / ratio;
+    if (sh > ih) { sh = ih; sw = ih * ratio; }
+    const ow = Math.max(1, Math.round(Math.min(S.w, sw))), oh = Math.max(1, Math.round(ow / ratio));
+    const canvas = document.createElement("canvas");
+    canvas.width = ow; canvas.height = oh;
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, ow, oh);
+    ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(img, (iw - sw) / 2, (ih - sh) / 2, sw, sh, 0, 0, ow, oh);
+    for (const q of [0.85, 0.75, 0.6]) {
+      const out = canvas.toDataURL("image/jpeg", q);
+      if (out.length <= IMAGE_MAX_CHARS) return out;
+    }
+    throw new Error("too-big");
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+function setImageField(fieldEl, value) {
+  const hidden = fieldEl.querySelector('input[type="hidden"]'), box = fieldEl.querySelector("[data-image-preview]");
+  const clear = fieldEl.querySelector("[data-image-clear]"), label = fieldEl.querySelector("[data-image-pick-label]");
+  hidden.value = value;
+  box.innerHTML = value ? `<img src="${esc(value)}" alt="" class="absolute inset-0 size-full object-cover"/>` : fieldEl.querySelector("template[data-image-fallback]").innerHTML;
+  if (clear) clear.hidden = !value;
+  if (label) label.textContent = value ? t("Changer la photo") : t("Choisir une photo");
+  hidden.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
+document.addEventListener("change", async (e) => {
+  const input = e.target;
+  if (!input || !input.matches || !input.matches("input[data-image-input]")) return;
+  const file = input.files && input.files[0], fieldEl = input.closest("[data-image-field]");
+  input.value = "";
+  if (!file || !fieldEl) return;
+  if (!/^image\/(jpeg|png|webp)$/.test(file.type)) return toast(t("Format non pris en charge : choisissez une image JPEG, PNG ou WebP."), "danger");
+  if (file.size > 15 * 1024 * 1024) return toast(t("Image trop lourde : 15 Mo maximum."), "danger");
+  try {
+    setImageField(fieldEl, await readImage(file, input.dataset.imageShape));
+  } catch (err) {
+    toast(t("Impossible de lire cette image. Essayez avec une autre photo."), "danger");
+  }
+});
+document.addEventListener("click", (e) => {
+  const b = e.target && e.target.closest ? e.target.closest("[data-image-clear]") : null;
+  const fieldEl = b && b.closest("[data-image-field]");
+  if (fieldEl) setImageField(fieldEl, "");
+});
 
 // ---------- Graphiques (voir §6) ----------
 const niceMax = (v) => { if (v <= 0) return 1; const p = 10 ** Math.floor(Math.log10(v)), m = v / p; return (m <= 1 ? 1 : m <= 2 ? 2 : m <= 2.5 ? 2.5 : m <= 5 ? 5 : 10) * p; };

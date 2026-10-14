@@ -5,7 +5,7 @@
 // Avec --offline : tout le site (accueil, application et API simulée dans le navigateur) en un seul
 // fichier HTML qui s'ouvre sans serveur, voir web/offline/build.mjs. Nécessite `next build` au préalable.
 // Usage : node web/build.mjs --offline [fichier-de-sortie]   (par défaut : web/dist/clipboost-site.html)
-import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, writeFileSync, mkdirSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import postcss from "postcss";
@@ -25,7 +25,14 @@ const css = compiled.replace(/url\((["']?)[^)"']*@fontsource-variable\/([^/]+)\/
   (_, _q, pkg, file) => `url(data:font/woff2;base64,${readFileSync(join(fontDir, pkg, "files", file)).toString("base64")})`);
 if ((css.match(/data:font\/woff2/g) || []).length !== 4) throw new Error("Polices non inlinées : lancez npm install.");
 
-const parts = ["data.js", "ui.js", "auth.js", "clipper.js", "admin.js", "agency.js", "main.js"].map((f) => readFileSync(join(dir, "src", f), "utf8"));
+// Langues : le moteur (i18n.js), puis les dictionnaires web/src/i18n/<langue>/<zone>.js (ordre alphabétique).
+const i18nDir = join(dir, "src", "i18n");
+const dictionaries = existsSync(i18nDir)
+  ? readdirSync(i18nDir, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name).sort()
+    .flatMap((lang) => readdirSync(join(i18nDir, lang)).filter((f) => f.endsWith(".js")).sort().map((f) => join("i18n", lang, f)))
+  : [];
+const files = ["i18n.js", ...dictionaries, "data.js", "ui.js", "auth.js", "clipper.js", "admin.js", "agency.js", "main.js"];
+const parts = files.map((f) => `// ---- web/src/${f.replace(/\\/g, "/")} ----\n${readFileSync(join(dir, "src", f), "utf8")}`);
 const js = `${readFileSync(join(dir, "theme.js"), "utf8")}\n(function () {\n"use strict";\n${parts.join("\n")}\n})();`;
 
 const template = readFileSync(join(dir, "index.html"), "utf8");
