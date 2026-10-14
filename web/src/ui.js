@@ -616,13 +616,17 @@ function setImageField(fieldEl, value) {
 document.addEventListener("change", async (e) => {
   const input = e.target;
   if (!input || !input.matches || !input.matches("input[data-image-input]")) return;
-  const file = input.files && input.files[0], fieldEl = input.closest("[data-image-field]");
+  const file = input.files && input.files[0], name = input.dataset.imageInput;
+  let fieldEl = input.closest("[data-image-field]");
   input.value = "";
   if (!file || !fieldEl) return;
   if (!/^image\/(jpeg|png|webp)$/.test(file.type)) return toast(t("Format non pris en charge : choisissez une image JPEG, PNG ou WebP."), "danger");
   if (file.size > 15 * 1024 * 1024) return toast(t("Image trop lourde : 15 Mo maximum."), "danger");
   try {
-    setImageField(fieldEl, await readImage(file, input.dataset.imageShape));
+    const value = await readImage(file, input.dataset.imageShape);
+    // Page réaffichée pendant la lecture (données rechargées…) : le champ du même nom dans le nouveau rendu.
+    if (!fieldEl.isConnected) fieldEl = document.querySelector(`[data-image-field="${String(name).replace(/["\\]/g, "\\$&")}"]`);
+    if (fieldEl) setImageField(fieldEl, value);
   } catch (err) {
     toast(t("Impossible de lire cette image. Essayez avec une autre photo."), "danger");
   }
@@ -630,7 +634,11 @@ document.addEventListener("change", async (e) => {
 document.addEventListener("click", (e) => {
   const b = e.target && e.target.closest ? e.target.closest("[data-image-clear]") : null;
   const fieldEl = b && b.closest("[data-image-field]");
-  if (fieldEl) setImageField(fieldEl, "");
+  if (!fieldEl) return;
+  setImageField(fieldEl, "");
+  // « Retirer » disparaît : le focus passe au choix d'une nouvelle photo (sinon il tomberait sur <body>).
+  const pick = fieldEl.querySelector("input[data-image-input]");
+  if (pick) pick.focus();
 });
 
 // ---------- Graphiques (voir §6) : toujours de gauche à droite (dir="ltr"), même en arabe ----------

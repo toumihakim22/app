@@ -17,10 +17,14 @@ const state = {
   // Modale ouverte : { type, id?, …, draft?, back? }. draft : saisie en cours (captureDraft) ; back : modale qui
   // reprend sa place quand on ferme celle-ci (openStacked). Voir « Modales : brouillons, champs conditionnels, empilement ».
   modal: null,
-  camp: { tab: "agences", aq: "", q: "", category: "Toutes", sort: "recent", favOnly: false, layout: "grid" },
+  // Clipper : Découvrir (q, category, sort, layout ; scope = « Toutes » | « Rejointes » | « Favoris ») et Agences (aq).
+  camp: { aq: "", q: "", category: "Toutes", sort: "recent", scope: "Toutes", layout: "grid" },
   pub: { status: "Toutes" },
   tx: { type: "tous" },
   period: 30,
+  // Accueil du clipper : graphique par jour ou cumulé, tableau des clips récents ou les plus vus.
+  clChart: "jour",
+  clClips: "recent",
   adm: { userQ: "", userStatus: "Tous", userRole: "Tous les rôles", campQ: "", campStatus: "Toutes", modStatus: "En attente", payTab: "retraits" },
   ag: { q: "", status: "Toutes", clipStatus: "Toutes" },
   pwdError: "",
@@ -44,7 +48,8 @@ function parseRoute() {
   const views = { agence: [AGENCY_VIEWS, "apercu"], clipper: [CLIPPER_VIEWS, "accueil"], admin: [ADMIN_VIEWS, "apercu"] }[area];
   if (!views) return { area: "home", view: "" };
   const alias = ROUTE_ALIASES[`${area}/${rawView}`], view = alias || rawView;
-  if (!views[0][view]) return { area, view: views[1], rewrite: true };
+  // Propriété propre seulement : #/clipper/constructor n'est pas une page.
+  if (!view || !Object.prototype.hasOwnProperty.call(views[0], view)) return { area, view: views[1], rewrite: true };
   let item = "";
   try { item = raw ? decodeURIComponent(raw) : ""; } catch (e) {}
   const r = { area, view };
@@ -90,7 +95,7 @@ function onRoute() {
 // fiche ouverte (campagne, clip) ou identifiant de la ligne à mettre en évidence (data-row). Élément disparu : la page seule.
 function applyRouteItem(area, view, id) {
   if (area === "clipper") {
-    Object.assign(state.camp, { q: "", category: "Toutes", favOnly: false });
+    Object.assign(state.camp, { q: "", category: "Toutes", scope: "Toutes" });
     state.pub.status = "Toutes"; state.tx.type = "tous";
     if (view === "decouvrir") { if (campaignById(id)) state.modal = { type: "campaign", id }; return ""; }
   } else if (area === "agence") {
@@ -203,9 +208,11 @@ function accountMenu(area, u) {
   const role = area === "admin" ? badge("Administrateur", "brand", { ic: "shield" })
     : area === "agence" ? badge("Agence", "info", { ic: "building" })
     : badge(esc(!u.level ? "Clipper" : /clipper/i.test(u.level) ? u.level : `Clipper · ${u.level}`), "brand", { ic: "medal" });
-  const here = navView(area, state.route.view);
-  const links = [[AREAS[area].profile, "user", area === "admin" ? "Mon compte" : "Mon profil"], ["parametres", "gear", area === "admin" ? "Réglages du site" : "Paramètres"]].map(([view, ic, label]) =>
-    `<a href="#/${area}/${view}" ${here === view ? 'aria-current="page"' : ""} class="${MENU_ITEM}">${icon(ic, MENU_ICON)}${label}</a>`).join("");
+  const here = navView(area, state.route.view), views = AREAS[area].views();
+  // Seules les pages qui existent dans l'espace (un lien vers une page absente ramènerait à l'accueil de l'espace).
+  const links = [[AREAS[area].profile, "user", area === "admin" ? "Mon compte" : "Mon profil"], ["parametres", "gear", area === "admin" ? "Réglages du site" : "Paramètres"]]
+    .filter(([view]) => Object.prototype.hasOwnProperty.call(views, view))
+    .map(([view, ic, label]) => `<a href="#/${area}/${view}" ${here === view ? 'aria-current="page"' : ""} class="${MENU_ITEM}">${icon(ic, MENU_ICON)}${label}</a>`).join("");
   return `<div id="account-menu" tabindex="-1" role="dialog" aria-label="Mon compte" class="absolute end-0 top-12 z-40 flex max-h-[calc(100dvh-8.5rem)] w-[min(20rem,calc(100vw-2rem))] flex-col overflow-hidden rounded-card border border-line bg-surface-raised shadow-popover animate-pop-in focus:outline-none lg:max-h-[calc(100dvh-4.5rem)]">
     <div class="min-h-0 flex-1 overflow-y-auto">
       <div class="flex items-start gap-3 border-b border-line px-4 py-4">${avatar(u, "md")}
@@ -215,8 +222,8 @@ function accountMenu(area, u) {
           <p class="mt-2 flex">${role}</p>
         </div>
       </div>
-      <div class="grid gap-0.5 p-1.5">${links}</div>
-      <div class="flex items-center justify-between gap-3 border-t border-line py-2 pe-1.5 ps-4">
+      ${links ? `<div class="grid gap-0.5 border-b border-line p-1.5">${links}</div>` : ""}
+      <div class="flex items-center justify-between gap-3 py-2 pe-1.5 ps-4">
         <span class="flex min-w-0 items-center gap-3 text-sm font-medium text-fg-muted">${icon("globe", "size-[18px] shrink-0 text-fg-subtle")}Langue</span>
         ${langSwitch({ cls: "w-[8.75rem] shrink-0" })}
       </div>
@@ -421,6 +428,21 @@ function captureDraft(form, target = state.modal) {
   target.draft = { ...(target.draft || {}), ...draft };
 }
 
+// Remet un brouillon dans un formulaire (appelant : restoringDraft = true). Une valeur absente d'une liste déroulante
+// (option disparue) est ignorée ; une photo passe par setImageField (aperçu, bouton « Retirer »).
+function fillForm(form, draft) {
+  for (const el of draftControls(form)) {
+    if (!(el.name in draft)) continue;
+    const v = draft[el.name];
+    if (el.type === "checkbox") el.checked = Array.isArray(v) ? v.includes(el.value) : !!v;
+    else if (el.type === "radio") { if (v !== null && v !== undefined) el.checked = el.value === v; }
+    else if (el.type === "hidden") { const f = el.closest("[data-image-field]"); if (f && el.value !== v) setImageField(f, v || ""); }
+    else if (el.multiple) [...el.options].forEach((o) => { o.selected = Array.isArray(v) && v.includes(o.value); });
+    else if (el.tagName === "SELECT") { if ([...el.options].some((o) => o.value === v)) el.value = v; }
+    else if (el.value !== v) el.value = v;
+  }
+}
+
 // Appelé par render() juste après l'affichage : remet le brouillon de state.modal dans ses formulaires.
 function restoreDraft() {
   const m = state.modal, prev = draftOwner;
@@ -431,22 +453,54 @@ function restoreDraft() {
   if (!forms.length) return;
   restoringDraft = true;
   try {
-    for (const form of forms) {
-      for (const el of draftControls(form)) {
-        if (!(el.name in draft)) continue;
-        const v = draft[el.name];
-        if (el.type === "checkbox") el.checked = Array.isArray(v) ? v.includes(el.value) : !!v;
-        else if (el.type === "radio") { if (v !== null && v !== undefined) el.checked = el.value === v; }
-        else if (el.type === "hidden") { const f = el.closest("[data-image-field]"); if (f && el.value !== v) setImageField(f, v || ""); }
-        else if (el.multiple) [...el.options].forEach((o) => { o.selected = Array.isArray(v) && v.includes(o.value); });
-        else if (el.tagName === "SELECT") { if ([...el.options].some((o) => o.value === v)) el.value = v; }
-        else if (el.value !== v) el.value = v;
-      }
-    }
+    forms.forEach((form) => fillForm(form, draft));
   } finally {
     restoringDraft = false;
   }
   forms.forEach(runLive);
+}
+
+// ---------- Formulaires de page : saisie gardée d'un réaffichage à l'autre ----------
+// render() remplace tout le DOM : sans brouillon, ouvrir les notifications ou le menu du compte, changer de langue, ou
+// une action qui recharge les données (interrupteur des Réglages du site…) effaçait ce qui était tapé dans un formulaire
+// de page (Profil, Paramètres, Réglages du site, photo choisie mais pas encore enregistrée). Chaque saisie dans un
+// form[data-form] hors modale, dans un espace (Clipper, Agence, Admin ; les écrans de connexion ont leur propre
+// mécanisme), est copiée dans pageDrafts[nom] avec les règles de captureDraft, puis remise en place après chaque
+// render() de la même page. Un formulaire envoyé abandonne son brouillon au rechargement suivant des données
+// (enregistrement réussi : les valeurs affichées sont celles du serveur) ; une nouvelle saisie le reprend. Changer de
+// page les abandonne tous. Remettre volontairement un formulaire de page à zéro : dropPageDraft(nom), puis render().
+let pageDrafts = Object.create(null); // { nom du formulaire: { draft, sentWith } } ; sentWith : `db` à l'envoi
+let pageDraftRoute = ""; // page (#/<espace>/<page>/<élément>) à laquelle appartiennent ces brouillons
+
+// Formulaire de page qui contient le champ el (null dans une modale, sur les écrans de connexion ou hors de l'app).
+function pageFormOf(el) {
+  if (!["clipper", "agence", "admin"].includes(state.route.area)) return null;
+  const form = el && (el.form || (el.closest && el.closest("form[data-form]")));
+  return form && form.matches("form[data-form]") && root.contains(form) && !form.closest('[aria-modal="true"]') ? form : null;
+}
+function capturePageDraft(form) {
+  const name = form.dataset.form, d = pageDrafts[name] || (pageDrafts[name] = { draft: null, sentWith: null });
+  d.sentWith = null;
+  captureDraft(form, d);
+}
+const dropPageDraft = (name) => { delete pageDrafts[name]; };
+
+// Appelé par render() juste après l'affichage, comme restoreDraft().
+function restorePageDrafts() {
+  const r = state.route, key = `${r.area}/${r.view}/${r.item || ""}`;
+  if (key !== pageDraftRoute) { pageDrafts = Object.create(null); pageDraftRoute = key; return; }
+  const filled = [];
+  restoringDraft = true;
+  try {
+    for (const [name, d] of Object.entries(pageDrafts)) {
+      if (d.sentWith && d.sentWith !== db) { delete pageDrafts[name]; continue; }
+      const form = [...root.querySelectorAll(`form[data-form="${String(name).replace(/["\\]/g, "\\$&")}"]`)].find((f) => !f.closest('[aria-modal="true"]'));
+      if (form && d.draft) { fillForm(form, d.draft); filled.push(form); }
+    }
+  } finally {
+    restoringDraft = false;
+  }
+  filled.forEach(runLive);
 }
 
 // Modale empilée : s'ouvre par-dessus la modale courante, qui reprend sa place (saisie comprise) quand on ferme la
@@ -475,6 +529,13 @@ function dismissModal() {
 }
 
 // ---------- Rendu ----------
+
+// Titre de l'onglet : page courante (entrée de navigation, Mon compte de l'admin), puis l'espace.
+function pageTitle(area) {
+  const view = navView(area, state.route.view), n = AREAS[area].nav().find((x) => x.id === view);
+  const label = n ? n.label : area === "admin" && view === "compte" ? "Mon compte" : "";
+  return label ? `${label} · ${AREAS[area].title} — ClipBoost` : `${AREAS[area].title} — ClipBoost`;
+}
 
 function render() {
   const area = state.route.area;
@@ -506,10 +567,14 @@ function render() {
   const toasts = document.getElementById("toasts");
   root.innerHTML = `${html}<div id="toasts" aria-live="polite" class="pointer-events-none fixed inset-x-0 bottom-20 z-[60] flex flex-col items-center gap-2 px-4 lg:bottom-6"></div>`;
   if (toasts) root.querySelector("#toasts").replaceWith(toasts);
-  document.title = area === "auth" ? `${{ connexion: "Connexion", inscription: "Inscription", "mot-de-passe": "Mot de passe oublié" }[state.route.view]} — ClipBoost` : `${AREAS[area].title} — ClipBoost`;
-  // Saisie en cours de la modale remise en place avant tout placement du focus (le bouton qui avait ouvert une
-  // modale empilée peut vivre dans un récapitulatif en direct).
+  document.title = area === "auth" ? `${{ connexion: "Connexion", inscription: "Inscription", "mot-de-passe": "Mot de passe oublié" }[state.route.view]} — ClipBoost` : pageTitle(area);
+  // Saisie en cours (modale, formulaires de la page) remise en place avant tout placement du focus (le bouton qui avait
+  // ouvert une modale empilée peut vivre dans un récapitulatif en direct).
   restoreDraft();
+  restorePageDrafts();
+  // Case « en partie cochée » (« Toutes les plateformes » quand certaines seulement le sont) : l'état indéterminé n'a pas
+  // d'attribut HTML, le rendu pose data-indeterminate et il est appliqué ici.
+  root.querySelectorAll('input[type="checkbox"][data-indeterminate]').forEach((el) => { el.indeterminate = !el.checked; });
 
   if (focusKey) {
     const el = root.querySelector(`[data-input="${focusKey}"]`);
@@ -675,24 +740,31 @@ root.addEventListener("change", (e) => {
   if (k && e.target.tagName === "SELECT") areaInput(e);
 });
 
-// Brouillons des modales et champs conditionnels : écoutés sur window, donc après les écouteurs des espaces (une case
-// « Toutes les plateformes » qui coche les autres sans événement est capturée dans son état final).
+// Brouillons (modales, formulaires de page) et champs conditionnels : écoutés sur window, donc après les écouteurs des
+// espaces (une case « Toutes les plateformes » qui coche les autres sans événement est capturée dans son état final).
+// Les événements émis par la remise en place d'un brouillon (setImageField) sont ignorés.
+function captureAny(target) {
+  const form = modalFormOf(target);
+  if (form) { captureDraft(form); return form; }
+  const page = pageFormOf(target);
+  if (page) capturePageDraft(page);
+  return page;
+}
 window.addEventListener("input", (e) => {
-  const form = modalFormOf(e.target);
-  if (form) captureDraft(form);
+  if (!restoringDraft) captureAny(e.target);
 });
 window.addEventListener("change", (e) => {
-  const form = modalFormOf(e.target);
-  if (!form) return;
-  captureDraft(form);
-  if (!restoringDraft && e.target.closest("[data-rerender]")) render();
+  if (restoringDraft || !captureAny(e.target)) return;
+  // [data-rerender] : réaffichage, le rendu lit le brouillon. Pas pour un choix de fichier : la photo est lue ensuite
+  // (ui.js) et se pose d'elle-même dans le champ.
+  if (e.target.type !== "file" && e.target.closest("[data-rerender]")) render();
 });
 
 root.addEventListener("keydown", (e) => {
   // Recherche rapide du clipper (barre du haut) : Entrée ouvre Découvrir avec cette recherche.
   if (e.target.dataset.input === "global-q" && e.key === "Enter") {
     e.preventDefault();
-    Object.assign(state.camp, { q: e.target.value.trim(), category: "Toutes", favOnly: false });
+    Object.assign(state.camp, { q: e.target.value.trim(), category: "Toutes", scope: "Toutes" });
     navigate("#/clipper/decouvrir");
   }
 });
@@ -710,6 +782,8 @@ document.addEventListener("keydown", (e) => {
 root.addEventListener("submit", (e) => {
   e.preventDefault();
   const form = e.target.dataset.form || "", data = Object.fromEntries(new FormData(e.target));
+  // Formulaire de page envoyé : son brouillon tombe au prochain rechargement des données (enregistrement réussi).
+  if (pageDrafts[form] && pageFormOf(e.target)) pageDrafts[form].sentWith = db;
   if (state.route.area === "auth" || ["login", "signup", "verify", "forgot", "reset"].includes(form)) return handleAuthSubmit(form, data);
   if (form === "password") return handlePasswordSubmit(data);
   if (form.startsWith("adm-")) return handleAdminSubmit(form, data);
