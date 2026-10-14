@@ -38,11 +38,38 @@ export function route<C>(handler: Handler<C>): Handler<C> {
   };
 }
 
+/**
+ * Taille maximale d'un corps de requête : les plus gros sont les formulaires avec images (profil d'agence : photo
+ * et couverture, 1,5 Mo chacune au plus une fois décodées). Au-delà, la requête est refusée avant d'être lue en entier.
+ */
+const MAX_BODY_BYTES = 8_000_000;
+const tooLarge = () => new ApiError(413, "Requête trop volumineuse");
+
+async function readText(req: NextRequest): Promise<string> {
+  if (Number(req.headers.get("content-length") ?? 0) > MAX_BODY_BYTES) throw tooLarge();
+  if (!req.body) return "";
+  // Lecture par morceaux : un envoi sans Content-Length (« chunked ») est arrêté dès qu'il dépasse la limite.
+  const reader = req.body.getReader(), chunks: Uint8Array[] = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > MAX_BODY_BYTES) {
+      await reader.cancel().catch(() => {});
+      throw tooLarge();
+    }
+    chunks.push(value);
+  }
+  return Buffer.concat(chunks).toString("utf8");
+}
+
 export async function body<T>(req: NextRequest, schema: ZodType<T>): Promise<T> {
   let data: unknown;
   try {
-    data = await req.json();
-  } catch {
+    data = JSON.parse(await readText(req));
+  } catch (err) {
+    if (err instanceof ApiError) throw err;
     throw badRequest("Corps de requête JSON attendu");
   }
   return schema.parse(data);

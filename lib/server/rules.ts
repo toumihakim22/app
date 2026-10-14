@@ -41,3 +41,9 @@ export function validateCampaignNumbers(n: { rate: number; budget: number; minPa
   if (n.maxPayout > n.budget) return "Le plafond par clip ne peut pas dépasser le budget";
   return null;
 }
+
+/**
+ * Motif saisi par l'équipe (refus d'une campagne, d'un badge), cité en fin de notification
+ * avec un seul point final : « … a été refusée : motif. », même si le motif se termine déjà par un point.
+ */
+export const sentence = (text: string) => (/[.!?…]$/.test(text) ? text : `${text}.`);

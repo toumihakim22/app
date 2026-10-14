@@ -2,17 +2,20 @@ import { createHash, randomInt } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import { getDb, schema } from "../db";
 import type { SignupPayload } from "../db/schema";
-import { createSession } from "../auth";
+import { createSession, endOtherSessions, type User } from "../auth";
 import { sendEmail } from "../email";
 import { logActivity } from "../events";
 import { badRequest, forbidden } from "../http";
 import { newId } from "../ids";
+import { OAuthError, type OAuthIdentity, type OAuthMode, type OAuthRole } from "../oauth";
 import { hashPassword, strongEnough, verifyPassword } from "../password";
 import { getSettings } from "../settings";
 
 const CODE_MINUTES = 10;
 const MAX_ATTEMPTS = 5;
 const hashCode = (email: string, code: string) => createHash("sha256").update(`${email}:${code}`).digest("hex");
+// Empreinte factice : le mot de passe est toujours haché, même sans compte ou sans mot de passe (même durée de réponse).
+const DUMMY_HASH = "scrypt$AAAAAAAAAAAAAAAAAAAAAA==$AAAA";
 export const normalizeEmail = (email: string) => email.trim().toLowerCase();
 
 async function issueCode(email: string, purpose: "signup" | "reset", payload: SignupPayload | null) {
@@ -75,11 +78,50 @@ export async function login(emailInput: string, password: string) {
   const email = normalizeEmail(emailInput);
   const [user] = await db.select().from(schema.users).where(eq(schema.users.email, email));
   // On vérifie un mot de passe même si le compte n'existe pas, pour ne pas révéler les emails inscrits.
-  const ok = await verifyPassword(password, user?.passwordHash ?? "scrypt$AAAAAAAAAAAAAAAAAAAAAA==$AAAA");
-  if (!user || !ok) throw badRequest("Email ou mot de passe incorrect");
+  // Un compte créé avec Google, Apple ou Discord n'a pas de mot de passe (empreinte vide) tant qu'il n'en a pas défini.
+  const ok = await verifyPassword(password, user?.passwordHash || DUMMY_HASH);
+  if (!user || !user.passwordHash || !ok) throw badRequest("Email ou mot de passe incorrect");
   if (user.status === "Suspendu") throw forbidden("Votre compte est suspendu. Contactez le support.");
   const settings = await getSettings();
   if (settings.maintenance && user.role !== "admin") throw forbidden("ClipBoost est en maintenance, réessayez plus tard");
+  await createSession(user.id);
+  return user;
+}
+
+/**
+ * Connexion avec Google, Apple ou Discord (identité vérifiée par lib/server/oauth.ts) :
+ * 1. compte déjà relié à ce compte du fournisseur ;
+ * 2. sinon compte ClipBoost de la même adresse email (vérifiée par le fournisseur), relié au passage ;
+ * 3. sinon, en mode inscription, nouveau compte sans mot de passe avec le rôle choisi (il pourra en définir un dans Paramètres).
+ * Mêmes règles que la connexion par mot de passe (suspension, maintenance) et que l'inscription (inscriptions fermées).
+ * Les administrateurs se connectent uniquement avec leur mot de passe.
+ */
+export async function oauthSignIn(identity: OAuthIdentity, mode: OAuthMode, role: OAuthRole): Promise<User> {
+  const db = await getDb();
+  const settings = await getSettings();
+  const email = normalizeEmail(identity.email);
+  const A = schema.oauthAccounts;
+  const [linked] = await db.select({ user: schema.users }).from(A).innerJoin(schema.users, eq(A.userId, schema.users.id))
+    .where(and(eq(A.provider, identity.provider), eq(A.subject, identity.subject)));
+  let user: User | undefined = linked?.user ?? (await db.select().from(schema.users).where(eq(schema.users.email, email)))[0];
+  if (user) {
+    if (user.role === "admin") throw new OAuthError("admin");
+    if (user.status === "Suspendu") throw new OAuthError("suspended");
+    if (settings.maintenance) throw new OAuthError("maintenance");
+    if (!linked) await db.insert(A).values({ provider: identity.provider, subject: identity.subject, userId: user.id, email }).onConflictDoNothing();
+  } else {
+    if (mode === "login") throw new OAuthError("no_account");
+    if (settings.maintenance) throw new OAuthError("maintenance");
+    if (!settings.signupsOpen) throw new OAuthError("signups_closed");
+    const name = (identity.name.trim() || email.split("@")[0]).slice(0, 80);
+    const id = newId();
+    user = await db.transaction(async (tx) => {
+      const [created] = await tx.insert(schema.users).values({ id, role, email, passwordHash: "", name, country: "Algérie" }).returning();
+      await tx.insert(A).values({ provider: identity.provider, subject: identity.subject, userId: id, email });
+      await logActivity(tx, role === "agence" ? "🏢" : "👤", `${name} s'est inscrit${role === "agence" ? " (agence)" : ""}.`);
+      return created;
+    });
+  }
   await createSession(user.id);
   return user;
 }
@@ -101,10 +143,16 @@ export async function resetPassword(emailInput: string, code: string, password: 
   await createSession(user.id);
 }
 
+/**
+ * Changement de mot de passe depuis les paramètres. `current` est exigé si le compte a déjà un mot de passe ;
+ * un compte créé avec Google, Apple ou Discord définit ainsi son premier mot de passe.
+ * Les sessions ouvertes sur les autres appareils sont fermées ; celle-ci reste ouverte.
+ */
 export async function changePassword(userId: string, current: string, next: string) {
   const db = await getDb();
   const [user] = await db.select().from(schema.users).where(eq(schema.users.id, userId));
-  if (!(await verifyPassword(current, user.passwordHash))) throw badRequest("Mot de passe actuel incorrect");
+  if (user.passwordHash && !(await verifyPassword(current, user.passwordHash))) throw badRequest("Mot de passe actuel incorrect");
   if (!strongEnough(next)) throw badRequest("Le nouveau mot de passe doit contenir au moins 8 caractères, dont une lettre et un chiffre");
   await db.update(schema.users).set({ passwordHash: await hashPassword(next) }).where(eq(schema.users.id, userId));
+  await endOtherSessions(userId);
 }

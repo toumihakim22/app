@@ -4,7 +4,11 @@ const id = () => text("id").primaryKey();
 const createdAt = () => timestamp("created_at", { withTimezone: true }).notNull().defaultNow();
 
 export type Role = "clipper" | "agence" | "admin";
-export type Handles = { tiktok?: string; instagram?: string; youtube?: string };
+/** Badge de vérification (agences) : demande en cours, accordé ou refusé par l'équipe. */
+export type Verification = "none" | "pending" | "verified" | "rejected";
+export type Locale = "fr" | "en" | "ar";
+/** Comptes du clipper sur les plateformes (« @pseudo »), affichés aux agences. */
+export type Handles = { tiktok?: string; instagram?: string; youtube?: string; facebook?: string };
 
 export const users = pgTable("users", {
   id: id(),
@@ -22,8 +26,35 @@ export const users = pgTable("users", {
   payoutAccount: text("payout_account"),
   handles: jsonb("handles").$type<Handles>().notNull().default({}),
   bio: text("bio").notNull().default(""),
+  /** Photo de profil et, pour une agence, photo de couverture : « /api/media/<id> » (table media). */
+  avatar: text("avatar"),
+  cover: text("cover"),
+  verification: text("verification").$type<Verification>().notNull().default("none"),
+  /** Message de l'agence avec sa demande, puis motif d'un refus. */
+  verificationNote: text("verification_note"),
+  locale: text("locale").$type<Locale>().notNull().default("fr"),
   createdAt: createdAt(),
 }, (t) => [uniqueIndex("users_email_idx").on(t.email)]);
+
+/** Comptes Google, Apple ou Discord reliés à un utilisateur (connexion sans mot de passe). */
+export const oauthAccounts = pgTable("oauth_accounts", {
+  provider: text("provider").$type<"google" | "apple" | "discord">().notNull(),
+  /** Identifiant stable du compte chez le fournisseur (« sub » OpenID, id Discord). */
+  subject: text("subject").notNull(),
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  email: text("email"),
+  createdAt: createdAt(),
+}, (t) => [primaryKey({ columns: [t.provider, t.subject] }), index("oauth_accounts_user_idx").on(t.userId)]);
+
+/** Images envoyées (photos de profil, couvertures, photos de campagne), servies par GET /api/media/<id>. */
+export const media = pgTable("media", {
+  id: id(),
+  ownerId: text("owner_id").references(() => users.id, { onDelete: "cascade" }),
+  mime: text("mime").notNull(),
+  /** Contenu encodé en base64. */
+  data: text("data").notNull(),
+  createdAt: createdAt(),
+}, (t) => [index("media_owner_idx").on(t.ownerId)]);
 
 export const sessions = pgTable("sessions", {
   // Empreinte SHA-256 du jeton : le jeton lui-même ne vit que dans le cookie.
@@ -69,7 +100,12 @@ export const campaigns = pgTable("campaigns", {
   gradient: text("gradient").notNull(),
   platforms: jsonb("platforms").$type<string[]>().notNull(),
   rules: jsonb("rules").$type<string[]>().notNull(),
+  /** Photo de la campagne (« /api/media/<id> »), sinon la couverture en dégradé de sa catégorie. */
+  image: text("image"),
+  /** Motif du dernier refus par l'équipe (effacé quand l'agence relance la campagne). */
+  reviewNote: text("review_note"),
   createdAt: createdAt(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [index("campaigns_owner_idx").on(t.ownerId), index("campaigns_status_idx").on(t.status)]);
 
 export const campaignMembers = pgTable("campaign_members", {
@@ -89,6 +125,8 @@ export const publications = pgTable("publications", {
   title: text("title").notNull(),
   platform: text("platform").notNull(),
   url: text("url").notNull(),
+  /** Clips envoyés ensemble (même vidéo sur plusieurs plateformes) : même identifiant de lot. */
+  batch: text("batch"),
   views: integer("views").notNull().default(0),
   status: text("status").$type<PublicationStatus>().notNull().default("En attente"),
   reason: text("reason"),
@@ -123,6 +161,8 @@ export const notifications = pgTable("notifications", {
   userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   icon: text("icon").notNull(),
   text: text("text").notNull(),
+  /** Route de l'app vers l'élément concerné (« #/clipper/publications/<id> »), null pour les anciennes notifications. */
+  link: text("link"),
   read: boolean("read").notNull().default(false),
   createdAt: createdAt(),
 }, (t) => [index("notifications_user_idx").on(t.userId)]);

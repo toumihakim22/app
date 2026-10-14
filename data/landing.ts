@@ -1,4 +1,5 @@
 // Données fictives utilisées uniquement pour la démonstration de la landing page.
+// Typographie (§3.3) : espace insécable U+00A0 dans les nombres, les dates et avant « ? », « : » et « % ».
 
 export type CampaignCategory = "Sport" | "Food" | "Tech" | "Mode" | "Musique";
 
@@ -11,7 +12,7 @@ export type Campaign = {
   createdAt: string;
   generated: number; // en DA
   topCampaign?: boolean;
-  gradient: string;
+  gradient: string; // conservé dans cette passe, plus lu : la couverture vient de .cover[data-cat] (app/theme.css)
   emoji: string;
 };
 
@@ -22,7 +23,7 @@ export const campaigns: Campaign[] = [
     brand: "Tassili Sport",
     category: "Sport",
     ratePer1k: 150,
-    createdAt: "02 oct. 2026 · 18:30",
+    createdAt: "02\u00a0oct.\u00a02026 · 18:30",
     generated: 184500,
     topCampaign: true,
     gradient: "from-emerald-400 via-teal-500 to-cyan-600",
@@ -34,7 +35,7 @@ export const campaigns: Campaign[] = [
     brand: "Kahwa Lounge",
     category: "Food",
     ratePer1k: 110,
-    createdAt: "28 sept. 2026 · 09:15",
+    createdAt: "28\u00a0sept.\u00a02026 · 09:15",
     generated: 62300,
     gradient: "from-amber-300 via-orange-400 to-rose-500",
     emoji: "☕",
@@ -45,7 +46,7 @@ export const campaigns: Campaign[] = [
     brand: "Sahara Tech",
     category: "Tech",
     ratePer1k: 130,
-    createdAt: "25 sept. 2026 · 21:00",
+    createdAt: "25\u00a0sept.\u00a02026 · 21:00",
     generated: 97800,
     topCampaign: true,
     gradient: "from-sky-400 via-indigo-500 to-violet-600",
@@ -57,7 +58,7 @@ export const campaigns: Campaign[] = [
     brand: "Casbah Food",
     category: "Food",
     ratePer1k: 120,
-    createdAt: "20 sept. 2026 · 13:45",
+    createdAt: "20\u00a0sept.\u00a02026 · 13:45",
     generated: 45200,
     gradient: "from-red-400 via-orange-500 to-yellow-400",
     emoji: "🥙",
@@ -68,7 +69,7 @@ export const campaigns: Campaign[] = [
     brand: "Atlas Mode",
     category: "Mode",
     ratePer1k: 140,
-    createdAt: "18 sept. 2026 · 17:20",
+    createdAt: "18\u00a0sept.\u00a02026 · 17:20",
     generated: 128900,
     topCampaign: true,
     gradient: "from-fuchsia-400 via-pink-500 to-rose-500",
@@ -80,7 +81,7 @@ export const campaigns: Campaign[] = [
     brand: "Oran Beats",
     category: "Musique",
     ratePer1k: 100,
-    createdAt: "12 sept. 2026 · 22:10",
+    createdAt: "12\u00a0sept.\u00a02026 · 22:10",
     generated: 38700,
     gradient: "from-violet-500 via-purple-600 to-indigo-700",
     emoji: "🎧",
@@ -104,24 +105,25 @@ export type Transaction = {
 };
 
 export const transactions: Transaction[] = [
-  { date: "09 oct. 2026", time: "17:01", amount: 2850, status: "En cours" },
-  { date: "07 oct. 2026", time: "16:33", amount: 8755, status: "Validé" },
-  { date: "05 oct. 2026", time: "13:04", amount: 18755, status: "Validé" },
+  { date: "09\u00a0oct.\u00a02026", time: "17:01", amount: 2850, status: "En cours" },
+  { date: "07\u00a0oct.\u00a02026", time: "16:33", amount: 8755, status: "Validé" },
+  { date: "05\u00a0oct.\u00a02026", time: "13:04", amount: 18755, status: "Validé" },
 ];
 
 export const incomeCurve = [8, 9, 12, 18, 24, 27, 27, 26, 29, 33, 35, 33, 27];
 
 export const stats = [
-  { value: "12 400+", label: "clippers inscrits" },
-  { value: "3,2 M", label: "vues générées par mois" },
+  { value: "12\u00a0400+", label: "clippers inscrits" },
+  { value: "3,2\u00a0M", label: "vues générées par mois" },
   { value: "48", label: "wilayas représentées" },
   { value: "180+", label: "campagnes lancées" },
 ];
 
+// Le champ `icon` n'est plus affiché (HowItWorks choisit une icône au trait par index).
 export const steps = [
   {
     title: "Choisissez une campagne",
-    text: "Parcourez les campagnes des marques, comparez la rémunération pour 1 000 vues et sélectionnez celles qui collent à votre style.",
+    text: "Parcourez les campagnes des marques, comparez la rémunération pour 1\u00a0000\u00a0vues et sélectionnez celles qui collent à votre style.",
     icon: "🎯",
   },
   {
@@ -150,7 +152,7 @@ export const testimonials = [
     city: "Oran",
     role: "Créatrice lifestyle",
     quote:
-      "Les campagnes sont claires : on voit le tarif, les règles et les vues. Plus besoin de négocier chaque collaboration.",
+      "Les campagnes sont claires\u00a0: on voit le tarif, les règles et les vues. Plus besoin de négocier chaque collaboration.",
     initials: "AK",
   },
   {
@@ -165,24 +167,31 @@ export const testimonials = [
 
 export const faqs = [
   {
-    q: "Qui peut devenir Clipper sur ClipBoost ?",
+    q: "Qui peut devenir clipper sur ClipBoost\u00a0?",
     a: "Toute personne majeure qui publie des vidéos courtes sur TikTok, Instagram ou YouTube Shorts. Aucun nombre minimum d'abonnés n'est demandé pour commencer.",
   },
   {
-    q: "Comment sont calculés mes gains ?",
-    a: "Chaque campagne affiche un tarif pour 1 000 vues. Vos gains correspondent aux vues validées de vos clips multipliées par ce tarif.",
+    q: "Comment sont calculés mes gains\u00a0?",
+    a: "Chaque campagne affiche un tarif pour 1\u00a0000\u00a0vues. Vos gains correspondent aux vues validées de vos clips multipliées par ce tarif.",
   },
   {
-    q: "Quand vais-je recevoir mon argent ?",
-    a: "Les gains validés apparaissent dans votre portefeuille. Les modalités de retrait seront précisées au lancement de la plateforme.",
+    q: "Quand vais-je recevoir mon argent\u00a0?",
+    a: "Vos gains validés sont libérés après 3\u00a0jours de contrôle. Vous pouvez les retirer dès 2\u00a0000\u00a0DA vers BaridiMob, CCP ou un compte bancaire (RIB).",
   },
   {
-    q: "Je suis une marque, comment lancer une campagne ?",
-    a: "Vous définissez votre budget, le tarif pour 1 000 vues et vos consignes. Les clippers s'inscrivent et vous suivez les résultats en temps réel.",
+    q: "Je suis une marque, comment lancer une campagne\u00a0?",
+    a: "Vous définissez votre budget, le tarif pour 1\u00a0000\u00a0vues et vos consignes. Les clippers s'inscrivent et vous suivez les résultats en temps réel.",
   },
 ];
 
-export function formatDA(value: number) {
-  // Formatage manuel pour garantir le même rendu côté serveur et navigateur.
-  return `${String(value).replace(/\B(?=(\d{3})+(?!\d))/g, " ")} DA`;
+const NB = "\u00a0", MINUS = "\u2212";
+
+/**
+ * Montant en dinars (§3.3) : entier, milliers séparés par U+00A0, U+00A0 avant « DA », vrai signe moins (U+2212).
+ * `signed` : « + » collé devant un montant positif (historiques, gains générés). Même appel formatDA(n) qu'avant.
+ */
+export function formatDA(value: number, { signed = false }: { signed?: boolean } = {}) {
+  // Formatage manuel (même rendu serveur et navigateur) : espace insécable, vrai signe moins.
+  const abs = String(Math.round(Math.abs(value))).replace(/\B(?=(\d{3})+(?!\d))/g, NB);
+  return `${value < 0 ? MINUS : signed && value > 0 ? "+" : ""}${abs}${NB}DA`;
 }
