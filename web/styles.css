@@ -18,6 +18,10 @@
     --font-sans: "Geist Variable", "Noto Sans Arabic", "Segoe UI", Tahoma, "Geeza Pro", system-ui, sans-serif;
     --font-display: "Plus Jakarta Sans Variable", "Noto Sans Arabic", "Segoe UI", Tahoma, "Geeza Pro", system-ui, sans-serif;
   }
+  /* L'arabe est une écriture liée : l'interlettrage des titres (resserré) et des petites capitales (espacé) casserait les
+     liaisons entre les lettres. Il est neutralisé en arabe, sauf dans les îlots de gauche à droite (codes, références,
+     emails, graphiques), qui gardent leur rendu. !important : l'emporte sur les utilitaires tracking-* et text-*. */
+  html:lang(ar) body :not(.font-mono, [dir="ltr"], [dir="ltr"] *) { letter-spacing: normal !important; }
 }
 
 /* Tiroir mobile en arabe : il est posé à droite (start-0) et entre donc par la droite. */

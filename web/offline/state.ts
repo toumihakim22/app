@@ -11,7 +11,7 @@ const time = (ms: number) => new Date(ms).toISOString().slice(11, 16);
 function publicUser(u: UserRow) {
   return {
     id: u.id, role: u.role, name: u.name, avatar: u.avatar, verified: u.verification === "verified", country: u.country, status: u.status, level: u.level,
-    joined: day(u.createdAt), handle: u.handles.tiktok ?? u.handles.instagram ?? u.handles.youtube ?? "",
+    joined: day(u.createdAt), handle: u.handles.tiktok || u.handles.instagram || u.handles.youtube || u.handles.facebook || "",
   };
 }
 

@@ -23,7 +23,7 @@ let authOAuthPending = (() => {
   }
 })();
 
-// Messages des codes d'erreur du serveur (OAuthErrorCode). « email » nomme le fournisseur (authOAuthMessage).
+// Messages des codes d'erreur du serveur (OAuthErrorCode), traduits à l'affichage. « email » nomme le fournisseur (authOAuthMessage).
 const AUTH_OAUTH_ERRORS = {
   denied: "Connexion annulée.",
   state: "La connexion a expiré, réessayez.",
@@ -37,9 +37,9 @@ const AUTH_OAUTH_ERRORS = {
 function authOAuthMessage({ code, provider }) {
   if (code === "email") {
     const p = AUTH_PROVIDERS[provider];
-    return p ? `Votre compte ${p.name} n'a pas d'adresse email vérifiée.` : "Votre compte n'a pas d'adresse email vérifiée.";
+    return p ? t("Votre compte {provider} n'a pas d'adresse email vérifiée.", { provider: p.name }) : t("Votre compte n'a pas d'adresse email vérifiée.");
   }
-  return Object.prototype.hasOwnProperty.call(AUTH_OAUTH_ERRORS, code) ? AUTH_OAUTH_ERRORS[code] : "La connexion a échoué, réessayez.";
+  return Object.prototype.hasOwnProperty.call(AUTH_OAUTH_ERRORS, code) ? t(AUTH_OAUTH_ERRORS[code]) : t("La connexion a échoué, réessayez.");
 }
 // Alerte en tête de la page de connexion. « Connexion annulée » est une information (choix de la personne) ;
 // « aucun compte » propose de créer un compte.
@@ -47,7 +47,7 @@ function authOAuthAlert(err) {
   if (!err) return "";
   const msg = esc(authOAuthMessage(err));
   if (err.code === "denied") return alertBox("info", msg);
-  return alertBox("danger", err.code === "no_account" ? `${msg} <a href="#/inscription" class="${btn("link")}">Créer un compte</a>` : msg);
+  return alertBox("danger", err.code === "no_account" ? `${msg} <a href="#/inscription" class="${btn("link")}">${t("Créer un compte")}</a>` : msg);
 }
 
 // ---------- Google, Apple, Discord : marques et boutons « Continuer avec … » ----------
@@ -80,12 +80,19 @@ function authOAuthBlock(mode) {
   if (!list.length) return "";
   const signup = mode === "signup";
   return `<div class="grid gap-3">
-      <div class="grid gap-3" role="group" aria-label="${signup ? "S'inscrire avec un compte existant" : "Se connecter avec un compte existant"}">${list.map((p) =>
-        `<button type="button" data-action="auth-oauth" data-value="${p}"${window.__CLIPBOOST_OFFLINE__ ? ' aria-haspopup="dialog"' : ""} class="${btn("secondary", "lg", "w-full aria-busy:pointer-events-none")}">${AUTH_PROVIDERS[p].mark("shrink-0")}<span>Continuer avec ${AUTH_PROVIDERS[p].name}</span></button>`).join("")}</div>
-      ${signup ? `<p class="text-center text-xs leading-5 text-fg-subtle">En continuant, vous acceptez les <a href="/#conditions" target="_blank" rel="noopener" class="${btn("link")}">conditions d'utilisation</a> et la <a href="/#confidentialite" target="_blank" rel="noopener" class="${btn("link")}">politique de confidentialité</a> de ClipBoost.</p>` : ""}
+      <div class="grid gap-3" role="group" aria-label="${esc(signup ? t("S'inscrire avec un compte existant") : t("Se connecter avec un compte existant"))}">${list.map((p) =>
+        `<button type="button" data-action="auth-oauth" data-value="${p}"${window.__CLIPBOOST_OFFLINE__ ? ' aria-haspopup="dialog"' : ""} class="${btn("secondary", "lg", "w-full aria-busy:pointer-events-none")}">${AUTH_PROVIDERS[p].mark("shrink-0")}<span>${t("Continuer avec {provider}", { provider: AUTH_PROVIDERS[p].name })}</span></button>`).join("")}</div>
+      ${signup ? `<p class="text-center text-xs leading-5 text-fg-subtle">${t("En continuant, vous acceptez les {terms} et la {privacy} de ClipBoost.", authLegalLinks())}</p>` : ""}
     </div>
-    <div class="flex items-center gap-3 text-small text-fg-subtle"><span class="h-px flex-1 bg-line" aria-hidden="true"></span>ou<span class="h-px flex-1 bg-line" aria-hidden="true"></span></div>`;
+    <div class="flex items-center gap-3 text-small text-fg-subtle"><span class="h-px flex-1 bg-line" aria-hidden="true"></span>${t("ou")}<span class="h-px flex-1 bg-line" aria-hidden="true"></span></div>`;
 }
+
+// Liens « conditions d'utilisation » et « politique de confidentialité » (pages du site public, en français), insérés
+// dans les phrases d'acceptation de l'inscription.
+const authLegalLinks = () => ({
+  terms: `<a href="/#conditions" target="_blank" rel="noopener" class="${btn("link")}">${t("conditions d'utilisation")}</a>`,
+  privacy: `<a href="/#confidentialite" target="_blank" rel="noopener" class="${btn("link")}">${t("politique de confidentialité")}</a>`,
+});
 
 // Clic sur « Continuer avec … ». En ligne : départ vers le serveur (/api/auth/oauth/<fournisseur>), qui renvoie vers la
 // page de consentement du fournisseur ; le bouton passe en attente jusqu'au départ. Version autonome : fenêtre de
@@ -103,7 +110,7 @@ function authStartOAuth(provider, el) {
   try { sessionStorage.setItem(AUTH_OAUTH_KEY, provider); } catch (e) {}
   authLeaving = true;
   root.querySelectorAll('[data-action="auth-oauth"]').forEach((b) => { if (b !== el) b.setAttribute("aria-disabled", "true"); });
-  if (el) { el.setAttribute("aria-busy", "true"); el.innerHTML = `${AUTH_SPINNER}<span>Redirection vers ${P.name}…</span>`; }
+  if (el) { el.setAttribute("aria-busy", "true"); el.innerHTML = `${AUTH_SPINNER}<span>${t("Redirection vers {provider}…", { provider: P.name })}</span>`; }
   const q = new URLSearchParams(mode === "signup" ? { mode, role } : { mode });
   location.href = `/api/auth/oauth/${provider}?${q}`;
 }
@@ -117,8 +124,8 @@ window.addEventListener("pageshow", (e) => {
 });
 
 // Actions propres aux écrans de connexion (appelé par main.js quand la coquille ne connaît pas l'action).
-function handleAuthAction(action, t) {
-  if (action === "auth-oauth") authStartOAuth(t.dataset.value, t);
+function handleAuthAction(action, el) {
+  if (action === "auth-oauth") authStartOAuth(el.dataset.value, el);
 }
 
 // ---------- Version autonome : connexion Google, Apple ou Discord simulée ----------
@@ -158,18 +165,18 @@ function authModal() {
   const bad = (k) => (err[k] && cur(k) === (m.errorValues || {})[k] ? err[k] : "");
   const inv = (k) => (bad(k) ? ' aria-invalid="true"' : "");
   const serverError = m.error
-    ? alertBox("danger", `${esc(tServer(m.error))}${!signup && /Inscrivez-vous/.test(m.error) ? ` <a href="#/inscription" class="${btn("link")}">Créer un compte</a>` : ""}`)
+    ? alertBox("danger", `${esc(tServer(m.error))}${!signup && /Inscrivez-vous/.test(m.error) ? ` <a href="#/inscription" class="${btn("link")}">${t("Créer un compte")}</a>` : ""}`)
     : "";
   const roleNote = signup ? `<div class="${TILE} flex items-center gap-3">
       <span class="grid size-9 shrink-0 place-items-center rounded-tile bg-surface text-brand-fg" aria-hidden="true">${icon(agency ? "building" : "film", "size-[18px]")}</span>
-      <p class="min-w-0 flex-1 text-small text-fg-muted">${agency ? 'Vous créez un compte <span class="font-semibold text-fg">Agence</span>.' : 'Vous créez un compte <span class="font-semibold text-fg">Clipper</span>.'}</p>
-      <button type="button" data-action="close-modal" class="${btn("link", "", "text-small")}" aria-label="Changer de type de compte">Changer</button>
+      <p class="min-w-0 flex-1 text-small text-fg-muted">${t("Vous créez un compte {type}.", { type: `<span class="font-semibold text-fg">${agency ? t("Agence") : t("Clipper")}</span>` })}</p>
+      <button type="button" data-action="close-modal" class="${btn("link", "", "text-small")}" aria-label="${esc(t("Changer de type de compte"))}">${t("Changer")}</button>
     </div>` : "";
-  const nameHint = signup && agency ? `Ce nom sera celui de votre agence${NB}: vous pourrez le modifier dans votre profil.` : "";
-  const emailHint = signup ? "Si un compte ClipBoost utilise déjà cette adresse, vous y serez connecté." : "Un compte ClipBoost doit déjà utiliser cette adresse.";
+  const nameHint = signup && agency ? t("Ce nom sera celui de votre agence\u00a0: vous pourrez le modifier dans votre profil.") : "";
+  const emailHint = signup ? t("Si un compte ClipBoost utilise déjà cette adresse, vous y serez connecté.") : t("Un compte ClipBoost doit déjà utiliser cette adresse.");
   return modalShell({
-    title: `Continuer avec ${P.name}`,
-    description: signup ? "Inscription à ClipBoost" : "Connexion à ClipBoost",
+    title: t("Continuer avec {provider}", { provider: P.name }),
+    description: signup ? t("Inscription à ClipBoost") : t("Connexion à ClipBoost"),
     form: "auth-oauth",
     body: `<div class="grid gap-5">
       ${serverError}
@@ -179,14 +186,14 @@ function authModal() {
           ${AUTH_EXCHANGE}
           <span class="grid size-12 place-items-center rounded-full bg-brand text-on-brand">${icon("play", "size-5 translate-x-px", true)}</span>
         </div>
-        <p class="mt-3 text-sm text-fg-muted">${P.name} partagera votre nom et votre adresse email avec ClipBoost.</p>
+        <p class="mt-3 text-sm text-fg-muted">${t("{provider} partagera votre nom et votre adresse email avec ClipBoost.", { provider: P.name })}</p>
       </div>
-      ${alertBox("info", `Simulation${NB}: aucune donnée n'est envoyée à ${P.name}.`)}
-      ${field("Nom", `<input name="name" value="${esc(cur("name"))}" autocomplete="name" maxlength="80" class="${inputCls}"${inv("name")}/>`, nameHint, bad("name"))}
-      ${field("Adresse email", `<input name="email" type="email" value="${esc(cur("email"))}" autocomplete="email" dir="ltr" class="${inputCls}"${inv("email")}/>`, emailHint, bad("email"))}
+      ${alertBox("info", t("Simulation\u00a0: aucune donnée n'est envoyée à {provider}.", { provider: P.name }))}
+      ${field(t("Nom"), `<input name="name" value="${esc(cur("name"))}" autocomplete="name" maxlength="80" class="${inputCls}"${inv("name")}/>`, nameHint, bad("name"))}
+      ${field(t("Adresse email"), `<input name="email" type="email" value="${esc(cur("email"))}" autocomplete="email" dir="ltr" class="${inputCls}"${inv("email")}/>`, emailHint, bad("email"))}
       ${roleNote}
     </div>`,
-    footer: `<button type="button" data-action="close-modal" class="${btn("ghost")}">Annuler</button><button type="submit" class="${btn("primary")}">Continuer</button>`,
+    footer: `<button type="button" data-action="close-modal" class="${btn("ghost")}">${t("Annuler")}</button><button type="submit" class="${btn("primary")}">${t("Continuer")}</button>`,
   });
 }
 
@@ -197,8 +204,8 @@ async function authOAuthDemo(data) {
   const m = state.modal;
   if (!m || m.type !== "auth-oauth" || authBusy) return;
   const name = String(data.name || "").trim(), email = String(data.email || "").trim().toLowerCase(), errors = {};
-  if (!name) errors.name = "Indiquez votre nom.";
-  if (!isEmail(email)) errors.email = "Adresse email invalide.";
+  if (!name) errors.name = t("Indiquez votre nom.");
+  if (!isEmail(email)) errors.email = t("Adresse email invalide.");
   m.errors = errors; m.errorValues = { name: String(data.name || ""), email: String(data.email || "") }; m.error = "";
   if (Object.keys(errors).length) {
     render();
@@ -227,9 +234,9 @@ async function authOAuthDemo(data) {
 function authGuarantees() {
   const s = db.settings;
   return [
-    ["wallet", `Retrait dès ${da(s.minWithdraw)} vers BaridiMob, CCP ou RIB`],
-    ["shield", s.holdDays > 0 ? `Gains libérés après ${plural(s.holdDays, "jour", "jours")} de contrôle` : "Gains disponibles dès la validation du clip"],
-    ["check", "Commission affichée, aucun frais caché"],
+    ["wallet", t("Retrait dès {amount} vers BaridiMob, CCP ou RIB", { amount: da(s.minWithdraw) })],
+    ["shield", s.holdDays > 0 ? t("Gains libérés après {days} de contrôle", { days: plural(s.holdDays, "jour", "jours") }) : t("Gains disponibles dès la validation du clip")],
+    ["check", t("Commission affichée, aucun frais caché")],
   ];
 }
 
@@ -244,19 +251,19 @@ function authLayout(content) {
       <div class="pointer-events-none absolute -bottom-32 -end-16 size-80 rounded-full bg-night-income/15 blur-3xl" aria-hidden="true"></div>
       <div class="relative flex flex-1 flex-col">
         <div>${logo({ tone: "text-on-brand" })}</div>
-        <h2 class="mt-auto max-w-md text-h2 text-on-brand text-balance">Vos clips méritent d'être payés.</h2>
-        <p class="mt-4 max-w-md text-lg leading-8 text-on-brand/80">Clippers et agences se retrouvent sur ClipBoost${NB}: les uns monétisent leurs vidéos courtes, les autres lancent des campagnes qui touchent tout le public.</p>
+        <h2 class="mt-auto max-w-md text-h2 text-on-brand text-balance">${t("Vos clips méritent d'être payés.")}</h2>
+        <p class="mt-4 max-w-md text-lg leading-8 text-on-brand/80">${t("Clippers et agences se retrouvent sur ClipBoost\u00a0: les uns monétisent leurs vidéos courtes, les autres lancent des campagnes qui touchent tout le public.")}</p>
         <ul class="mt-10 grid gap-4">${authGuarantees().map(([ic, text]) =>
           `<li class="flex items-center gap-3 text-sm text-on-brand/80"><span class="grid size-8 shrink-0 place-items-center rounded-full bg-on-brand/10 text-on-brand" aria-hidden="true">${icon(ic, "size-4")}</span>${text}</li>`).join("")}</ul>
-        <div class="mt-10 opacity-90" aria-hidden="true">${cumulativeChart([0, 2, 1, 4, 3, 6, 5, 8, 9, 7, 11, 12], { h: "h-20", onNight: true, label: "Illustration" })}</div>
-        <p class="mt-10 flex items-center gap-2 text-xs text-on-brand/65">© 2026 ClipBoost · Fait en Algérie ${flagDz()}</p>
+        <div class="mt-10 opacity-90" aria-hidden="true">${cumulativeChart([0, 2, 1, 4, 3, 6, 5, 8, 9, 7, 11, 12], { h: "h-20", onNight: true, label: t("Illustration") })}</div>
+        <p class="mt-10 flex items-center gap-2 text-xs text-on-brand/65">© 2026 ClipBoost · ${t("Fait en Algérie")} ${flagDz()}</p>
       </div>
     </aside>
     <div class="flex min-w-0 flex-col px-4 py-6 sm:px-10">
       <header class="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
         <span class="lg:hidden">${logo({ size: "sm" })}</span>
         <div class="ms-auto flex items-center gap-1.5 sm:gap-2">
-          <div class="hidden sm:block"><a href="/" class="${btn("ghost", "sm")}">${icon("arrowLeft", "size-4 rtl:-scale-x-100")}Retour au site</a></div>
+          <div class="hidden sm:block"><a href="/" class="${btn("ghost", "sm")}">${icon("arrowLeft", "size-4 rtl:-scale-x-100")}${t("Retour au site")}</a></div>
           ${langSwitch({ cls: "shrink-0" })}
           ${themeToggle()}
         </div>
@@ -282,7 +289,7 @@ function authPwdField({ id, label, name, autocomplete, toggle = false, meter = f
   const shown = toggle && state.auth.showPwd, help = error || hint;
   return `<div class="relative grid gap-1.5"><label for="${id}" class="text-small font-medium text-fg">${label}</label>
     <div class="relative"><input id="${id}" name="${name}" type="${shown ? "text" : "password"}"${meter ? " data-strength" : ""} autocomplete="${autocomplete}"${placeholder ? ` placeholder="${placeholder}"` : ""} class="${inputCls} ${inputLg}${toggle ? " pe-12 md:pe-11" : ""}"${error ? ' aria-invalid="true"' : ""}${help ? ` aria-describedby="${id}-help"` : ""}/>
-      ${toggle ? `<span class="absolute inset-y-0 end-1.5 flex items-center"><button type="button" data-action="toggle-pwd" aria-pressed="${shown}" aria-controls="${id}" aria-label="Afficher le mot de passe" title="${shown ? "Masquer le mot de passe" : "Afficher le mot de passe"}" class="${iconBtn("sm", false, "aria-pressed:text-brand-fg")}">${icon("eye")}</button></span>` : ""}</div>
+      ${toggle ? `<span class="absolute inset-y-0 end-1.5 flex items-center"><button type="button" data-action="toggle-pwd" aria-pressed="${shown}" aria-controls="${id}" aria-label="${esc(t("Afficher le mot de passe"))}" title="${esc(shown ? t("Masquer le mot de passe") : t("Afficher le mot de passe"))}" class="${iconBtn("sm", false, "aria-pressed:text-brand-fg")}">${icon("eye")}</button></span>` : ""}</div>
     ${meter ? `<div data-strength-meter>${strengthMeter("")}</div>` : ""}
     ${authHelp(`${id}-help`, hint, error)}</div>`;
 }
@@ -340,21 +347,21 @@ function authKeepForms() {
 function viewConnexion() {
   const a = state.auth, badEmail = !!a.error && !isEmail(a.email), oauth = authOAuthBlock("login");
   return authLayout(`
-    ${authHead("Connexion", oauth ? `Heureux de vous revoir${NB}! Connectez-vous pour retrouver votre espace.` : `Heureux de vous revoir${NB}! Connectez-vous avec votre adresse email.`)}
+    ${authHead(t("Connexion"), oauth ? t("Heureux de vous revoir\u00a0! Connectez-vous pour retrouver votre espace.") : t("Heureux de vous revoir\u00a0! Connectez-vous avec votre adresse email."))}
     <div class="mt-8 grid gap-6">
       ${authOAuthAlert(a.oauthError)}
       ${oauth}
       <form data-form="login" class="grid gap-4" novalidate>
         ${authError(a.error)}
-        ${field("Adresse email", authEmailInput(a.email, "vous@exemple.dz", badEmail))}
+        ${field(t("Adresse email"), authEmailInput(a.email, t("vous@exemple.dz"), badEmail))}
         <div class="grid gap-2">
-          ${authPwdField({ id: "auth-password", label: "Mot de passe", name: "password", autocomplete: "current-password", toggle: true })}
-          <p class="text-end text-small"><a href="#/mot-de-passe" class="${btn("link")}">Mot de passe oublié${NB}?</a></p>
+          ${authPwdField({ id: "auth-password", label: t("Mot de passe"), name: "password", autocomplete: "current-password", toggle: true })}
+          <p class="text-end text-small"><a href="#/mot-de-passe" class="${btn("link")}">${t("Mot de passe oublié\u00a0?")}</a></p>
         </div>
-        ${authSubmit("Se connecter")}
+        ${authSubmit(t("Se connecter"))}
       </form>
     </div>
-    ${authLinkLine(`Pas encore de compte${NB}?`, "#/inscription", "Créer un compte")}
+    ${authLinkLine(t("Pas encore de compte\u00a0?"), "#/inscription", t("Créer un compte"))}
     ${window.__CLIPBOOST_OFFLINE__ ? demoAccounts() : ""}`);
 }
 
@@ -371,12 +378,12 @@ function passwordStrength(pwd) {
 const STRENGTH = [["Trop court", "danger"], ["Faible", "danger"], ["Moyen", "warning"], ["Bon", "success"], ["Excellent", "success"]];
 const AUTH_STRENGTH_TONE = { danger: ["bg-danger-solid", "text-danger-fg"], warning: ["bg-warning-solid", "text-warning-fg"], success: ["bg-success-solid", "text-success-fg"] };
 
-// 4 segments sous le champ ; le verdict s'aligne au bout de la ligne du libellé (conteneur `relative` d'authPwdField).
+// Verdicts (STRENGTH) en français, traduits à l'affichage. 4 segments sous le champ ; le verdict s'aligne au bout de la ligne du libellé (conteneur `relative` d'authPwdField).
 // Appelé aussi par main.js à chaque frappe dans un champ [data-strength].
 function strengthMeter(pwd) {
   const s = pwd ? passwordStrength(pwd) : 0, [label, tone] = STRENGTH[s], [bar, fg] = AUTH_STRENGTH_TONE[tone], lit = pwd ? Math.max(1, s) : 0;
   return `<div class="grid grid-cols-4 gap-1.5" aria-hidden="true">${[1, 2, 3, 4].map((i) => `<span class="h-1 rounded-full transition-colors duration-150 ${i <= lit ? bar : "bg-muted"}"></span>`).join("")}</div>
-    ${pwd ? `<span class="absolute end-0 top-0 text-xs font-medium leading-[1.125rem] ${fg}"><span class="sr-only">Robustesse du mot de passe${NB}: </span>${label}</span>` : ""}`;
+    ${pwd ? `<span class="absolute end-0 top-0 text-xs font-medium leading-[1.125rem] ${fg}"><span class="sr-only">${t("Robustesse du mot de passe\u00a0:")} </span>${t(label)}</span>` : ""}`;
 }
 
 // ---------- Inscription ----------
@@ -398,61 +405,61 @@ const authRoleCard = (value, ic, title, text, on) =>
 function viewInscription() {
   const a = state.auth, f = a.form;
   if (!db.settings.signupsOpen) {
-    return authLayout(`<h1 class="sr-only">Créer un compte</h1>
-      ${emptyState("lock", "Inscriptions fermées", `Les nouvelles inscriptions sont temporairement suspendues par l'équipe ClipBoost. Revenez bientôt${NB}!`, `<a href="#/connexion" class="${btn("secondary")}">J'ai déjà un compte</a>`)}`);
+    return authLayout(`<h1 class="sr-only">${t("Créer un compte")}</h1>
+      ${emptyState("lock", t("Inscriptions fermées"), t("Les nouvelles inscriptions sont temporairement suspendues par l'équipe ClipBoost. Revenez bientôt\u00a0!"), `<a href="#/connexion" class="${btn("secondary")}">${t("J'ai déjà un compte")}</a>`)}`);
   }
   if (a.step === "code") {
     return authLayout(`
-      ${authHead("Vérifiez votre email", `Nous avons envoyé un code à 6 chiffres à <span class="font-medium text-fg" dir="ltr">${esc(f.email)}</span>. Pensez à vérifier vos spams${NB}: le code expire dans 10 minutes.`, "mail")}
+      ${authHead(t("Vérifiez votre email"), t("Nous avons envoyé un code à 6 chiffres à {email}. Pensez à vérifier vos spams\u00a0: le code expire dans 10 minutes.", { email: `<span class="font-medium text-fg" dir="ltr">${esc(f.email)}</span>` }), "mail")}
       ${a.devCode ? `<div class="mt-6">${devCodeNotice(a.devCode)}</div>` : ""}
       <form data-form="verify" class="mt-8 grid gap-4" novalidate>
         ${authError(a.error)}
-        ${field("Code de vérification", authCodeInput(!!a.error))}
-        ${authSubmit("Valider et créer mon compte")}
+        ${field(t("Code de vérification"), authCodeInput(!!a.error))}
+        ${authSubmit(t("Valider et créer mon compte"))}
       </form>
       <div class="mt-6 flex items-center justify-between gap-4 text-small">
-        <button type="button" data-action="signup-back" class="${AUTH_BACK}">${icon("arrowLeft")}Modifier l'email</button>
-        <button type="button" data-action="resend-code" class="${btn("link")}">Renvoyer le code</button>
+        <button type="button" data-action="signup-back" class="${AUTH_BACK}">${icon("arrowLeft")}${t("Modifier l'email")}</button>
+        <button type="button" data-action="resend-code" class="${btn("link")}">${t("Renvoyer le code")}</button>
       </div>`);
   }
   const err = a.fieldErrors || {}, isAgency = f.role === "agence", oauth = authOAuthBlock("signup");
   const inv = (k) => (err[k] ? ' aria-invalid="true"' : "");
   const input = (name, value, autocomplete, extra = "") => `<input name="${name}" value="${esc(value)}" autocomplete="${autocomplete}" class="${inputCls} ${inputLg}"${inv(name)}${extra}/>`;
   return authLayout(`
-    ${authHead("Créer un compte", oauth ? "Inscription gratuite, en moins d'une minute." : "Inscription gratuite avec votre adresse email.")}
+    ${authHead(t("Créer un compte"), oauth ? t("Inscription gratuite, en moins d'une minute.") : t("Inscription gratuite avec votre adresse email."))}
     <div class="mt-8 grid gap-6">
       <div class="grid gap-4">
         ${authError(a.error)}
         <div class="grid gap-1.5">
-          <p class="text-small font-medium text-fg">Je m'inscris en tant que</p>
-          <div class="grid grid-cols-2 gap-3" role="group" aria-label="Type de compte">
-            ${authRoleCard("clipper", "film", "Clipper", "Je publie des clips et je suis payé à la vue.", f.role === "clipper")}
-            ${authRoleCard("agence", "building", "Agence", "Je crée des campagnes pour une marque.", isAgency)}
+          <p class="text-small font-medium text-fg">${t("Je m'inscris en tant que")}</p>
+          <div class="grid grid-cols-2 gap-3" role="group" aria-label="${esc(t("Type de compte"))}">
+            ${authRoleCard("clipper", "film", t("Clipper"), t("Je publie des clips et je suis payé à la vue."), f.role === "clipper")}
+            ${authRoleCard("agence", "building", t("Agence"), t("Je crée des campagnes pour une marque."), isAgency)}
           </div>
         </div>
       </div>
       ${oauth}
       <form data-form="signup" class="grid gap-4" novalidate>
         ${isAgency
-          ? `${field("Nom de l'agence ou de la marque", input("agency", f.agency, "organization"), "", err.agency)}
-             ${field("Nom du contact", input("contact", f.contact, "name"), "", err.contact)}`
+          ? `${field(t("Nom de l'agence ou de la marque"), input("agency", f.agency, "organization"), "", err.agency)}
+             ${field(t("Nom du contact"), input("contact", f.contact, "name"), "", err.contact)}`
           : `<div class="grid gap-4 sm:grid-cols-2">
-              ${field("Prénom", input("first", f.first, "given-name"), "", err.first)}
-              ${field("Nom", input("last", f.last, "family-name"), "", err.last)}
+              ${field(t("Prénom"), input("first", f.first, "given-name"), "", err.first)}
+              ${field(t("Nom de famille"), input("last", f.last, "family-name"), "", err.last)}
             </div>`}
-        ${field(isAgency ? "Adresse email professionnelle" : "Adresse email", authEmailInput(f.email, isAgency ? "contact@agence.dz" : "vous@exemple.dz", !!err.email), "", err.email)}
-        ${field("Pays", authCountrySelect(f.country, !!err.country), "", err.country)}
-        ${authPwdField({ id: "auth-new-password", label: "Mot de passe", name: "password", autocomplete: "new-password", meter: true, hint: "8 caractères minimum, avec une lettre et un chiffre.", error: err.password })}
-        ${authPwdField({ id: "auth-confirm", label: "Confirmer le mot de passe", name: "confirm", autocomplete: "new-password", error: err.confirm })}
+        ${field(isAgency ? t("Adresse email professionnelle") : t("Adresse email"), authEmailInput(f.email, isAgency ? t("contact@agence.dz") : t("vous@exemple.dz"), !!err.email), "", err.email)}
+        ${field(t("Pays"), authCountrySelect(f.country, !!err.country), "", err.country)}
+        ${authPwdField({ id: "auth-new-password", label: t("Mot de passe"), name: "password", autocomplete: "new-password", meter: true, hint: t("8 caractères minimum, avec une lettre et un chiffre."), error: err.password })}
+        ${authPwdField({ id: "auth-confirm", label: t("Confirmer le mot de passe"), name: "confirm", autocomplete: "new-password", error: err.confirm })}
         <div class="grid gap-1.5">
           <label class="flex items-start gap-3 text-small text-fg-muted"><input name="terms" type="checkbox" ${f.terms ? "checked" : ""} class="${CHECKBOX} mt-px"${inv("terms")}${err.terms ? ' aria-describedby="auth-terms-help"' : ""}/>
-            <span>J'accepte les <a href="/#conditions" target="_blank" rel="noopener" class="${btn("link")}">conditions d'utilisation</a> et la <a href="/#confidentialite" target="_blank" rel="noopener" class="${btn("link")}">politique de confidentialité</a>.</span></label>
+            <span>${t("J'accepte les {terms} et la {privacy}.", authLegalLinks())}</span></label>
           ${err.terms ? `<div class="ps-7">${authHelp("auth-terms-help", "", err.terms)}</div>` : ""}
         </div>
-        ${authSubmit("Recevoir mon code par email")}
+        ${authSubmit(t("Recevoir mon code par email"))}
       </form>
     </div>
-    ${authLinkLine(`Déjà inscrit${NB}?`, "#/connexion", "Se connecter")}`);
+    ${authLinkLine(t("Déjà inscrit\u00a0?"), "#/connexion", t("Se connecter"))}`);
 }
 
 // Conserve la saisie quand on change de type de compte (appelé par main.js juste avant le rendu),
@@ -470,11 +477,12 @@ function captureSignupForm() {
 // En développement (aucun service d'email configuré), le serveur renvoie le code pour pouvoir tester.
 // La version autonome (fichier HTML unique) n'envoie jamais d'email : le code est toujours affiché.
 const devCodeNotice = (devCode) => alertBox("warning", `<p>${window.__CLIPBOOST_OFFLINE__
-  ? `Mode démo${NB}: le code a été «${NB}envoyé${NB}» par email${NB}:`
-  : `Mode développement${NB}: aucun email n'est envoyé. Code${NB}:`}</p>
+  ? t("Mode démo\u00a0: le code a été «\u00a0envoyé\u00a0» par email\u00a0:")
+  : t("Mode développement\u00a0: aucun email n'est envoyé. Code\u00a0:")}</p>
   <b class="mt-1 block text-base font-semibold" dir="ltr">${code(devCode)}</b>`).replace('role="note"', 'role="status"');
 
-// Version autonome : comptes d'exemple créés au premier lancement (voir web/offline/seed.ts). name : nom du compte,
+// Version autonome : comptes d'exemple créés au premier lancement (voir web/offline/seed.ts). label : en français,
+// traduit à l'affichage. name : nom du compte,
 // repris par la connexion simulée avec Google, Apple ou Discord quand son adresse est saisie.
 const AUTH_DEMO = [
   { label: "Admin", name: "Équipe ClipBoost", email: "admin@clipboost.dz", password: "AdminClip2026" },
@@ -483,12 +491,12 @@ const AUTH_DEMO = [
   { label: "Agence, badge demandé", name: "Hoggar Boissons", email: "hoggar@clipboost.dz", password: "Clipboost2026" },
   { label: "Agence vérifiée", name: "Djurdjura Médias", email: "djurdjura@clipboost.dz", password: "Clipboost2026", verified: true },
 ];
-const demoAccounts = () => `<div class="mt-8">${alertBox("info", `<p class="font-medium">Mode démo${NB}: les données restent dans ce navigateur.</p>
+const demoAccounts = () => `<div class="mt-8">${alertBox("info", `<p class="font-medium">${t("Mode démo\u00a0: les données restent dans ce navigateur.")}</p>
   <ul class="mt-2 grid gap-1.5">${AUTH_DEMO.map((d) => `<li class="flex items-center gap-2">
-    <span class="min-w-0 flex-1"><span class="flex items-center gap-1 text-xs">${d.label}${d.verified ? `<span aria-hidden="true">${verifiedBadge("size-3.5")}</span>` : ""}</span><span class="block truncate text-fg" dir="ltr">${code(d.email)}</span></span>
-    <button type="button" data-action="auth-copy" data-value="${d.email}" class="${iconBtn("sm")}" aria-label="Copier ${d.email}" title="Copier">${icon("copy")}</button>
-    <button type="button" data-action="auth-demo" data-value="${d.email}" class="${btn("secondary", "sm")}" aria-label="Utiliser le compte ${d.label}">Utiliser</button></li>`).join("")}</ul>
-  <p class="mt-2 text-xs">Mot de passe${NB}: <span dir="ltr">${code("AdminClip2026")}</span> pour l'admin, <span dir="ltr">${code("Clipboost2026")}</span> pour les comptes d'exemple.</p>`)}</div>`;
+    <span class="min-w-0 flex-1"><span class="flex items-center gap-1 text-xs">${t(d.label)}${d.verified ? `<span aria-hidden="true">${verifiedBadge("size-3.5")}</span>` : ""}</span><span class="block truncate text-fg" dir="ltr">${code(d.email)}</span></span>
+    <button type="button" data-action="auth-copy" data-value="${d.email}" class="${iconBtn("sm")}" aria-label="${esc(t("Copier {email}", { email: d.email }))}" title="${esc(t("Copier"))}">${icon("copy")}</button>
+    <button type="button" data-action="auth-demo" data-value="${d.email}" class="${btn("secondary", "sm")}" aria-label="${esc(t("Utiliser le compte {label}", { label: t(d.label) }))}">${t("Utiliser")}</button></li>`).join("")}</ul>
+  <p class="mt-2 text-xs">${t("Mot de passe\u00a0: {admin} pour l'admin, {demo} pour les comptes d'exemple.", { admin: code("AdminClip2026"), demo: code("Clipboost2026") })}</p>`)}</div>`;
 // « Utiliser » : remplit l'adresse et le mot de passe du compte choisi, puis place le focus sur « Se connecter ».
 function authUseDemo(email) {
   const f = document.querySelector('form[data-form="login"]'), acc = AUTH_DEMO.find((d) => d.email === email);
@@ -506,28 +514,28 @@ function viewMotDePasse() {
   const a = state.auth;
   if (a.step === "code") {
     return authLayout(`
-      ${authHead("Nouveau mot de passe", `Si un compte existe pour <span class="font-medium text-fg" dir="ltr">${esc(a.email)}</span>, un code à 6 chiffres vient d'y être envoyé.`, "mail")}
+      ${authHead(t("Nouveau mot de passe"), t("Si un compte existe pour {email}, un code à 6 chiffres vient d'y être envoyé.", { email: `<span class="font-medium text-fg" dir="ltr">${esc(a.email)}</span>` }), "mail")}
       ${a.devCode ? `<div class="mt-6">${devCodeNotice(a.devCode)}</div>` : ""}
       <form data-form="reset" class="mt-8 grid gap-4" novalidate>
         ${authError(a.error)}
-        ${field("Code reçu par email", authCodeInput(false))}
-        ${authPwdField({ id: "auth-reset-password", label: "Nouveau mot de passe", name: "password", autocomplete: "new-password", toggle: true, meter: true, hint: "8 caractères minimum, avec une lettre et un chiffre." })}
-        ${authSubmit("Changer le mot de passe")}
+        ${field(t("Code reçu par email"), authCodeInput(false))}
+        ${authPwdField({ id: "auth-reset-password", label: t("Nouveau mot de passe"), name: "password", autocomplete: "new-password", toggle: true, meter: true, hint: t("8 caractères minimum, avec une lettre et un chiffre.") })}
+        ${authSubmit(t("Changer le mot de passe"))}
       </form>
       <div class="mt-6 flex items-center justify-between gap-4 text-small">
-        <button type="button" data-action="signup-back" class="${AUTH_BACK}">${icon("arrowLeft")}Modifier l'email</button>
-        <button type="button" data-action="resend-code" class="${btn("link")}">Renvoyer le code</button>
+        <button type="button" data-action="signup-back" class="${AUTH_BACK}">${icon("arrowLeft")}${t("Modifier l'email")}</button>
+        <button type="button" data-action="resend-code" class="${btn("link")}">${t("Renvoyer le code")}</button>
       </div>`);
   }
   const badEmail = !!a.error && !isEmail(a.email);
   return authLayout(`
-    ${authHead("Mot de passe oublié", `Indiquez votre email${NB}: nous vous enverrons un code pour choisir un nouveau mot de passe.`)}
+    ${authHead(t("Mot de passe oublié"), t("Indiquez votre email\u00a0: nous vous enverrons un code pour choisir un nouveau mot de passe."))}
     <form data-form="forgot" class="mt-8 grid gap-4" novalidate>
       ${authError(a.error)}
-      ${field("Adresse email", authEmailInput(a.email, "vous@exemple.dz", badEmail))}
-      ${authSubmit("Recevoir un code")}
+      ${field(t("Adresse email"), authEmailInput(a.email, t("vous@exemple.dz"), badEmail))}
+      ${authSubmit(t("Recevoir un code"))}
     </form>
-    <p class="mt-6 text-center text-small"><a href="#/connexion" class="${AUTH_BACK}">${icon("arrowLeft")}Retour à la connexion</a></p>`);
+    <p class="mt-6 text-center text-small"><a href="#/connexion" class="${AUTH_BACK}">${icon("arrowLeft")}${t("Retour à la connexion")}</a></p>`);
 }
 
 // ---------- Envoi des formulaires ----------
@@ -549,7 +557,7 @@ async function handleAuthSubmit(form, data) {
     if (form === "login") {
       a.oauthError = null;
       a.email = (data.email || "").trim().toLowerCase();
-      if (!isEmail(a.email)) { a.error = "Saisissez une adresse email valide."; return render(); }
+      if (!isEmail(a.email)) { a.error = t("Saisissez une adresse email valide."); return render(); }
       await api("POST", "/api/auth/login", { email: a.email, password: data.password || "" });
       return enter();
     }
@@ -557,18 +565,18 @@ async function handleAuthSubmit(form, data) {
       const f = { ...a.form, first: (data.first || "").trim(), last: (data.last || "").trim(), agency: (data.agency || "").trim(), contact: (data.contact || "").trim(), email: (data.email || "").trim().toLowerCase(), country: data.country || "", terms: !!data.terms };
       const err = {};
       if (f.role === "agence") {
-        if (!f.agency) err.agency = "Nom de l'agence requis.";
-        if (!f.contact) err.contact = "Nom du contact requis.";
+        if (!f.agency) err.agency = t("Nom de l'agence requis.");
+        if (!f.contact) err.contact = t("Nom du contact requis.");
       } else {
-        if (!f.first) err.first = "Prénom requis.";
-        if (!f.last) err.last = "Nom requis.";
+        if (!f.first) err.first = t("Prénom requis.");
+        if (!f.last) err.last = t("Nom de famille requis.");
       }
-      if (!isEmail(f.email)) err.email = "Adresse email invalide.";
-      if (!f.country) err.country = "Choisissez votre pays.";
+      if (!isEmail(f.email)) err.email = t("Adresse email invalide.");
+      if (!f.country) err.country = t("Choisissez votre pays.");
       const pwd = data.password || "";
-      if (pwd.length < 8 || !/[a-zA-Z]/.test(pwd) || !/\d/.test(pwd)) err.password = "8 caractères minimum, avec une lettre et un chiffre.";
-      else if (data.confirm !== pwd) err.confirm = "Les mots de passe ne correspondent pas.";
-      if (!f.terms) err.terms = "Vous devez accepter les conditions.";
+      if (pwd.length < 8 || !/[a-zA-Z]/.test(pwd) || !/\d/.test(pwd)) err.password = t("8 caractères minimum, avec une lettre et un chiffre.");
+      else if (data.confirm !== pwd) err.confirm = t("Les mots de passe ne correspondent pas.");
+      if (!f.terms) err.terms = t("Vous devez accepter les conditions.");
       a.form = f; a.fieldErrors = err;
       if (Object.keys(err).length) {
         // Un mot de passe refusé est à ressaisir ; une autre erreur (case non cochée…) ne vide pas les mots de passe.
@@ -587,18 +595,18 @@ async function handleAuthSubmit(form, data) {
     if (form === "verify") {
       await api("POST", "/api/auth/verify", { email: a.form.email, code: (data.code || "").trim() });
       const welcome = a.form.role === "agence" ? a.form.contact.split(" ")[0] : a.form.first;
-      return enter(`Compte créé, bienvenue ${welcome}`);
+      return enter(t("Compte créé, bienvenue {name}", { name: welcome }));
     }
     if (form === "forgot") {
       a.email = (data.email || "").trim().toLowerCase();
-      if (!isEmail(a.email)) { a.error = "Saisissez une adresse email valide."; return render(); }
+      if (!isEmail(a.email)) { a.error = t("Saisissez une adresse email valide."); return render(); }
       const res = await api("POST", "/api/auth/forgot", { email: a.email });
       a.devCode = res.devCode || ""; a.step = "code";
       return render();
     }
     if (form === "reset") {
       await api("POST", "/api/auth/reset", { email: a.email, code: (data.code || "").trim(), password: data.password || "" });
-      return enter("Mot de passe modifié");
+      return enter(t("Mot de passe modifié"));
     }
   } catch (e) {
     a.error = e.message;
@@ -617,7 +625,7 @@ async function resendCode() {
       : await api("POST", "/api/auth/signup", signupPayload());
     state.auth.devCode = res.devCode || ""; state.auth.error = "";
     render();
-    toast("Nouveau code envoyé");
+    toast(t("Nouveau code envoyé"));
   } catch (e) {
     toast(tServer(e.message), "danger");
   }
@@ -637,7 +645,7 @@ async function enter(message) {
   const u = me();
   resetAuth();
   navigate(homeOf(u));
-  toast(message || `Connecté en tant que ${u.name}`);
+  toast(message || t("Connecté en tant que {name}", { name: u.name }));
 }
 
 async function logout() {
@@ -645,5 +653,5 @@ async function logout() {
   await refresh().catch(() => {});
   state.modal = null;
   navigate("#/connexion");
-  toast("Vous êtes déconnecté");
+  toast(t("Vous êtes déconnecté"));
 }

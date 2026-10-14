@@ -28,12 +28,14 @@ async function api(method, path, body) {
     const offline = window.__CLIPBOOST_OFFLINE__;
     res = await (offline ? offline.fetch(path, init) : fetch(path, init));
   } catch (e) {
-    throw new Error("Connexion au serveur impossible. Vérifiez votre connexion internet.");
+    // Erreur née dans le navigateur (aucune réponse) : déjà dans la langue choisie (tServer la laisse telle quelle).
+    throw new Error(t("Connexion au serveur impossible. Vérifiez votre connexion internet."));
   }
   let data = {};
   try { data = await res.json(); } catch (e) {}
   if (!res.ok) {
-    const err = new Error(data.error || "Une erreur est survenue, réessayez.");
+    // Message du serveur gardé en français (comparaisons, motifs de tServer) : traduit là où il s'affiche.
+    const err = new Error(data.error || t("Une erreur est survenue, réessayez."));
     err.status = res.status;
     throw err;
   }

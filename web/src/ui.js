@@ -2,17 +2,33 @@
 // docs/design-system.md §4). Les noms déclarés ici sont réservés : aucun autre fichier de web/src ne les redéclare.
 
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+// Dates : en français « 05 janv. 2026 » (MONTHS, rendu historique) ; en anglais et en arabe, Intl dans la langue choisie
+// (LOCALES[LANG].intl, chiffres latins) : « 5 Jan 2026 », « 5 جانفي 2026 ». Formateurs mis en cache par langue et options.
 const MONTHS = ["janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc."];
-const date = (iso) => { const [y, m, d] = iso.slice(0, 10).split("-"); return `${d}${NB}${MONTHS[+m - 1]}${NB}${y}`; };
-// Temps écoulé depuis une date ISO : « À l'instant », « Il y a 5 min », « Hier »…
+const uiIntlCache = {};
+function uiIntl(kind, opts) {
+  const key = `${kind}|${LANG}|${JSON.stringify(opts)}`;
+  if (!(key in uiIntlCache)) {
+    try { uiIntlCache[key] = new Intl[kind](LOCALES[LANG].intl, { numberingSystem: "latn", ...opts }); } catch (e) { uiIntlCache[key] = null; }
+  }
+  return uiIntlCache[key];
+}
+// Jour ISO (« 2026-01-05… ») lu tel quel (UTC : aucun décalage de fuseau), espaces insécables.
+const date = (iso) => {
+  const [y, m, d] = iso.slice(0, 10).split("-");
+  const f = LANG === "fr" ? null : uiIntl("DateTimeFormat", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
+  return f ? f.format(Date.UTC(+y, +m - 1, +d)).replace(/\s/g, NB) : `${d}${NB}${MONTHS[+m - 1]}${NB}${y}`;
+};
+// Temps écoulé depuis une date ISO : « À l'instant », « Il y a 5 min », « Hier »… ; au-delà d'une semaine, la date.
+// Anglais et arabe : Intl.RelativeTimeFormat (« 5 min ago », « قبل 5 دقائق », « أمس »), accord du pluriel compris.
 function ago(iso) {
   const s = (Date.now() - new Date(iso).getTime()) / 1000;
-  if (s < 60) return "À l'instant";
-  if (s < 3600) return `Il y a ${Math.floor(s / 60)} min`;
-  if (s < 86400) return `Il y a ${Math.floor(s / 3600)} h`;
-  if (s < 172800) return "Hier";
-  if (s < 604800) return `Il y a ${Math.floor(s / 86400)} j`;
-  return date(iso);
+  if (s < 60) return t("À l'instant");
+  if (s >= 604800) return date(iso);
+  const [n, unit] = s < 3600 ? [Math.floor(s / 60), "minute"] : s < 86400 ? [Math.floor(s / 3600), "hour"] : s < 172800 ? [1, "day"] : [Math.floor(s / 86400), "day"];
+  const rtf = LANG === "fr" ? null : uiIntl("RelativeTimeFormat", { numeric: "auto", style: LANG === "en" ? "short" : "long" });
+  if (rtf) { const out = rtf.format(-n, unit); return out.charAt(0).toUpperCase() + out.slice(1); }
+  return unit === "minute" ? t("Il y a {n} min", { n }) : unit === "hour" ? t("Il y a {n} h", { n }) : s < 172800 ? t("Hier") : t("Il y a {n} j", { n });
 }
 // Initiales de l'avatar, toujours 2 lettres : premières lettres des deux premiers mots (« Yacine Benali » → YB), ou deux
 // premières lettres d'un nom en un seul mot (« Yacine » → YA). Ponctuation ignorée (« L'Atelier » → LA, « @nova » → NO).
@@ -46,7 +62,7 @@ async function handlePasswordSubmit(data) {
     state.pwdError = "";
     if (!had) await refresh().catch(() => {});
     render();
-    toast(had ? "Mot de passe modifié" : "Mot de passe défini : vous pouvez aussi vous connecter avec votre email");
+    toast(had ? t("Mot de passe modifié") : t("Mot de passe défini : vous pouvez aussi vous connecter avec votre email"));
   } catch (e) {
     state.pwdError = e.message;
     render();
@@ -62,28 +78,38 @@ const homeOf = (u) => ({ admin: "#/admin/apercu", agence: "#/agence/apercu", cli
 // ---------- Formats (argent, nombres) ----------
 const NB = " ", MINUS = "−";
 const fmt = (n) => String(Math.round(Math.abs(n))).replace(/\B(?=(\d{3})+(?!\d))/g, NB);
-const da = (n) => `${n < 0 ? MINUS : ""}${fmt(n)}${NB}DA`;                                  // texte brut : phrases, toasts, aria
-const daSigned = (n) => `${n > 0 ? "+" : n < 0 ? MINUS : ""}${fmt(n)}${NB}DA`;              // mouvements : historiques, deltas
+// Signe d'un montant ou d'un écart : en arabe (de droite à gauche), signe et chiffres sont isolés de gauche à droite
+// (U+2066…U+2069), sinon le « − » s'afficherait à droite du nombre. L'unité (t("DA") : « DA », « دج ») reste hors de
+// l'isolat et suit le sens de la phrase.
+const uiSigned = (sign, digits) => (sign && isRtl() ? `\u2066${sign}${digits}\u2069` : `${sign}${digits}`);
+// Séparateur décimal de la langue : « 48,2 » (français, arabe), « 48.2 » (anglais). Les milliers gardent l'espace insécable.
+const uiDecimal = () => (LANG === "en" ? "." : ",");
+const da = (n) => `${uiSigned(n < 0 ? MINUS : "", fmt(n))}${NB}${t("DA")}`;                     // texte brut : phrases, toasts, aria
+const daSigned = (n) => `${uiSigned(n > 0 ? "+" : n < 0 ? MINUS : "", fmt(n))}${NB}${t("DA")}`; // mouvements : historiques, deltas
 // Montant HTML en ligne ou en cellule : chiffres tabulaires, « DA » atténué. signed : vert + « + » si positif.
 // pending : montant en attente (rétention, recharge non confirmée) : garde le « + » mais reste en text-fg (§3.3).
 const money = (n, { signed = false, pending = false, cls = "" } = {}) =>
-  `<span class="whitespace-nowrap tabular-nums ${signed && n > 0 && !pending ? "text-income" : "text-fg"} ${cls}">${signed ? (n > 0 ? "+" : n < 0 ? MINUS : "") : n < 0 ? MINUS : ""}${fmt(n)}<span class="font-normal text-fg-subtle">${NB}DA</span></span>`;
+  `<span class="whitespace-nowrap tabular-nums ${signed && n > 0 && !pending ? "text-income" : "text-fg"} ${cls}">${uiSigned(signed ? (n > 0 ? "+" : n < 0 ? MINUS : "") : n < 0 ? MINUS : "", fmt(n))}<span class="font-normal text-fg-subtle">${NB}${t("DA")}</span></span>`;
 // Grand montant (KPI, solde) : chiffres proportionnels, unité plus petite. size : "kpi" | "money".
 const BIG = { kpi: ["text-xl font-semibold tracking-tight sm:text-kpi", "text-sm sm:text-base"], money: ["text-[1.875rem] leading-9 font-semibold tracking-[-0.03em] sm:text-money", "text-base sm:text-lg"] };
 const bigMoney = (n, size = "kpi") =>
-  `<span class="whitespace-nowrap text-fg ${BIG[size][0]}">${n < 0 ? MINUS : ""}${fmt(n)}<span class="font-medium tracking-normal text-fg-subtle ${BIG[size][1]}">${NB}DA</span></span>`;
-// Compact (axes, puces, cartes étroites) : 9 800 → « 9 800 » ; 48 200 → « 48,2 k » ; 1 250 000 → « 1,3 M ».
+  `<span class="whitespace-nowrap text-fg ${BIG[size][0]}">${uiSigned(n < 0 ? MINUS : "", fmt(n))}<span class="font-medium tracking-normal text-fg-subtle ${BIG[size][1]}">${NB}${t("DA")}</span></span>`;
+// Compact (axes, puces, cartes étroites) : 9 800 → « 9 800 » ; 48 200 → « 48,2 k » ; 1 250 000 → « 1,3 M »
+// (anglais « 48.2K », arabe « 48,2 ألف »).
 const compact = (n) => {
-  const a = Math.abs(n), f = (v, d) => v.toFixed(d).replace(".", ",").replace(/,0$/, "");
-  if (a >= 1e6) return `${n < 0 ? MINUS : ""}${f(a / 1e6, a >= 1e7 ? 0 : 1)}${NB}M`;
-  if (a >= 1e4) return `${n < 0 ? MINUS : ""}${f(a / 1e3, a >= 1e5 ? 0 : 1)}${NB}k`;
-  return `${n < 0 ? MINUS : ""}${fmt(a)}`;
+  const a = Math.abs(n), sign = n < 0 ? MINUS : "", f = (v, d) => v.toFixed(d).replace(".", uiDecimal()).replace(/[.,]0$/, "");
+  if (a >= 1e6) return uiSigned(sign, t("{n}\u00a0M", { n: f(a / 1e6, a >= 1e7 ? 0 : 1) }));
+  if (a >= 1e4) return uiSigned(sign, t("{n}\u00a0k", { n: f(a / 1e3, a >= 1e5 ? 0 : 1) }));
+  return uiSigned(sign, fmt(a));
 };
-const pct = (x) => (x > 0 && x < 1 ? `<${NB}1${NB}%` : `${String(x < 10 && x % 1 ? x.toFixed(1) : Math.round(x)).replace(".", ",")}${NB}%`);
-const plural = (n, one, many) => `${fmt(n)}${NB}${Math.abs(n) <= 1 ? one : many}`;
-const rate = (r) => `${fmt(r)}${NB}DA / 1${NB}000${NB}vues`;           // forme pleine
-const rateShort = (r) => `${fmt(r)}${NB}DA / 1k${NB}vues`;              // puces et cartes uniquement
-const code = (s) => `<span class="font-mono text-[0.92em] tracking-wide">${esc(s)}</span>`;
+const pct = (x) => (x > 0 && x < 1 ? t("<\u00a01\u00a0%") : t("{n}\u00a0%", { n: String(x < 10 && x % 1 ? x.toFixed(1) : Math.round(x)).replace(".", uiDecimal()) }));
+// « 3 vues » : le mot suit la langue et ses règles de pluriel (tPlural ; arabe : duel, 3 à 10, 11 à 99…). L'entrée du
+// dictionnaire est cherchée sous la forme plurielle française (many), puis singulière (one).
+const plural = (n, one, many) => `${fmt(n)}${NB}${tPlural(n, one, many)}`;
+const rate = (r) => t("{amount} / 1\u00a0000\u00a0vues", { amount: da(r) });   // forme pleine
+const rateShort = (r) => t("{amount} / 1k\u00a0vues", { amount: da(r) });       // puces et cartes uniquement
+// Code, référence, identifiant : toujours de gauche à droite (îlot LTR, même en arabe).
+const code = (s) => `<span class="font-mono text-[0.92em] tracking-wide" dir="ltr">${esc(s)}</span>`;
 const groupAccount = (s) => esc(String(s || "").replace(/\s+/g, "")).replace(/(.{4})(?=.)/g, `$1${NB}`);
 
 // ---------- Icônes : grille 24, trait 1,75, taille donnée par cls ou par le parent ([&_svg]:size-*) ----------
@@ -173,7 +199,7 @@ const eventIcon = (emoji) => {
 
 // Drapeau algérien (SVG, jamais d'emoji : Windows n'affiche pas les drapeaux emoji).
 const flagDz = (cls = "h-3 w-[18px]") =>
-  `<svg viewBox="0 0 30 20" class="${cls} shrink-0 rounded-[2px] ring-1 ring-fg/10" role="img" aria-label="Algérie"><rect width="15" height="20" fill="#006233"/><rect x="15" width="15" height="20" fill="#ffffff"/><mask id="dz-crescent"><rect width="30" height="20" fill="#fff"/><circle cx="16.25" cy="10" r="4" fill="#000"/></mask><circle cx="15" cy="10" r="5" fill="#d21034" mask="url(#dz-crescent)"/><polygon fill="#d21034" points="15.50,10.00 16.91,9.50 16.95,8.00 17.86,9.19 19.30,8.77 18.45,10.00 19.30,11.23 17.86,10.81 16.95,12.00 16.91,10.50"/></svg>`;
+  `<svg viewBox="0 0 30 20" class="${cls} shrink-0 rounded-[2px] ring-1 ring-fg/10" role="img" aria-label="${esc(t("Algérie"))}"><rect width="15" height="20" fill="#006233"/><rect x="15" width="15" height="20" fill="#ffffff"/><mask id="dz-crescent"><rect width="30" height="20" fill="#fff"/><circle cx="16.25" cy="10" r="4" fill="#000"/></mask><circle cx="15" cy="10" r="5" fill="#d21034" mask="url(#dz-crescent)"/><polygon fill="#d21034" points="15.50,10.00 16.91,9.50 16.95,8.00 17.86,9.19 19.30,8.77 18.45,10.00 19.30,11.23 17.86,10.81 16.95,12.00 16.91,10.50"/></svg>`;
 
 // ---------- Logo ----------
 // logo() sur surface ; logo({ tone: "text-on-brand" }) sur bg-night ; logo({ wordmark: false }) : symbole seul.
@@ -182,7 +208,7 @@ function logo(opts = {}) {
   const o = typeof opts === "boolean" ? { tone: opts ? "text-on-brand" : "text-fg" } : opts;
   const { wordmark = true, tone = "text-fg", size = "md", href = "/" } = o;
   const S = { md: ["size-9 rounded-tile", "text-[1.375rem]"], sm: ["size-8 rounded-[10px]", "text-[1.125rem]"] }[size];
-  return `<a href="${href}" class="inline-flex items-center gap-2.5 rounded-control" aria-label="ClipBoost, retour au site">
+  return `<a href="${href}" class="inline-flex items-center gap-2.5 rounded-control" aria-label="${esc(t("ClipBoost, retour au site"))}">
     <span class="grid ${S[0]} shrink-0 place-items-center bg-brand text-on-brand">${icon("play", "size-[18px] translate-x-px", true)}</span>
     ${wordmark ? `<span class="inline-block -skew-x-6 font-display ${S[1]} font-extrabold leading-none tracking-[-0.03em] ${tone}" aria-hidden="true">ClipBoost</span>` : ""}</a>`;
 }
@@ -237,20 +263,21 @@ function select(name, value, options, opts = {}) {
 }
 // Compatibilité : un 3e argument (ancien `cls`) ou { invalid } ; un champ en erreur porte aria-invalid="true".
 const countrySelect = (name, value, opts = {}) =>
-  `<span class="relative block"><select name="${name}" class="${selectCls}"${(typeof opts === "string" ? /rose|danger|invalid/.test(opts) : opts.invalid) ? ' aria-invalid="true"' : ""}>${COUNTRIES.map((c) => `<option${c === value ? " selected" : ""}>${esc(c)}</option>`).join("")}</select>${CHEVRON}</span>`;
+  `<span class="relative block"><select name="${name}" class="${selectCls}"${(typeof opts === "string" ? /rose|danger|invalid/.test(opts) : opts.invalid) ? ' aria-invalid="true"' : ""}>${COUNTRIES.map((c) => `<option value="${esc(c)}"${c === value ? " selected" : ""}>${esc(t(c))}</option>`).join("")}</select>${CHEVRON}</span>`;
 // Champ numérique avec unité en suffixe (DA, %, jours, vues). attrs : attributs bruts de l'input.
 const unitInput = (attrs, unit, { lg = false } = {}) =>
   `<span class="relative block"><input ${attrs} inputmode="numeric" class="${inputCls} ${lg ? inputLg : ""} ${unit.length > 3 ? "pe-16" : "pe-12"} tabular-nums"/><span class="pointer-events-none absolute inset-y-0 end-3 flex items-center text-sm font-medium text-fg-subtle">${unit}</span></span>`;
 // Bouton « Effacer » maison (la croix native de WebKit est masquée dans web/styles.css) : visible dès que le champ n'est plus vide.
 const searchInput = (name, value, placeholder, label, cls = "") =>
-  `<label class="relative block ${cls}"><span class="sr-only">${esc(label)}</span>${icon("search", "pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2 text-fg-subtle")}<input data-input="${name}" type="search" value="${esc(value)}" placeholder="${esc(placeholder)}" class="peer ${inputCls} ps-9 pe-10 md:pe-9"/><span class="absolute inset-y-0 end-0 flex items-center pe-0 peer-placeholder-shown:hidden md:pe-1"><button type="button" data-action="clear-search" data-value="${name}" class="${iconBtn("sm", false, "text-fg-subtle")}" aria-label="Effacer la recherche">${icon("close")}</button></span></label>`;
+  `<label class="relative block ${cls}"><span class="sr-only">${esc(label)}</span>${icon("search", "pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2 text-fg-subtle")}<input data-input="${name}" type="search" value="${esc(value)}" placeholder="${esc(placeholder)}" class="peer ${inputCls} ps-9 pe-10 md:pe-9"/><span class="absolute inset-y-0 end-0 flex items-center pe-0 peer-placeholder-shown:hidden md:pe-1"><button type="button" data-action="clear-search" data-value="${name}" class="${iconBtn("sm", false, "text-fg-subtle")}" aria-label="${esc(t("Effacer la recherche"))}">${icon("close")}</button></span></label>`;
 // field(libellé, champ, aide, erreur) : l'erreur remplace l'aide ; poser aria-invalid="true" sur le champ en erreur.
 // L'aide et l'erreur restent hors du <label> : elles ne s'ajoutent pas au nom accessible du champ.
 const field = (label, input, hint = "", error = "") =>
   `<div class="grid gap-1.5" data-field><label class="contents"><span class="text-small font-medium text-fg">${label}</span>${input}</label>${error
     ? `<span class="flex items-center gap-1 text-xs font-medium text-danger-fg" role="alert">${icon("alert", "size-3.5 shrink-0")}${error}</span>`
     : hint ? `<span class="text-xs text-fg-subtle">${hint}</span>` : ""}</div>`;
-const OPTIONAL = `<span class="font-normal text-fg-subtle">(facultatif)</span>`;
+// « (facultatif) » après un libellé : objet converti en texte à chaque usage (`${OPTIONAL}`), donc dans la langue courante.
+const OPTIONAL = { toString: () => `<span class="font-normal text-fg-subtle">${t("(facultatif)")}</span>` };
 // Erreur de saisie posée sans réafficher le formulaire (les valeurs saisies restent) : aria-invalid, message sous le
 // champ (dans son conteneur [data-field]), focus et défilement. msg vide : le champ est seulement marqué.
 function markInvalid(formEl, name, msg = "") {
@@ -323,31 +350,33 @@ const STATUS_TONE = {
 };
 const badge = (text, tone = "idle", { dot = false, ic = "" } = {}) =>
   `<span class="${BADGE} ${TONE[tone]}">${ic ? icon(ic, "size-3") : dot ? `<span class="size-1.5 rounded-full ${DOT[tone]}" aria-hidden="true"></span>` : ""}${text}</span>`;
-const statusBadge = (s) => badge(esc(s), STATUS_TONE[s] || "idle", s === "En pause" ? { ic: "pause" } : { dot: true });
+// Statut (valeur du serveur, en français) affiché dans la langue choisie.
+const statusBadge = (s) => badge(esc(t(s)), STATUS_TONE[s] || "idle", s === "En pause" ? { ic: "pause" } : { dot: true });
 const PLATFORM_ICON = { TikTok: "tiktok", Instagram: "instagram", YouTube: "youtube", Facebook: "facebook" };
 const platformTag = (p) => `<span class="inline-flex h-6 items-center gap-1.5 whitespace-nowrap rounded-badge bg-muted px-2 text-xs font-medium text-fg-muted">${icon(PLATFORM_ICON[p] || "film", "size-3.5")}${esc(p)}</span>`;
 // Liseré : brand-soft et info-bg se confondent avec le fond canvas en clair (même correction que countBadge).
-const roleBadge = (role) => ({ agence: `<span class="inline-flex h-5 items-center rounded-[4px] bg-info-bg px-1.5 text-micro font-semibold text-info-fg ring-1 ring-inset ring-info-border">Agence</span>`, admin: `<span class="inline-flex h-5 items-center rounded-[4px] bg-brand-soft px-1.5 text-micro font-semibold text-brand-fg ring-1 ring-inset ring-brand-line/70">Admin</span>` }[role] || "");
+const roleBadge = (role) => ({ agence: `<span class="inline-flex h-5 items-center rounded-[4px] bg-info-bg px-1.5 text-micro font-semibold text-info-fg ring-1 ring-inset ring-info-border">${t("Agence")}</span>`, admin: `<span class="inline-flex h-5 items-center rounded-[4px] bg-brand-soft px-1.5 text-micro font-semibold text-brand-fg ring-1 ring-inset ring-brand-line/70">${t("Admin")}</span>` }[role] || "");
 // queue : liseré brand-line, sinon la pastille brand-soft se confond avec le fond canvas en clair.
 const COUNT = { queue: "bg-brand-soft text-brand-fg ring-1 ring-inset ring-brand-line/70", unread: "bg-brand text-on-brand", total: "bg-muted text-fg-muted" };
 const countBadge = (n, tone = "queue") => `<span class="inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-semibold tabular-nums ${COUNT[tone]}">${fmt(n)}</span>`;
 
 // ---------- Filtres : segmented (2 à 5 choix), chips (au-delà, défilable) ----------
 // options : "Libellé" | [valeur, libellé] | [valeur, libellé, compteur]
-const opt = (o) => (Array.isArray(o) ? o : [o, o]);
+// Option texte seul : la valeur reste en français (statut, catégorie…), le libellé affiché est traduit.
+const opt = (o) => (Array.isArray(o) ? o : [o, t(o)]);
 // segmented(…, { scroll: true }) : filtre de statut ; sous sm il devient une rangée de puces défilante bord à bord
 // (comme chips), pour qu'aucune option ne soit rognée dans le cadre ; à partir de sm, le contrôle segmenté.
 const SEG_WRAP = "inline-flex max-w-full items-center gap-0.5 overflow-x-auto rounded-control border border-line bg-subtle p-0.5 [scrollbar-width:none]";
 const SEG_WRAP_SCROLL = "max-sm:-mx-4 max-sm:flex max-sm:max-w-none max-sm:gap-2 max-sm:rounded-none max-sm:border-0 max-sm:bg-transparent max-sm:p-0 max-sm:px-4 max-sm:pb-1";
 const SEG_BTN = `inline-flex h-10 shrink-0 items-center gap-1.5 rounded-lg px-3 text-small font-medium text-fg-muted transition-colors duration-150 hover:text-fg aria-pressed:bg-surface-raised aria-pressed:text-fg aria-pressed:shadow-control md:h-8 ${FOCUS_INSET}`;
 const SEG_BTN_SCROLL = "max-sm:rounded-full max-sm:border max-sm:border-line-strong max-sm:bg-surface max-sm:px-3.5 max-sm:aria-pressed:border-brand-line max-sm:aria-pressed:bg-brand-soft max-sm:aria-pressed:text-brand-fg max-sm:aria-pressed:shadow-none";
-const segmented = (name, value, options, label = "Filtrer", { scroll = false } = {}) =>
+const segmented = (name, value, options, label = t("Filtrer"), { scroll = false } = {}) =>
   `<div class="${SEG_WRAP} ${scroll ? SEG_WRAP_SCROLL : ""}" role="group" aria-label="${esc(label)}">${options.map((o) => {
     const [v, l, n] = opt(o);
     return `<button type="button" data-action="${name}" data-value="${esc(v)}" aria-pressed="${String(v) === String(value)}" class="${SEG_BTN} ${scroll ? SEG_BTN_SCROLL : ""}">${esc(l)}${n !== undefined ? `<span class="tabular-nums ${scroll ? "text-fg-subtle max-sm:text-current" : "text-fg-subtle"}">${fmt(n)}</span>` : ""}</button>`;
   }).join("")}</div>`;
 const pills = segmented; // compatibilité
-const chips = (name, value, options, label = "Filtrer") =>
+const chips = (name, value, options, label = t("Filtrer")) =>
   `<div class="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] sm:mx-0 sm:px-0" role="group" aria-label="${esc(label)}">${options.map((o) => {
     const [v, l, n] = opt(o);
     return `<button type="button" data-action="${name}" data-value="${esc(v)}" aria-pressed="${String(v) === String(value)}" class="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-full border border-line-strong bg-surface px-3.5 text-small font-medium text-fg-muted transition-colors hover:border-line-control hover:text-fg aria-pressed:border-brand-line aria-pressed:bg-brand-soft aria-pressed:text-brand-fg md:h-8 ${FOCUS_INSET}">${esc(l)}${n !== undefined ? `<span class="tabular-nums">${fmt(n)}</span>` : ""}</button>`;
@@ -361,7 +390,7 @@ const pageHeader = (title, text, action = "") =>
   `<div class="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
     <div class="min-w-0"><h1 class="text-title-sm text-fg sm:text-title">${title}</h1>${text ? `<p class="mt-1 max-w-2xl text-sm text-fg-muted">${text}</p>` : ""}</div>
     ${action ? `<div class="flex shrink-0 flex-wrap items-center gap-2">${action}</div>` : ""}</div>`;
-const sectionHeader = (title, href = "", link = "Tout voir", attrs = "") =>
+const sectionHeader = (title, href = "", link = t("Tout voir"), attrs = "") =>
   `<div class="mb-3 mt-8 flex items-end justify-between gap-3"><h2 class="text-heading text-fg">${title}</h2>${href ? `<a href="${href}" ${attrs} class="inline-flex items-center gap-1 rounded-sm text-small font-medium text-brand-fg underline-offset-4 hover:underline ${FOCUS}">${link}${icon("chevronRight", "size-3.5 rtl:-scale-x-100")}</a>` : ""}</div>`;
 // emptyState(icône, titre, texte, action HTML, { inCard }) : inCard = à l'intérieur d'une carte existante (pas de bordure).
 const emptyState = (ic, title, text = "", action = "", { inCard = false } = {}) =>
@@ -369,7 +398,7 @@ const emptyState = (ic, title, text = "", action = "", { inCard = false } = {}) 
     <span class="grid size-10 place-items-center rounded-full bg-muted text-fg-subtle">${icon(ic, "size-5")}</span>
     <p class="mt-3 text-sm font-semibold text-fg">${title}</p>${text ? `<p class="mt-1 max-w-sm text-small text-fg-muted">${text}</p>` : ""}${action ? `<div class="mt-4">${action}</div>` : ""}</div>`;
 // progress(dépensé, budget, { label, aria }) : violet ; ≥ 85 % ambre ; 100 % gris. Jamais rouge.
-function progress(spent, budget, { label = true, aria = "Budget utilisé" } = {}) {
+function progress(spent, budget, { label = true, aria = t("Budget utilisé") } = {}) {
   const p = budget ? (spent / budget) * 100 : 0;
   const fill = p >= 100 ? "bg-idle-solid" : p >= 85 ? "bg-warning-solid" : "bg-brand";
   return `<div>${label ? `<div class="mb-1.5 flex items-baseline justify-between gap-3 text-xs tabular-nums text-fg-subtle"><span><span class="font-medium text-fg">${fmt(spent)}</span> / ${da(budget)}</span><span>${pct(p)}</span></div>` : ""}
@@ -402,7 +431,7 @@ function avatar(u, size = "md") {
 }
 
 // Badge de vérification (agence vérifiée par l'équipe ClipBoost) : sceau bleu et coche blanche, à côté du nom.
-const verifiedBadge = (cls = "size-4", label = "Agence vérifiée") =>
+const verifiedBadge = (cls = "size-4", label = t("Agence vérifiée")) =>
   `<svg viewBox="0 0 24 24" class="${cls} inline-block shrink-0 align-[-0.125em] text-verified" role="img" aria-label="${esc(label)}"><title>${esc(label)}</title><path fill="currentColor" d="M10.80 1.91Q12.00 0.80 13.20 1.91Q14.41 3.02 16.00 2.66Q17.60 2.30 18.09 3.86Q18.58 5.42 20.14 5.91Q21.70 6.40 21.34 8.00Q20.98 9.59 22.09 10.80Q23.20 12.00 22.09 13.20Q20.98 14.41 21.34 16.00Q21.70 17.60 20.14 18.09Q18.58 18.58 18.09 20.14Q17.60 21.70 16.00 21.34Q14.41 20.98 13.20 22.09Q12.00 23.20 10.80 22.09Q9.59 20.98 8.00 21.34Q6.40 21.70 5.91 20.14Q5.42 18.58 3.86 18.09Q2.30 17.60 2.66 16.00Q3.02 14.41 1.91 13.20Q0.80 12.00 1.91 10.80Q3.02 9.59 2.66 8.00Q2.30 6.40 3.86 5.91Q5.42 5.42 5.91 3.86Q6.40 2.30 8.00 2.66Q9.59 3.02 10.80 1.91Z"/><path d="M8.2 12.3l2.6 2.6 5-5.3" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 // Nom + badge si l'utilisateur (ou l'agence publique) est vérifié : u.verified === true.
 const nameWithBadge = (u, cls = "size-4") => `${esc(u.name)}${u && u.verified ? `${NB}${verifiedBadge(cls)}` : ""}`;
@@ -465,8 +494,8 @@ function modalShell(arg, legacySize = "max-w-lg") {
       <span class="mx-auto mt-2 h-1 w-9 shrink-0 rounded-full bg-line-strong sm:hidden" aria-hidden="true"></span>
       ${title ? `<header class="flex items-start justify-between gap-4 border-b border-line px-5 py-4 sm:px-6">
         <div class="min-w-0"><h2 id="modal-title" class="text-heading text-fg">${title}</h2>${description ? `<p class="mt-0.5 text-small text-fg-muted">${description}</p>` : ""}</div>
-        <button type="button" data-action="close-modal" class="${iconBtn("sm", false, "-me-1.5 -mt-0.5")}" aria-label="Fermer">${icon("close")}</button>
-      </header>` : `<button type="button" data-action="close-modal" class="${iconBtn("sm", false, "absolute end-3 top-3 z-10")}" aria-label="Fermer">${icon("close")}</button>`}
+        <button type="button" data-action="close-modal" class="${iconBtn("sm", false, "-me-1.5 -mt-0.5")}" aria-label="${esc(t("Fermer"))}">${icon("close")}</button>
+      </header>` : `<button type="button" data-action="close-modal" class="${iconBtn("sm", false, "absolute end-3 top-3 z-10")}" aria-label="${esc(t("Fermer"))}">${icon("close")}</button>`}
       <div class="min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-6">${body}</div>
       ${footer ? `<footer class="flex flex-col-reverse gap-2 border-t border-line bg-subtle px-5 pt-3.5 pb-[max(0.875rem,env(safe-area-inset-bottom))] sm:flex-row sm:items-center sm:justify-end sm:px-6 sm:pb-3.5">${footer}</footer>` : ""}
     </${tag}></div>`;
@@ -487,65 +516,72 @@ const alertBox = (tone, html) =>
 // puis le mot de passe : changement (actuel + nouveau) si le compte en a un (u.hasPassword), sinon « Définir un mot
 // de passe » (compte créé avec Google, Apple ou Discord : le nouveau seul, voir handlePasswordSubmit). Déconnexion en bas.
 const PROVIDER_NAMES = { google: "Google", apple: "Apple", discord: "Discord" };
-// ["Google", "Apple", "Discord"] → « Google, Apple et Discord ».
-const listAnd = (a) => (a.length > 1 ? `${a.slice(0, -1).join(", ")} et ${a[a.length - 1]}` : a[0] || "");
+// ["Google", "Apple", "Discord"] → « Google, Apple et Discord » (« Google, Apple and Discord », « Google وApple وDiscord »).
+const listAnd = (a) => {
+  const f = uiIntl("ListFormat", { style: "long", type: "conjunction" });
+  if (f) try { return f.format(a); } catch (e) {}
+  return a.length > 1 ? t("{list} et {last}", { list: a.slice(0, -1).join(", "), last: a[a.length - 1] }) : a[0] || "";
+};
 function accountCard(u) {
   const pe = state.pwdError, hasPwd = u.hasPassword !== false;
   const names = listAnd((u.providers || []).map((p) => PROVIDER_NAMES[p] || p));
-  const linked = names ? `<p class="mt-3 flex items-start gap-2 text-small text-fg-muted">${icon("checkCircle", "mt-0.5 size-4 shrink-0 text-success-fg")}<span>Connexion avec ${esc(names)} activée</span></p>` : "";
+  const linked = names ? `<p class="mt-3 flex items-start gap-2 text-small text-fg-muted">${icon("checkCircle", "mt-0.5 size-4 shrink-0 text-success-fg")}<span>${t("Connexion avec {providers} activée", { providers: esc(names) })}</span></p>` : "";
   // Erreur du serveur posée sur le bon champ : « Mot de passe actuel incorrect » → actuel, sinon → nouveau.
   const badCurrent = hasPwd && /actuel/i.test(pe), inv = (on) => (pe && on ? ' aria-invalid="true"' : "");
-  const next = (attrs = "") => field("Nouveau mot de passe", `<input name="next" type="password" autocomplete="new-password" class="${inputCls}"${attrs}/>`, "8 caractères minimum, avec au moins une lettre et un chiffre.");
+  const next = (attrs = "") => field(t("Nouveau mot de passe"), `<input name="next" type="password" autocomplete="new-password" class="${inputCls}"${attrs}/>`, t("8 caractères minimum, avec au moins une lettre et un chiffre."));
   const pwd = hasPwd
-    ? `<p class="text-sm font-semibold text-fg">Mot de passe</p>
+    ? `<p class="text-sm font-semibold text-fg">${t("Mot de passe")}</p>
       ${pe ? alertBox("danger", esc(tServer(pe))) : ""}
-      ${field("Mot de passe actuel", `<input name="current" type="password" autocomplete="current-password" class="${inputCls}"${inv(badCurrent)}/>`)}
+      ${field(t("Mot de passe actuel"), `<input name="current" type="password" autocomplete="current-password" class="${inputCls}"${inv(badCurrent)}/>`)}
       ${next(inv(!badCurrent))}
-      <button class="${btn("secondary", "md", "w-full")}">Changer le mot de passe</button>`
-    : `<div><p class="text-sm font-semibold text-fg">Définir un mot de passe</p>
-        <p class="mt-0.5 text-small text-fg-muted">${names ? `Vous vous connectez avec ${esc(names)}. ` : ""}Ajoutez un mot de passe pour pouvoir aussi vous connecter avec votre adresse email.</p></div>
+      <button class="${btn("secondary", "md", "w-full")}">${t("Changer le mot de passe")}</button>`
+    : `<div><p class="text-sm font-semibold text-fg">${t("Définir un mot de passe")}</p>
+        <p class="mt-0.5 text-small text-fg-muted">${names ? `${t("Vous vous connectez avec {providers}.", { providers: esc(names) })} ` : ""}${t("Ajoutez un mot de passe pour pouvoir aussi vous connecter avec votre adresse email.")}</p></div>
       ${pe ? alertBox("danger", esc(tServer(pe))) : ""}
       ${next(inv(true))}
-      <button class="${btn("secondary", "md", "w-full")}">Définir le mot de passe</button>`;
-  return card(`${cardHeader("Compte et connexion")}
+      <button class="${btn("secondary", "md", "w-full")}">${t("Définir le mot de passe")}</button>`;
+  return card(`${cardHeader(t("Compte et connexion"))}
     <div class="mt-4 flex items-center gap-3 rounded-tile bg-subtle p-3">
       <span class="grid size-10 shrink-0 place-items-center rounded-tile border border-line bg-surface text-fg-muted">${icon("mail", "size-[18px]")}</span>
-      <p class="min-w-0 flex-1 break-all text-sm font-medium text-fg"><span dir="ltr">${esc(u.email)}</span></p>${u.emailVerified ? badge("Vérifiée", "success", { ic: "check" }) : ""}</div>
+      <p class="min-w-0 flex-1 break-all text-sm font-medium text-fg"><span dir="ltr">${esc(u.email)}</span></p>${u.emailVerified ? badge(t("Vérifiée"), "success", { ic: "check" }) : ""}</div>
     ${linked}
     <form data-form="password" class="mt-5 grid gap-4 border-t border-line pt-5" novalidate>
       <input type="text" name="username" autocomplete="username" value="${esc(u.email)}" hidden/>
       ${pwd}
     </form>
-    <button type="button" data-action="logout" class="${btn("dangerSoft", "md", "mt-3 w-full")}">${icon("logout")}Se déconnecter</button>`);
+    <button type="button" data-action="logout" class="${btn("dangerSoft", "md", "mt-3 w-full")}">${icon("logout")}${t("Se déconnecter")}</button>`);
 }
 
 // ---------- Bandeau du site, bascule de thème ----------
 function siteBanner() {
   const s = db.settings, parts = [];
-  if (s.maintenance) parts.push(`<div class="flex items-center justify-center gap-2 border-b border-warning-border bg-warning-bg px-4 py-2 text-center text-small font-medium text-warning-fg">${icon("alert", "size-4 shrink-0")}Le site est en maintenance : les connexions des clippers et des agences sont temporairement suspendues.</div>`);
+  if (s.maintenance) parts.push(`<div class="flex items-center justify-center gap-2 border-b border-warning-border bg-warning-bg px-4 py-2 text-center text-small font-medium text-warning-fg">${icon("alert", "size-4 shrink-0")}${t("Le site est en maintenance : les connexions des clippers et des agences sont temporairement suspendues.")}</div>`);
   if (s.announcement) parts.push(`<div class="flex items-center justify-center gap-2 border-b border-brand-line bg-brand-soft px-4 py-2 text-center text-small font-medium text-brand-fg">${icon("megaphone", "size-4 shrink-0")}${esc(s.announcement)}</div>`);
   return parts.join("");
 }
 // Thème : clair, sombre ou système (web/theme.js gère les clics sur [data-theme-set] et l'état aria-pressed).
+// Libellés en français dans la liste, traduits à l'affichage.
 const THEME_MODES = [["light", "sun", "Clair"], ["dark", "moon", "Sombre"], ["system", "monitor", "Système"]];
 function themeModeSwitch({ labels = false, cls = "" } = {}) {
   const m = window.clipboostTheme ? window.clipboostTheme.mode() : "system";
-  return `<div class="${SEG_WRAP} ${cls}" role="group" aria-label="Thème">${THEME_MODES.map(([v, ic, l]) =>
-    `<button type="button" data-theme-set="${v}" aria-pressed="${m === v}" title="${l}" class="${SEG_BTN} flex-1 justify-center [&_svg]:size-4">${icon(ic)}${labels ? `<span>${l}</span>` : `<span class="sr-only">${l}</span>`}</button>`).join("")}</div>`;
+  return `<div class="${SEG_WRAP} ${cls}" role="group" aria-label="${esc(t("Thème"))}">${THEME_MODES.map(([v, ic, l]) => {
+    const label = esc(t(l));
+    return `<button type="button" data-theme-set="${v}" aria-pressed="${m === v}" title="${label}" class="${SEG_BTN} flex-1 justify-center [&_svg]:size-4">${icon(ic)}${labels ? `<span>${label}</span>` : `<span class="sr-only">${label}</span>`}</button>`;
+  }).join("")}</div>`;
 }
 // Langue : boutons [data-lang-set] (web/src/i18n.js). full : libellés complets (« Français »), sinon FR / EN / ع.
 function langSwitch({ full = false, cls = "" } = {}) {
-  return `<div class="${SEG_WRAP} ${cls}" role="group" aria-label="Langue">${Object.entries(LOCALES).map(([k, l]) =>
+  return `<div class="${SEG_WRAP} ${cls}" role="group" aria-label="${esc(t("Langue"))}">${Object.entries(LOCALES).map(([k, l]) =>
     `<button type="button" data-lang-set="${k}" aria-pressed="${LANG === k}" lang="${k}" title="${l.label}" class="${SEG_BTN} flex-1 justify-center">${full ? l.label : `<span aria-hidden="true">${l.short}</span><span class="sr-only">${l.label}</span>`}</button>`).join("")}</div>`;
 }
 const themeToggle = (cls = "") =>
-  `<button type="button" data-theme-toggle class="${iconBtn("md", false, cls)}" aria-label="Changer de thème (clair ou sombre)">
+  `<button type="button" data-theme-toggle class="${iconBtn("md", false, cls)}" aria-label="${esc(t("Changer de thème (clair ou sombre)"))}">
     <svg viewBox="0 0 24 24" class="dark:hidden" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
     <svg viewBox="0 0 24 24" class="hidden dark:block" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
   </button>`;
 
 // ---------- Photos : choix, recadrage et compression dans le navigateur ----------
-// imageField({ name, value, shape, label, hint, fallback }) : aperçu, bouton « Choisir une photo », « Retirer », et un
+// imageField({ name, value, shape, label, hint, fallback }) : aperçu, bouton « Choisir une photo », « Retirer la photo », et un
 // <input type="hidden" name> qui porte la valeur envoyée à l'API : data URL (nouvelle photo), adresse actuelle
 // (inchangée) ou "" (retirée). Chaque changement déclenche un événement input sur ce champ caché (récapitulatifs, brouillons).
 // shape : "avatar" (carré 320 px, rond), "cover" (bandeau 3:1, 1 500 px), "campaign" (16:9, 1 280 px).
@@ -556,13 +592,13 @@ const IMAGE_SHAPES = {
   campaign: { w: 1280, h: 720, box: "aspect-[16/9] w-full rounded-tile", row: false },
 };
 const IMAGE_MAX_CHARS = 2000000;
-function imageField({ name, value = "", shape = "avatar", label = "Photo", hint = "", fallback = "" }) {
+function imageField({ name, value = "", shape = "avatar", label = t("Photo"), hint = "", fallback = "" }) {
   const S = IMAGE_SHAPES[shape] || IMAGE_SHAPES.avatar, id = `img-${name}`;
   const preview = value ? `<img src="${esc(value)}" alt="" class="absolute inset-0 size-full object-cover"/>` : fallback;
   const buttons = `<div class="flex flex-wrap items-center gap-2">
-      <label class="${btn("secondary", "sm")} cursor-pointer has-focus-visible:outline-2 has-focus-visible:outline-offset-2 has-focus-visible:outline-focus">${icon("camera")}<span data-image-pick-label>${value ? "Changer la photo" : "Choisir une photo"}</span>
+      <label class="${btn("secondary", "sm")} cursor-pointer has-focus-visible:outline-2 has-focus-visible:outline-offset-2 has-focus-visible:outline-focus">${icon("camera")}<span data-image-pick-label>${value ? t("Changer la photo") : t("Choisir une photo")}</span>
         <input id="${id}" type="file" accept="image/jpeg,image/png,image/webp" class="sr-only" data-image-input="${name}" data-image-shape="${shape}"/></label>
-      <button type="button" data-image-clear="${name}" class="${btn("ghost", "sm")}" ${value ? "" : "hidden"}>${icon("trash")}Retirer</button>
+      <button type="button" data-image-clear="${name}" class="${btn("ghost", "sm")}" ${value ? "" : "hidden"}>${icon("trash")}${t("Retirer la photo")}</button>
     </div>`;
   return `<div class="grid gap-2" data-field data-image-field="${name}">
     <span class="text-small font-medium text-fg">${label}</span>
@@ -636,7 +672,7 @@ document.addEventListener("click", (e) => {
   const fieldEl = b && b.closest("[data-image-field]");
   if (!fieldEl) return;
   setImageField(fieldEl, "");
-  // « Retirer » disparaît : le focus passe au choix d'une nouvelle photo (sinon il tomberait sur <body>).
+  // « Retirer la photo » disparaît : le focus passe au choix d'une nouvelle photo (sinon il tomberait sur <body>).
   const pick = fieldEl.querySelector("input[data-image-input]");
   if (pick) pick.focus();
 });
@@ -645,8 +681,12 @@ document.addEventListener("click", (e) => {
 const niceMax = (v) => { if (v <= 0) return 1; const p = 10 ** Math.floor(Math.log10(v)), m = v / p; return (m <= 1 ? 1 : m <= 2 ? 2 : m <= 2.5 ? 2.5 : m <= 5 ? 5 : 10) * p; };
 const seriesDates = (n, end = new Date()) => Array.from({ length: n }, (_, i) => new Date(end.getFullYear(), end.getMonth(), end.getDate() - (n - 1 - i)));
 // Graduation : même unité sur tout l'axe (« 5 k » à côté de « 10 k », jamais « 5 000 »).
-const axisTick = (t, max) => (t && max >= 1e4 && max < 1e6 ? `${String(+(t / 1e3).toFixed(1)).replace(".", ",")}${NB}k` : compact(t));
-const dayLabel = (d) => `${d.getDate()}${NB}${MONTHS[d.getMonth()]}`;
+const axisTick = (v, max) => (v && max >= 1e4 && max < 1e6 ? t("{n}\u00a0k", { n: String(+(v / 1e3).toFixed(1)).replace(".", uiDecimal()) }) : compact(v));
+// « 5 janv. » ; anglais « 5 Jan », arabe « 5 جانفي ».
+const dayLabel = (d) => {
+  const f = LANG === "fr" ? null : uiIntl("DateTimeFormat", { day: "numeric", month: "short" });
+  return f ? f.format(d).replace(/\s/g, NB) : `${d.getDate()}${NB}${MONTHS[d.getMonth()]}`;
+};
 
 // barChart(valeursJournalières, { tone: "income" | "brand", unit: "DA" | libellé singulier, unitPlural, integer, h, caption })
 function barChart(values, { tone = "income", unit = "DA", unitPlural = "", integer = false, h = "h-44", caption = "" } = {}) {
@@ -656,20 +696,20 @@ function barChart(values, { tone = "income", unit = "DA", unitPlural = "", integ
   const fv = (v) => (unit === "DA" ? da(v) : plural(v, unit, unitPlural || `${unit}s`));
   const ticks = integer && max < 4 ? [max, 0] : [max, max / 2, 0];
   return `<figure class="grid grid-cols-[auto_minmax(0,1fr)] gap-x-2" dir="ltr">
-    <div class="${h} flex flex-col justify-between text-right text-micro leading-none tabular-nums text-fg-subtle" aria-hidden="true">${ticks.map((t) => `<span>${axisTick(t, max)}</span>`).join("")}</div>
+    <div class="${h} flex flex-col justify-between text-end text-micro leading-none tabular-nums text-fg-subtle" aria-hidden="true">${ticks.map((v) => `<span>${axisTick(v, max)}</span>`).join("")}</div>
     <div class="relative ${h} border-b border-chart-axis bg-[linear-gradient(to_bottom,var(--color-chart-grid)_1px,transparent_1px)] bg-[size:100%_50%]" aria-hidden="true">
       <div class="absolute inset-0 flex items-end gap-[2px] px-0.5">${values.map((v, i) =>
         `<span class="flex h-full min-w-0 flex-1 items-end justify-center" title="${dayLabel(dates[i])} · ${fv(v)}">${v > 0 ? `<span class="w-full max-w-6 rounded-t-[3px] ${bar}" style="height:max(2px, ${((v / max) * 100).toFixed(2)}%)"></span>` : ""}</span>`).join("")}</div>
     </div>
     <span></span>
-    <div class="mt-2 flex justify-between text-micro tabular-nums text-fg-subtle" aria-hidden="true"><span>${dayLabel(dates[0])}</span><span>${dayLabel(dates[Math.floor((n - 1) / 2)])}</span><span>Auj.</span></div>
+    <div class="mt-2 flex justify-between text-micro tabular-nums text-fg-subtle" aria-hidden="true"><span>${dayLabel(dates[0])}</span><span>${dayLabel(dates[Math.floor((n - 1) / 2)])}</span><span>${t("Auj.")}</span></div>
     <table class="sr-only"><caption>${esc(caption)}</caption>${values.map((v, i) => (v ? `<tr><th>${dayLabel(dates[i])}</th><td>${fv(v)}</td></tr>` : "")).join("")}</table>
   </figure>`;
 }
 
 // cumulativeChart(valeursJournalières, { h, label, end, onNight }) : courbe verte du cumul (monotone, sans dépassement).
 // end : affiche la valeur finale au-dessus du point. onNight : variante sur bg-night (panneau auth, CTA final).
-function cumulativeChart(daily, { h = "h-24", label = "Gains cumulés", end = true, onNight = false } = {}) {
+function cumulativeChart(daily, { h = "h-24", label = t("Gains cumulés"), end = true, onNight = false } = {}) {
   let s = 0; const cum = (daily.length > 1 ? daily : [0, ...daily, 0].slice(0, 2)).map((v) => (s += v));
   const max = niceMax(Math.max(...cum, 1)), W = 300, H = 100, step = W / Math.max(1, cum.length - 1);
   const pts = cum.map((v, i) => [i * step, H - (v / max) * (H - 6)]);
@@ -677,12 +717,12 @@ function cumulativeChart(daily, { h = "h-24", label = "Gains cumulés", end = tr
   for (let i = 1; i < pts.length; i++) { const [x0, y0] = pts[i - 1], [x1, y1] = pts[i], m = (x0 + x1) / 2; d += ` C ${m} ${y0.toFixed(2)}, ${m} ${y1.toFixed(2)}, ${x1} ${y1.toFixed(2)}`; }
   const [ex, ey] = pts.at(-1);
   const stroke = onNight ? "stroke-night-income" : "stroke-chart-income", fill = onNight ? "fill-night-income/15" : "fill-chart-income/12", dot = onNight ? "bg-night-income ring-night" : "bg-chart-income ring-surface";
-  return `<div class="relative ${h}" dir="ltr" role="img" aria-label="${esc(`${label} : ${da(s)} sur ${daily.length} jours`)}">
+  return `<div class="relative ${h}" dir="ltr" role="img" aria-label="${esc(t("{label} : {amount} sur {days}", { label, amount: da(s), days: plural(daily.length, "jour", "jours") }))}">
     <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" class="absolute inset-0 size-full overflow-visible" aria-hidden="true">
       <path d="${d} L ${W} ${H} L 0 ${H} Z" class="${fill}"/>
       <path d="${d}" class="fill-none ${stroke}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/></svg>
     <span class="absolute size-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full ring-2 ${dot}" style="left:${((ex / W) * 100).toFixed(2)}%;top:${((ey / H) * 100).toFixed(2)}%"></span>
-    ${end && !onNight ? `<span class="absolute right-0 -translate-y-[calc(100%+8px)] text-small font-semibold tabular-nums text-fg" style="top:${((ey / H) * 100).toFixed(2)}%">${da(s)}</span>` : ""}
+    ${end && !onNight ? `<span class="absolute end-0 -translate-y-[calc(100%+8px)] text-small font-semibold tabular-nums text-fg" style="top:${((ey / H) * 100).toFixed(2)}%">${da(s)}</span>` : ""}
   </div>`;
 }
 

@@ -6,7 +6,7 @@ import { logActivity, notify } from "../events";
 import { badRequest, notFound } from "../http";
 import { newId, newRef } from "../ids";
 import { link } from "../links";
-import { belowMin, payoutDelta, viewsFor } from "../rules";
+import { belowMin, payoutDelta, sentence, viewsFor } from "../rules";
 import { getSettings } from "../settings";
 
 const fmt = (n: number) => `${n.toLocaleString("fr-FR").replace(/ | /g, " ")} DA`;
@@ -37,8 +37,10 @@ export async function submitClip(user: User, input: { campaignId: string; title:
   });
   const urls = links.map((l) => l.url);
   if (new Set(urls).size !== urls.length) throw badRequest("Le même lien est indiqué deux fois");
-  const [dup] = await db.select({ url: schema.publications.url }).from(schema.publications).where(inArray(schema.publications.url, urls)).limit(1);
-  if (dup) throw badRequest(`Ce lien a déjà été soumis : ${dup.url}`);
+  // Lien déjà soumis (par ce clipper ou un autre) : le premier dans l'ordre de l'envoi est cité.
+  const taken = new Set((await db.select({ url: schema.publications.url }).from(schema.publications).where(inArray(schema.publications.url, urls))).map((r) => r.url));
+  const dup = urls.find((u) => taken.has(u));
+  if (dup) throw badRequest(`Ce lien a déjà été soumis : ${dup}`);
   const title = input.title.trim(), batch = newId();
   const ids = links.map(() => newId());
   try {
@@ -60,8 +62,14 @@ const isUniqueViolation = (err: unknown): boolean => {
 };
 
 /**
+ * Une campagne ne paie que tant qu'elle est financée : active ou en pause. Terminée, son budget non consommé
+ * (et la commission correspondante) a déjà été rendu à l'agence, ou il est entièrement dépensé.
+ */
+const paying = (c: { status: string }) => c.status === "Active" || c.status === "En pause";
+
+/**
  * Relevé des vues d'un clip (par l'équipe, ou plus tard par une tâche planifiée branchée sur les API des plateformes).
- * Pendant la fenêtre de gains, un clip validé est payé pour ses vues supplémentaires.
+ * Pendant la fenêtre de gains, un clip validé est payé pour ses vues supplémentaires, si sa campagne est encore financée.
  */
 export async function recordViews(id: string, views: number) {
   const db = await getDb();
@@ -74,6 +82,7 @@ export async function recordViews(id: string, views: number) {
     if (p.status !== "Validée" || !p.approvedAt) return;
     if (Date.now() - p.approvedAt.getTime() > settings.earningDays * 86_400_000) return;
     const [c] = await tx.select().from(schema.campaigns).where(eq(schema.campaigns.id, p.campaignId)).for("update");
+    if (!paying(c)) return;
     const extra = payoutDelta(views, c, p.paid);
     if (!extra) return;
     await credit(tx, p, c, extra, `${c.title} · vues supplémentaires`, settings.holdDays);
@@ -109,11 +118,13 @@ export async function reviewClip(admin: User, id: string, decision: { approve: t
     if (p.status !== "En attente") throw badRequest("Ce clip a déjà été traité");
     if (!decision.approve) {
       await tx.update(schema.publications).set({ status: "Refusée", reason: decision.reason }).where(eq(schema.publications.id, id));
-      await notify(tx, p.userId, "⚠️", `Clip « ${p.title} » refusé : ${decision.reason}.`, link.clip(p.id));
+      await notify(tx, p.userId, "⚠️", `Clip « ${p.title} » refusé : ${sentence(decision.reason)}`, link.clip(p.id));
       await logActivity(tx, "🚫", `Clip « ${p.title} » refusé par ${admin.name}.`);
       return;
     }
     const [c] = await tx.select().from(schema.campaigns).where(eq(schema.campaigns.id, p.campaignId)).for("update");
+    // Campagne terminée : son budget restant a été rendu à l'agence, un gain ne serait plus couvert. Le clip peut être refusé.
+    if (!paying(c)) throw badRequest("Cette campagne est terminée : ce clip ne peut plus être validé");
     if (belowMin(p.views, c)) throw badRequest(`Seuil non atteint : ${viewsFor(c.minPayout, c.rate).toLocaleString("fr-FR")} vues minimum`);
     const now = new Date();
     await tx.update(schema.publications).set({ status: "Validée", approvedAt: now }).where(eq(schema.publications.id, id));

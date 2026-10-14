@@ -73,7 +73,8 @@ export async function updateCampaign(user: User, id: string, input: CampaignInpu
     const [c] = await tx.select().from(schema.campaigns).where(eq(schema.campaigns.id, id)).for("update");
     if (!c) throw notFound("Campagne introuvable");
     if (c.ownerId !== user.id) throw forbidden();
-    if (!EDITABLE.includes(c.status)) throw badRequest("Cette campagne ne peut plus être modifiée");
+    // Jamais une campagne qui a été financée (prélèvement à l'approbation) : son budget est engagé.
+    if (!EDITABLE.includes(c.status) || c.reserved !== 0 || c.spent !== 0) throw badRequest("Cette campagne ne peut plus être modifiée");
     const error = validateCampaignNumbers(input, settings.minBudget);
     if (error) throw badRequest(error);
     const relaunch = c.status === "Refusée", title = input.title.trim();
@@ -149,6 +150,9 @@ export async function setCampaignStatus(user: User, id: string, next: CampaignSt
       if (note.length < 3) throw badRequest("Indiquez le motif du refus");
     }
     if (c.status === "Terminée" || c.status === "Refusée") throw badRequest("Cette campagne est close");
+    // Une campagne en attente est approuvée (et financée à ce moment-là) ou refusée : jamais mise en pause ou terminée,
+    // sinon une reprise la mettrait en ligne sans prélever son budget sur le crédit de l'agence.
+    if (c.status === "En attente" && next !== "Active" && next !== "Refusée") throw badRequest("Action impossible sur cette campagne");
 
     const patch: Partial<typeof c> = { status: next };
     if (next === "Refusée") Object.assign(patch, { reviewNote: note, updatedAt: new Date() });

@@ -66,7 +66,7 @@ Adresses de retour (« redirect URI ») à déclarer chez chaque fournisseur, av
 | Discord | Discord Developer Portal → votre application → OAuth2 → Redirects | `https://<domaine>/api/auth/oauth/discord/callback` |
 | Apple | Apple Developer → Identifiers → Services ID → Sign in with Apple → Configure (domaine et « Return URL ») | `https://<domaine>/api/auth/oauth/apple/callback` |
 
-En local, Google et Discord acceptent `http://localhost:3000/api/auth/oauth/<fournisseur>/callback` ; Apple exige un domaine en HTTPS. Apple revient sur le site par un formulaire envoyé depuis `appleid.apple.com` : son cookie de parcours est `SameSite=None; Secure`.
+En local, Google et Discord acceptent `http://localhost:3000/api/auth/oauth/<fournisseur>/callback` ; Apple exige un domaine en HTTPS. Apple revient sur le site par un formulaire envoyé depuis `appleid.apple.com` : son cookie de parcours est `SameSite=None; Secure`. Le cookie de parcours est posé sur le domaine où l'utilisateur clique le bouton : servez le site sur le seul domaine de `APP_URL` (redirigez par exemple `www.` vers le domaine principal), sinon le retour du fournisseur ne le retrouve pas (« La connexion a expiré »).
 
 ## Mettre en ligne
 
@@ -91,7 +91,7 @@ npm run build:offline        # next build, puis web/dist/clipboost-site.html
 
 Produit un seul fichier HTML (accueil, connexion, espaces Clipper, Agence et Admin) qui s'ouvre directement depuis le disque, sans serveur ni connexion internet : pratique pour une démonstration. L'API y est simulée dans le navigateur (`web/offline/`) avec les mêmes règles (`lib/server/rules.ts`) et les mêmes contrôles (`lib/server/validation.ts`) que le serveur ; les données sont enregistrées dans le `localStorage` du navigateur.
 
-Au premier lancement, le fichier contient les données d'exemple de `db:seed:demo` et le compte `admin@clipboost.dz` (mot de passe `AdminClip2026`). Les codes de vérification sont affichés à l'écran. « Réinitialiser la démo », dans les réglages de l'administration, efface les données du navigateur.
+Au premier lancement, le fichier contient les données d'exemple de `db:seed:demo` et le compte `admin@clipboost.dz` (mot de passe `AdminClip2026`). Les codes de vérification sont affichés à l'écran. Les connexions Google, Apple et Discord y sont simulées (fenêtre de consentement fictive, aucun échange avec le fournisseur), avec les mêmes règles que sur le serveur ; les images sont gardées dans la base du navigateur, et une requête qui dépasserait la place disponible est refusée sans rien perdre des données déjà enregistrées. « Réinitialiser la démo », dans les réglages de l'administration, efface les données du navigateur.
 
 Si l'accueil a déjà été construit (`.next/`), `node web/build.mjs --offline [fichier]` suffit.
 
@@ -102,18 +102,18 @@ Les réglages sont modifiables par l'administrateur (page « Réglages du site �
 - **Campagnes** : budget minimum 50 000 DA, commission de 15 % payée par l'agence en plus du budget. À l'approbation, le budget et la commission sont débités du crédit de l'agence ; à la fin de la campagne, le budget non dépensé est rendu avec sa commission.
 - **Vérification des campagnes** : une agence peut modifier ou annuler sa campagne tant que l'équipe ne l'a pas examinée. Une campagne refusée l'est avec un motif ; l'agence peut la modifier et la relancer (elle repasse en vérification) ou la supprimer. Une campagne en ligne ne se refuse plus : elle se termine, ce qui rend son budget.
 - **Catégories** : 17 catégories proposées, ou « Autre » avec la catégorie précisée par l'agence.
-- **Clips** : lien TikTok, Instagram, YouTube ou Facebook obligatoire, unique. Le clipper publie sur toutes les plateformes de la campagne ou sur une seule : un lien par plateforme, enregistrés ensemble (même lot) et examinés séparément. Gain = vues × tarif aux 1 000 vues, nul sous le seuil minimum et limité au plafond par clip. Après validation, le clip continue de rapporter pendant 7 jours.
+- **Clips** : lien TikTok, Instagram, YouTube ou Facebook obligatoire, unique. Le clipper publie sur toutes les plateformes de la campagne ou sur une seule : un lien par plateforme, enregistrés ensemble (même lot) et examinés séparément. Gain = vues × tarif aux 1 000 vues, nul sous le seuil minimum et limité au plafond par clip. Après validation, le clip continue de rapporter pendant 7 jours, tant que la campagne est active ou en pause : une campagne terminée ne paie plus rien (son budget restant a été rendu à l'agence) et ses clips en attente ne peuvent plus qu'être refusés.
 - **Gains** : 3 jours de rétention avant d'être retirables.
 - **Retraits** : minimum 2 000 DA vers BaridiMob, CCP ou RIB. Standard gratuit, ou instantané avec 2 % de frais (100 DA minimum).
 - **Crédit agence** : demande de recharge (virement, Edahabia, CIB ou carte Visa / Mastercard) avec une référence, confirmée par l'administrateur à réception du paiement. Pour une carte, seuls la marque et les 4 derniers chiffres sont transmis et ajoutés au libellé.
 - **Badge de vérification** : une agence le demande (message facultatif) ; l'équipe l'accorde, le refuse avec un motif (l'agence peut redemander) ou le retire. Le badge bleu s'affiche à côté du nom de l'agence.
-- **Agences côté clipper** : la page Campagnes s'ouvre sur la liste des agences qui organisent les campagnes visibles (l'agence propriétaire, ou la marque pour une campagne créée par ClipBoost), puis chaque agence a sa page (`#/clipper/agence/<clé>`) avec sa présentation et ses projets de clipping. Le clipper ne reçoit que leur profil public (nom, pays, présentation, date d'inscription).
+- **Agences côté clipper** : « Découvrir » présente toutes les campagnes ouvertes ; la page « Agences » liste celles qui les organisent (l'agence propriétaire, ou la marque pour une campagne créée par ClipBoost), puis chaque agence a sa page (`#/clipper/agence/<clé>`) avec sa couverture, son logo, sa présentation et ses projets de clipping. Le clipper ne reçoit que leur profil public (nom, photo, couverture, pays, présentation, date d'inscription, badge de vérification).
 
 Le code des règles est dans `lib/server/rules.ts` et `lib/server/services/`.
 
 ## API
 
-Toutes les routes répondent en JSON (`{ ok: true, … }` ou `{ error: "message" }`) ; celles qui modifient des données refusent les requêtes venant d'un autre site.
+Les routes répondent en JSON (`{ ok: true, … }` ou `{ error: "message" }`), sauf les images (`/api/media/<id>`) et les redirections de la connexion Google, Apple ou Discord ; celles qui modifient des données refusent les requêtes venant d'un autre site (sauf le retour d'Apple, protégé par l'état à usage unique du cookie `cb_oauth`). Un corps de requête est limité à 8 Mo.
 
 | Route | Qui | Rôle |
 |---|---|---|
@@ -158,7 +158,7 @@ tests/               tests des règles et du parcours API
 
 ## Reste à faire avant un lancement public
 
-- Relevé automatique des vues par les API TikTok, Instagram et YouTube (aujourd'hui saisies par l'administrateur).
+- Relevé automatique des vues par les API TikTok, Instagram, YouTube et Facebook (aujourd'hui saisies par l'administrateur).
 - Paiement en ligne des recharges par carte Edahabia, CIB, Visa ou Mastercard via une passerelle de paiement (aujourd'hui confirmées à la main).
 - Vérification de fond des agences avant le badge (documents, registre du commerce).
 - Pages « Mentions légales » et « Aide et support » du menu du compte.

@@ -112,8 +112,8 @@ function applyRouteItem(area, view, id) {
       if (p) state.modal = { type: "adm-clip", id };
       return "";
     }
-    const t = db.transactions.find((x) => x.id === id);
-    if (view === "retraits" && t) state.adm.payTab = t.type === "recharge" ? "recharges" : "retraits";
+    const tx = db.transactions.find((x) => x.id === id);
+    if (view === "retraits" && tx) state.adm.payTab = tx.type === "recharge" ? "recharges" : "retraits";
   }
   return id;
 }
@@ -132,6 +132,7 @@ function flashRow(id) {
 // ---------- Coquille commune aux espaces Clipper, Agence et Admin ----------
 
 // AREAS : navigation mobile = 4 onglets + « Plus » (qui ouvre le tiroir) ; libellés courts via n.short.
+// title et libellés de navigation (n.label, n.short) : textes français, traduits à l'affichage par t().
 // profile : page « Mon profil » (admin : « Mon compte ») du menu du compte.
 const AREAS = {
   clipper: { nav: () => CLIPPER_NAV, views: () => CLIPPER_VIEWS, title: "Espace Clipper", mobile: ["accueil", "decouvrir", "publications", "portefeuille"], profile: "profil", modal: () => clipperModal() },
@@ -153,24 +154,24 @@ function shellSidebar(area, tools = "") {
   const nav = AREAS[area].nav(), u = userById(state.session), view = navView(area, state.route.view);
   const mini = area === "agence" && !MINI_HIDDEN.agence.includes(view)
     ? `<a href="#/agence/budget" class="block rounded-tile border border-line bg-surface px-3 py-2.5 shadow-card transition-colors duration-150 hover:border-line-strong ${FOCUS}">
-        <span class="block text-xs text-fg-subtle">Crédit disponible</span>
+        <span class="block text-xs text-fg-subtle">${t("Crédit disponible")}</span>
         <span class="mt-0.5 block text-[15px] font-semibold">${money(u.credit)}</span></a>`
     : "";
-  const cta = area === "agence" ? `<button type="button" data-action="ag-new" class="${btn("primary", "md", "w-full")}">${icon("plus")}Nouvelle campagne</button>` : "";
+  const cta = area === "agence" ? `<button type="button" data-action="ag-new" class="${btn("primary", "md", "w-full")}">${icon("plus")}${t("Nouvelle campagne")}</button>` : "";
   return `<div class="flex h-10 shrink-0 items-center gap-2 px-2">${logo({ size: "sm" })}${roleBadge(area)}${tools ? `<div class="-me-1 ms-auto flex items-center gap-0.5">${tools}</div>` : ""}</div>
     <div class="-mx-3 mt-6 min-h-32 flex-1 overflow-y-auto px-3 pb-2">
-      <p class="px-2.5 text-micro font-medium uppercase tracking-[0.08em] text-fg-subtle">${AREAS[area].title}</p>
-      <nav class="mt-2 grid gap-0.5" aria-label="Navigation principale">${nav.map((n) => {
+      <p class="px-2.5 text-micro font-medium uppercase tracking-[0.08em] text-fg-subtle">${t(AREAS[area].title)}</p>
+      <nav class="mt-2 grid gap-0.5" aria-label="${esc(t("Navigation principale"))}">${nav.map((n) => {
         const on = view === n.id, count = area === "admin" ? adminBadge(n.id) : 0;
-        return `<a href="#/${area}/${n.id}" ${on ? 'aria-current="page"' : ""} class="${NAV_ITEM}">${icon(n.icon, NAV_ICON)}<span class="min-w-0 flex-1 truncate">${n.label}</span>${count ? countBadge(count, "queue") : ""}</a>`;
+        return `<a href="#/${area}/${n.id}" ${on ? 'aria-current="page"' : ""} class="${NAV_ITEM}">${icon(n.icon, NAV_ICON)}<span class="min-w-0 flex-1 truncate">${t(n.label)}</span>${count ? countBadge(count, "queue") : ""}</a>`;
       }).join("")}</nav>
     </div>
     <div class="grid shrink-0 gap-3 pt-4">
       ${mini}${cta}
-      <a href="/" class="${btn("ghost", "sm", "w-full justify-start")}">${icon("globe")}Voir le site public</a>
+      <a href="/" class="${btn("ghost", "sm", "w-full justify-start")}">${icon("globe")}${t("Voir le site public")}</a>
       <div class="flex items-center gap-2.5 rounded-lg p-1.5">${avatar(u, "sm")}
         <div class="min-w-0 flex-1"><p class="break-words text-small font-medium leading-5 text-fg">${nameWithBadge(u, "size-3.5")}</p><p class="break-all text-xs text-fg-subtle"><span dir="ltr">${esc(u.email)}</span></p></div>
-        <button type="button" data-action="logout" class="${iconBtn("sm", false, "hover:text-danger-fg")}" aria-label="Se déconnecter" title="Se déconnecter">${icon("logout")}</button>
+        <button type="button" data-action="logout" class="${iconBtn("sm", false, "hover:text-danger-fg")}" aria-label="${esc(t("Se déconnecter"))}" title="${esc(t("Se déconnecter"))}">${icon("logout")}</button>
       </div>
     </div>`;
 }
@@ -182,15 +183,15 @@ function shellTopbar(area) {
   const u = userById(state.session), notifs = myNotifs(), unread = notifs.filter((n) => n.unread).length;
   // Recherche rapide du clipper : absente de Découvrir, qui a sa propre recherche (un seul champ à l'écran).
   const ctx = area === "clipper"
-    ? (state.route.view === "decouvrir" ? "" : searchInput("global-q", "", "Rechercher une campagne…", "Recherche rapide", "hidden w-full max-w-xs md:block"))
-    : `<p class="hidden min-w-0 truncate text-small text-fg-muted lg:block">${area === "admin" ? "Administration" : `Agence · ${nameWithBadge(u, "size-3.5")}`}</p>`;
+    ? (state.route.view === "decouvrir" ? "" : searchInput("global-q", "", t("Rechercher une campagne…"), t("Recherche rapide"), "hidden w-full max-w-xs md:block"))
+    : `<p class="hidden min-w-0 truncate text-small text-fg-muted lg:block">${area === "admin" ? t("Administration") : t("Agence · {name}", { name: nameWithBadge(u, "size-3.5") })}</p>`;
   return `<header class="sticky top-0 ${state.notifOpen || state.menuOpen ? "z-40" : "z-30"} flex h-14 items-center gap-3 border-b border-line bg-canvas/85 px-4 backdrop-blur-md sm:px-6 lg:px-8">
     <div class="flex items-center gap-2 lg:hidden">${logo({ size: "sm" })}${roleBadge(area)}</div>
     ${ctx}
     <div class="relative ms-auto flex items-center gap-1">
-      <button type="button" data-action="notif" aria-expanded="${state.notifOpen}" aria-haspopup="dialog" aria-controls="notif-panel" aria-label="Notifications${unread ? ` (${unread} non lues)` : ""}" class="${iconBtn("md", false, "relative")}">${icon("bell")}${unread ? `<span class="absolute end-1.5 top-1.5 size-2 rounded-full bg-brand ring-2 ring-canvas" aria-hidden="true"></span>` : ""}</button>
+      <button type="button" data-action="notif" aria-expanded="${state.notifOpen}" aria-haspopup="dialog" aria-controls="notif-panel" aria-label="${esc(unread ? t("Notifications ({count})", { count: plural(unread, "non lue", "non lues") }) : t("Notifications"))}" class="${iconBtn("md", false, "relative")}">${icon("bell")}${unread ? `<span class="absolute end-1.5 top-1.5 size-2 rounded-full bg-brand ring-2 ring-canvas" aria-hidden="true"></span>` : ""}</button>
       ${state.notifOpen ? notifPanel(notifs) : ""}
-      <button type="button" data-action="account-menu" aria-expanded="${state.menuOpen}" aria-haspopup="dialog" aria-controls="account-menu" aria-label="Mon compte" title="${esc(u.name)}" class="grid size-10 shrink-0 place-items-center rounded-full transition-colors duration-150 hover:bg-muted aria-expanded:bg-muted ${FOCUS}">${avatar(u, "sm")}</button>
+      <button type="button" data-action="account-menu" aria-expanded="${state.menuOpen}" aria-haspopup="dialog" aria-controls="account-menu" aria-label="${esc(t("Mon compte"))}" title="${esc(u.name)}" class="grid size-10 shrink-0 place-items-center rounded-full transition-colors duration-150 hover:bg-muted aria-expanded:bg-muted ${FOCUS}">${avatar(u, "sm")}</button>
       ${state.menuOpen ? accountMenu(area, u) : ""}
     </div></header>`;
 }
@@ -205,15 +206,16 @@ const MENU_ITEM = `${MENU_ROW} text-fg-muted hover:bg-muted hover:text-fg aria-[
 const MENU_ICON = "text-fg-subtle transition-colors group-hover:text-fg-muted";
 
 function accountMenu(area, u) {
-  const role = area === "admin" ? badge("Administrateur", "brand", { ic: "shield" })
-    : area === "agence" ? badge("Agence", "info", { ic: "building" })
-    : badge(esc(!u.level ? "Clipper" : /clipper/i.test(u.level) ? u.level : `Clipper · ${u.level}`), "brand", { ic: "medal" });
+  // Niveau du clipper (valeur du serveur : « Nouveau », « Clipper Bronze »…) traduit à l'affichage.
+  const role = area === "admin" ? badge(esc(t("Administrateur")), "brand", { ic: "shield" })
+    : area === "agence" ? badge(esc(t("Agence")), "info", { ic: "building" })
+    : badge(esc(!u.level ? t("Clipper") : /clipper/i.test(u.level) ? t(u.level) : t("Clipper · {level}", { level: t(u.level) })), "brand", { ic: "medal" });
   const here = navView(area, state.route.view), views = AREAS[area].views();
   // Seules les pages qui existent dans l'espace (un lien vers une page absente ramènerait à l'accueil de l'espace).
-  const links = [[AREAS[area].profile, "user", area === "admin" ? "Mon compte" : "Mon profil"], ["parametres", "gear", area === "admin" ? "Réglages du site" : "Paramètres"]]
+  const links = [[AREAS[area].profile, "user", area === "admin" ? t("Mon compte") : t("Mon profil")], ["parametres", "gear", area === "admin" ? t("Réglages du site") : t("Paramètres")]]
     .filter(([view]) => Object.prototype.hasOwnProperty.call(views, view))
     .map(([view, ic, label]) => `<a href="#/${area}/${view}" ${here === view ? 'aria-current="page"' : ""} class="${MENU_ITEM}">${icon(ic, MENU_ICON)}${label}</a>`).join("");
-  return `<div id="account-menu" tabindex="-1" role="dialog" aria-label="Mon compte" class="absolute end-0 top-12 z-40 flex max-h-[calc(100dvh-8.5rem)] w-[min(20rem,calc(100vw-2rem))] flex-col overflow-hidden rounded-card border border-line bg-surface-raised shadow-popover animate-pop-in focus:outline-none lg:max-h-[calc(100dvh-4.5rem)]">
+  return `<div id="account-menu" tabindex="-1" role="dialog" aria-label="${esc(t("Mon compte"))}" class="absolute end-0 top-12 z-40 flex max-h-[calc(100dvh-8.5rem)] w-[min(20rem,calc(100vw-2rem))] flex-col overflow-hidden rounded-card border border-line bg-surface-raised shadow-popover animate-pop-in focus:outline-none lg:max-h-[calc(100dvh-4.5rem)]">
     <div class="min-h-0 flex-1 overflow-y-auto">
       <div class="flex items-start gap-3 border-b border-line px-4 py-4">${avatar(u, "md")}
         <div class="min-w-0 flex-1">
@@ -224,17 +226,17 @@ function accountMenu(area, u) {
       </div>
       ${links ? `<div class="grid gap-0.5 border-b border-line p-1.5">${links}</div>` : ""}
       <div class="flex items-center justify-between gap-3 py-2 pe-1.5 ps-4">
-        <span class="flex min-w-0 items-center gap-3 text-sm font-medium text-fg-muted">${icon("globe", "size-[18px] shrink-0 text-fg-subtle")}Langue</span>
+        <span class="flex min-w-0 items-center gap-3 text-sm font-medium text-fg-muted">${icon("globe", "size-[18px] shrink-0 text-fg-subtle")}${t("Langue")}</span>
         ${langSwitch({ cls: "w-[8.75rem] shrink-0" })}
       </div>
       <div class="grid gap-0.5 border-t border-line p-1.5">
-        <button type="button" data-action="soon" data-value="mentions" class="${MENU_ITEM}">${icon("fileText", MENU_ICON)}Mentions légales</button>
-        <button type="button" data-action="soon" data-value="aide" class="${MENU_ITEM}">${icon("help", MENU_ICON)}Aide et support</button>
+        <button type="button" data-action="soon" data-value="mentions" class="${MENU_ITEM}">${icon("fileText", MENU_ICON)}${t("Mentions légales")}</button>
+        <button type="button" data-action="soon" data-value="aide" class="${MENU_ITEM}">${icon("help", MENU_ICON)}${t("Aide et support")}</button>
       </div>
-      <div class="border-t border-line p-1.5"><button type="button" data-action="logout" class="${MENU_ROW} text-danger-fg hover:bg-danger-bg">${icon("logout")}Se déconnecter</button></div>
+      <div class="border-t border-line p-1.5"><button type="button" data-action="logout" class="${MENU_ROW} text-danger-fg hover:bg-danger-bg">${icon("logout")}${t("Se déconnecter")}</button></div>
     </div>
     <div class="flex shrink-0 items-center justify-between gap-3 border-t border-line bg-subtle py-2 pe-1.5 ps-4">
-      <span class="text-small font-medium text-fg-muted">Thème</span>
+      <span class="text-small font-medium text-fg-muted">${t("Thème")}</span>
       ${themeModeSwitch({ cls: "w-[8.75rem] shrink-0" })}
     </div>
   </div>`;
@@ -242,7 +244,7 @@ function accountMenu(area, u) {
 
 // ---------- Panneau des notifications ----------
 
-// Destination d'une notification (libellé visible et nom accessible), selon la page de son lien.
+// Destination d'une notification (libellé visible et nom accessible), selon la page de son lien ; traduite à l'affichage.
 const NOTIF_DEST = {
   "clipper/decouvrir": "Voir la campagne", "clipper/campagnes": "Voir la campagne", "clipper/publications": "Voir le clip",
   "clipper/portefeuille": "Voir l'opération", "clipper/accueil": "Ouvrir mon espace",
@@ -250,7 +252,7 @@ const NOTIF_DEST = {
   "admin/campagnes": "Voir la campagne", "admin/moderation": "Voir le clip", "admin/retraits": "Voir la demande",
   "admin/utilisateur": "Voir le profil", "admin/apercu": "Ouvrir mon espace",
 };
-const notifDest = (href) => { const [area, view] = String(href || "").replace(/^#\//, "").split("/"); return NOTIF_DEST[`${area}/${view}`] || "Ouvrir"; };
+const notifDest = (href) => { const [area, view] = String(href || "").replace(/^#\//, "").split("/"); return t(NOTIF_DEST[`${area}/${view}`] || "Ouvrir"); };
 
 // État vide propre à chaque rôle.
 const NOTIF_EMPTY = {
@@ -260,13 +262,13 @@ const NOTIF_EMPTY = {
 };
 function notifPanel(list) {
   const anyUnread = list.some((n) => n.unread);
-  return `<div id="notif-panel" tabindex="-1" class="absolute end-0 top-12 z-40 w-[min(24rem,calc(100vw-2rem))] overflow-hidden rounded-card border border-line bg-surface-raised shadow-popover animate-pop-in focus:outline-none" role="dialog" aria-label="Notifications">
-    <div class="flex items-center justify-between gap-3 border-b border-line px-4 py-3"><p class="text-sm font-semibold text-fg">Notifications</p>${anyUnread ? `<button type="button" data-action="read-all" class="${btn("link", "", "text-small")}">Tout marquer comme lu</button>` : ""}</div>
+  return `<div id="notif-panel" tabindex="-1" class="absolute end-0 top-12 z-40 w-[min(24rem,calc(100vw-2rem))] overflow-hidden rounded-card border border-line bg-surface-raised shadow-popover animate-pop-in focus:outline-none" role="dialog" aria-label="${esc(t("Notifications"))}">
+    <div class="flex items-center justify-between gap-3 border-b border-line px-4 py-3"><p class="text-sm font-semibold text-fg">${t("Notifications")}</p>${anyUnread ? `<button type="button" data-action="read-all" class="${btn("link", "", "text-small")}">${t("Tout marquer comme lu")}</button>` : ""}</div>
     ${list.length ? `<div class="max-h-[min(24rem,calc(100dvh-12rem))] divide-y divide-line overflow-y-auto">${list.map((n) => `<button type="button" data-action="read-one" data-id="${n.id}" class="group relative flex w-full gap-3 px-4 py-3 pe-9 text-start transition-colors duration-150 hover:bg-subtle ${FOCUS_INSET} ${n.unread ? "bg-brand-soft/50" : ""}">
       ${eventIcon(n.icon)}<span class="min-w-0 flex-1"><span class="block text-small leading-5 ${n.unread ? "font-medium text-fg" : "text-fg-muted"}">${esc(tServer(n.text))}</span>
         <span class="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-xs text-fg-subtle"><span>${ago(n.at)}</span>${n.link ? `<span aria-hidden="true">·</span><span class="inline-flex items-center gap-0.5 font-medium text-fg-muted transition-colors duration-150 group-hover:text-brand-fg">${notifDest(n.link)}${icon("chevronRight", "size-3.5 rtl:-scale-x-100")}</span>` : ""}</span></span>
-      ${n.unread ? '<span class="absolute end-4 top-4 size-2 rounded-full bg-brand"></span><span class="sr-only">(non lue)</span>' : ""}</button>`).join("")}</div>`
-      : emptyState("bell", "Aucune notification", NOTIF_EMPTY[state.route.area] || NOTIF_EMPTY.clipper, "", { inCard: true })}
+      ${n.unread ? '<span class="absolute end-4 top-4 size-2 rounded-full bg-brand"></span><span class="sr-only">${t("(non lue)")}</span>' : ""}</button>`).join("")}</div>`
+      : emptyState("bell", t("Aucune notification"), t(NOTIF_EMPTY[state.route.area] || NOTIF_EMPTY.clipper), "", { inCard: true })}
   </div>`;
 }
 
@@ -274,10 +276,10 @@ function shellMobileNav(area) {
   const ids = AREAS[area].mobile, nav = AREAS[area].nav(), view = navView(area, state.route.view), inMore = !ids.includes(view);
   const TABI = "relative flex flex-col items-center justify-center gap-1 text-micro font-medium text-fg-subtle transition-colors [&_svg]:size-5 before:absolute before:inset-x-5 before:top-0 before:h-0.5 before:rounded-full aria-[current=page]:text-brand-fg aria-[current=page]:before:bg-brand";
   const tabs = ids.map((id) => nav.find((x) => x.id === id)).filter(Boolean);
-  return `<nav class="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-surface/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-md lg:hidden" aria-label="Navigation mobile">
+  return `<nav class="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-surface/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-md lg:hidden" aria-label="${esc(t("Navigation mobile"))}">
     <div class="grid h-16 grid-cols-5">
-      ${tabs.map((n) => `<a href="#/${area}/${n.id}" ${view === n.id ? 'aria-current="page"' : ""} class="${TABI} ${FOCUS}">${icon(n.icon)}${n.short || n.label}</a>`).join("")}
-      <button type="button" data-action="drawer" aria-expanded="${state.drawer}" ${inMore ? 'aria-current="page"' : ""} class="${TABI} ${FOCUS}">${icon("more")}Plus</button>
+      ${tabs.map((n) => `<a href="#/${area}/${n.id}" ${view === n.id ? 'aria-current="page"' : ""} class="${TABI} ${FOCUS}">${icon(n.icon)}${t(n.short || n.label)}</a>`).join("")}
+      <button type="button" data-action="drawer" aria-expanded="${state.drawer}" ${inMore ? 'aria-current="page"' : ""} class="${TABI} ${FOCUS}">${icon("more")}${t("Plus")}</button>
     </div></nav>`;
 }
 
@@ -285,7 +287,7 @@ function shellMobileNav(area) {
 // hauteur de l'écran (son bloc du bas reste visible) et la barre du haut se colle en haut une fois le bandeau passé.
 function shell(area) {
   const view = AREAS[area].views()[state.route.view]();
-  return `<button type="button" data-action="skip" class="fixed start-4 top-3 z-[70] -translate-y-24 rounded-control bg-surface-raised px-4 py-2 text-sm font-medium text-fg shadow-popover transition-transform duration-150 focus:translate-y-0">Aller au contenu</button>
+  return `<button type="button" data-action="skip" class="fixed start-4 top-3 z-[70] -translate-y-24 rounded-control bg-surface-raised px-4 py-2 text-sm font-medium text-fg shadow-popover transition-transform duration-150 focus:translate-y-0">${t("Aller au contenu")}</button>
     <div class="flex min-h-dvh bg-canvas">
       <aside class="sticky top-0 hidden h-dvh w-[17rem] shrink-0 flex-col overflow-y-auto border-e border-line bg-canvas px-3 py-4 lg:flex">${shellSidebar(area)}</aside>
       <div class="min-w-0 flex-1">
@@ -295,10 +297,10 @@ function shell(area) {
       </div>
     </div>
     ${shellMobileNav(area)}
-    ${state.drawer ? `<div class="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true" aria-label="Menu">
+    ${state.drawer ? `<div class="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true" aria-label="${esc(t("Menu"))}">
       <div class="absolute inset-0 bg-overlay animate-fade-in" data-action="drawer"></div>
       <aside class="absolute inset-y-0 start-0 flex w-80 max-w-[85vw] flex-col overflow-y-auto bg-canvas px-3 pb-[max(1rem,env(safe-area-inset-bottom))] pt-[max(1rem,env(safe-area-inset-top))] shadow-modal animate-drawer-in">
-        ${shellSidebar(area, `<button type="button" data-action="drawer" class="${iconBtn("md")}" aria-label="Fermer le menu" autofocus>${icon("close")}</button>`)}</aside></div>` : ""}
+        ${shellSidebar(area, `<button type="button" data-action="drawer" class="${iconBtn("md")}" aria-label="${esc(t("Fermer le menu"))}" autofocus>${icon("close")}</button>`)}</aside></div>` : ""}
     ${AREAS[area].modal()}`;
 }
 
@@ -429,7 +431,7 @@ function captureDraft(form, target = state.modal) {
 }
 
 // Remet un brouillon dans un formulaire (appelant : restoringDraft = true). Une valeur absente d'une liste déroulante
-// (option disparue) est ignorée ; une photo passe par setImageField (aperçu, bouton « Retirer »).
+// (option disparue) est ignorée ; une photo passe par setImageField (aperçu, bouton « Retirer la photo »).
 function fillForm(form, draft) {
   for (const el of draftControls(form)) {
     if (!(el.name in draft)) continue;
@@ -530,11 +532,11 @@ function dismissModal() {
 
 // ---------- Rendu ----------
 
-// Titre de l'onglet : page courante (entrée de navigation, Mon compte de l'admin), puis l'espace.
+// Titre de l'onglet : page courante (entrée de navigation, Mon compte de l'admin), puis l'espace, dans la langue choisie.
 function pageTitle(area) {
-  const view = navView(area, state.route.view), n = AREAS[area].nav().find((x) => x.id === view);
-  const label = n ? n.label : area === "admin" && view === "compte" ? "Mon compte" : "";
-  return label ? `${label} · ${AREAS[area].title} — ClipBoost` : `${AREAS[area].title} — ClipBoost`;
+  const view = navView(area, state.route.view), n = AREAS[area].nav().find((x) => x.id === view), title = t(AREAS[area].title);
+  const label = n ? t(n.label) : area === "admin" && view === "compte" ? t("Mon compte") : "";
+  return label ? `${label} · ${title} — ClipBoost` : `${title} — ClipBoost`;
 }
 
 function render() {
@@ -567,7 +569,7 @@ function render() {
   const toasts = document.getElementById("toasts");
   root.innerHTML = `${html}<div id="toasts" aria-live="polite" class="pointer-events-none fixed inset-x-0 bottom-20 z-[60] flex flex-col items-center gap-2 px-4 lg:bottom-6"></div>`;
   if (toasts) root.querySelector("#toasts").replaceWith(toasts);
-  document.title = area === "auth" ? `${{ connexion: "Connexion", inscription: "Inscription", "mot-de-passe": "Mot de passe oublié" }[state.route.view]} — ClipBoost` : pageTitle(area);
+  document.title = area === "auth" ? `${{ connexion: t("Connexion"), inscription: t("Inscription"), "mot-de-passe": t("Mot de passe oublié") }[state.route.view]} — ClipBoost` : pageTitle(area);
   // Saisie en cours (modale, formulaires de la page) remise en place avant tout placement du focus (le bouton qui avait
   // ouvert une modale empilée peut vivre dans un récapitulatif en direct).
   restoreDraft();
@@ -627,18 +629,18 @@ let pointerDownTarget = null;
 root.addEventListener("pointerdown", (e) => { pointerDownTarget = e.target; }, true);
 
 // Actions de la coquille et des écrans de connexion. Renvoie false si l'action appartient à l'espace affiché.
-function shellAction(action, t) {
+function shellAction(action, el) {
   switch (action) {
     case "drawer": state.drawer = !state.drawer; state.notifOpen = false; state.menuOpen = false; break;
     case "notif": state.notifOpen = !state.notifOpen; state.menuOpen = false; break;
     case "account-menu": state.menuOpen = !state.menuOpen; state.notifOpen = false; break;
     // Mentions légales, Aide et support : pages à créer.
-    case "soon": toast("Bientôt disponible", "info"); return true;
+    case "soon": toast(t("Bientôt disponible"), "info"); return true;
     case "read-all": act("POST", "/api/notifications/read", {}); return true;
     case "read-one": {
       // Avec un lien : le panneau se ferme et la page de l'élément s'ouvre ; la lecture est enregistrée en arrière-plan.
-      const n = myNotifs().find((x) => x.id === t.dataset.id);
-      if (!n || !n.link) { act("POST", "/api/notifications/read", { ids: [t.dataset.id] }); return true; }
+      const n = myNotifs().find((x) => x.id === el.dataset.id);
+      if (!n || !n.link) { act("POST", "/api/notifications/read", { ids: [el.dataset.id] }); return true; }
       state.notifOpen = false;
       if (n.unread) { n.unread = false; api("POST", "/api/notifications/read", { ids: [n.id] }).catch(() => {}); }
       // Déjà sur la page visée : l'entrée d'historique est remplacée (Retour ne repasse pas par la même page).
@@ -651,15 +653,15 @@ function shellAction(action, t) {
     }
     case "close-modal": dismissModal(); break;
     case "logout": state.menuOpen = false; state.notifOpen = false; state.drawer = false; logout(); return true;
-    case "toast": toast(t.dataset.msg); return true;
+    case "toast": toast(el.dataset.msg); return true;
     case "toggle-pwd": state.auth.showPwd = !state.auth.showPwd; break;
     case "signup-back": state.auth.step = "form"; state.auth.error = ""; break;
-    case "signup-role": captureSignupForm(); state.auth.form.role = t.dataset.value; state.auth.fieldErrors = {}; break;
+    case "signup-role": captureSignupForm(); state.auth.form.role = el.dataset.value; state.auth.fieldErrors = {}; break;
     case "resend-code": resendCode(); return true;
-    case "auth-copy": copy(t.dataset.value, "Adresse copiée"); return true;
-    case "auth-demo": authUseDemo(t.dataset.value); return true;
+    case "auth-copy": copy(el.dataset.value, t("Adresse copiée")); return true;
+    case "auth-demo": authUseDemo(el.dataset.value); return true;
     case "clear-search": {
-      const input = root.querySelector(`[data-input="${t.dataset.value}"]`);
+      const input = root.querySelector(`[data-input="${el.dataset.value}"]`);
       if (input) { input.value = ""; input.focus(); input.dispatchEvent(new Event("input", { bubbles: true })); }
       return true;
     }
@@ -671,18 +673,18 @@ function shellAction(action, t) {
 }
 
 root.addEventListener("click", (e) => {
-  const t = e.target.closest("[data-action]"), action = t ? t.dataset.action : "";
+  const el = e.target.closest("[data-action]"), action = el ? el.dataset.action : "";
   // Fond sombre d'une modale ([data-action="close-modal"] qui contient la boîte [data-stop]) : un clic dans la boîte
   // ne compte pas ; sur le fond, il ferme seulement si l'appui a commencé sur le fond (pas une sélection de texte
   // commencée dans la boîte) et si rien n'a été saisi (sinon : ✕, « Annuler » ou Échap).
-  if (action === "close-modal" && t.querySelector("[data-stop]") && (e.target !== t || pointerDownTarget !== t || modalHasDraft())) return;
+  if (action === "close-modal" && el.querySelector("[data-stop]") && (e.target !== el || pointerDownTarget !== el || modalHasDraft())) return;
   // Clic hors du panneau ouvert (notifications, menu du compte) : il se referme ; l'action cliquée s'exécute quand même.
   const inPop = !!e.target.closest("#notif-panel, #account-menu");
   let closedPop = false;
   if ((state.notifOpen || state.menuOpen) && !inPop && action !== "notif" && action !== "account-menu") {
     state.notifOpen = false; state.menuOpen = false; closedPop = true;
   }
-  if (!t) {
+  if (!el) {
     // Lien du menu du compte (Mon profil, Paramètres) : le menu se ferme ; déjà sur cette page, simple réaffichage.
     const link = inPop && e.target.closest("#account-menu a[href]");
     if (link) {
@@ -693,12 +695,12 @@ root.addEventListener("click", (e) => {
     if (closedPop) render();
     return;
   }
-  if (!shellAction(action, t)) {
+  if (!shellAction(action, el)) {
     const area = state.route.area;
-    if (area === "admin") handleAdminAction(action, t);
-    else if (area === "agence") handleAgencyAction(action, t);
-    else if (area === "clipper") handleClipperAction(action, t);
-    else if (area === "auth" && typeof handleAuthAction === "function") handleAuthAction(action, t);
+    if (area === "admin") handleAdminAction(action, el);
+    else if (area === "agence") handleAgencyAction(action, el);
+    else if (area === "clipper") handleClipperAction(action, el);
+    else if (area === "auth" && typeof handleAuthAction === "function") handleAuthAction(action, el);
   }
   // L'action n'a pas réaffiché la page : le panneau refermé disparaît quand même.
   if (closedPop && root.querySelector("#notif-panel, #account-menu")) render();
@@ -797,5 +799,5 @@ window.addEventListener("hashchange", onRoute);
 refresh()
   .then(onRoute)
   .catch((e) => {
-    root.innerHTML = `<div class="grid min-h-dvh place-items-center bg-canvas p-6">${emptyState("alert", esc(tServer(e.message)), "Vérifiez votre connexion puis réessayez.", `<button type="button" onclick="location.reload()" class="${btn("primary")}">Réessayer</button>`)}</div>`;
+    root.innerHTML = `<div class="grid min-h-dvh place-items-center bg-canvas p-6">${emptyState("alert", esc(tServer(e.message)), t("Vérifiez votre connexion puis réessayez."), `<button type="button" onclick="location.reload()" class="${btn("primary")}">${t("Réessayer")}</button>`)}</div>`;
   });

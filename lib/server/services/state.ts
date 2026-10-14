@@ -5,6 +5,7 @@ import { getSettings } from "../settings";
 import { balances } from "./money";
 import { inferLink, type LinkContext } from "../links";
 import { configuredProviders } from "../oauth";
+import { OAUTH_PROVIDERS } from "../validation";
 
 const day = (d: Date) => d.toISOString().slice(0, 10);
 const time = (d: Date) => d.toISOString().slice(11, 16);
@@ -15,7 +16,7 @@ type UserRow = typeof schema.users.$inferSelect;
 function publicUser(u: UserRow) {
   return {
     id: u.id, role: u.role, name: u.name, country: u.country, status: u.status, level: u.level, joined: day(u.createdAt),
-    handle: u.handles.tiktok ?? u.handles.instagram ?? u.handles.youtube ?? "", avatar: u.avatar, verified: u.verification === "verified",
+    handle: u.handles.tiktok || u.handles.instagram || u.handles.youtube || u.handles.facebook || "", avatar: u.avatar, verified: u.verification === "verified",
   };
 }
 
@@ -76,7 +77,7 @@ export async function stateFor(user: User) {
   const activityRows = isAdmin ? await db.select().from(schema.activity).orderBy(desc(schema.activity.createdAt)).limit(30) : [];
 
   const mine = isClipper ? await db.select().from(M).where(eq(M.userId, user.id)) : [];
-  // Comptes Google, Apple ou Discord reliés (Paramètres) ; hasPassword : faux pour un compte créé par l'un d'eux sans mot de passe.
+  // Comptes Google, Apple ou Discord reliés (Paramètres), dans l'ordre des boutons ; hasPassword : faux pour un compte créé par l'un d'eux sans mot de passe.
   const providers = (await db.select({ provider: schema.oauthAccounts.provider }).from(schema.oauthAccounts).where(eq(schema.oauthAccounts.userId, user.id))).map((r) => r.provider);
   const since = new Date(Date.now() - 30 * 86_400_000);
 
@@ -103,7 +104,7 @@ export async function stateFor(user: User) {
   return {
     me: {
       ...fullUser(user), favorites: mine.filter((m) => m.favorite).map((m) => m.campaignId), joinedCampaigns: mine.filter((m) => m.joined).map((m) => m.campaignId),
-      ...(balanceOf.get(user.id) ?? {}), hasPassword: user.passwordHash !== "", providers: [...new Set(providers)].sort(),
+      ...(balanceOf.get(user.id) ?? {}), hasPassword: user.passwordHash !== "", providers: OAUTH_PROVIDERS.filter((p) => providers.includes(p)),
     },
     settings: { maintenance: settings.maintenance, signupsOpen: settings.signupsOpen, announcement: settings.announcement, minWithdraw: settings.minWithdraw, commissionRate: settings.commissionRate, minBudget: settings.minBudget, holdDays: settings.holdDays, earningDays: settings.earningDays, instantFeePercent: settings.instantFeePercent, instantMinFee: settings.instantMinFee },
     users: userRows.map((u) => ({ ...(isAdmin ? fullUser(u) : u.id === user.id ? fullUser(u) : publicUser(u)), ...(balanceOf.get(u.id) ?? {}) })),

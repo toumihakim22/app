@@ -134,15 +134,23 @@ test("inscription avec code, campagne financée, clip payé et retrait instantan
   await call("POST", `/api/clips/${refusedId}/review`, { approve: false, reason: "Hors sujet" });
   const yacine = (await call("GET", "/api/state")).data.users.find((u: { email: string }) => u.email === "yacine@clipboost.dz");
   assert.equal((await call("PATCH", `/api/admin/users/${yacine.id}`, { status: "Actif" })).status, 200);
-  assert.equal((await call("PATCH", `/api/campaigns/${campaignId}`, { status: "Terminée" })).status, 200);
   await login("yacine@clipboost.dz");
+  const { data: { id: lateId } } = await call("POST", "/api/clips", { campaignId, title: "Dernier clip", links: [{ platform: "TikTok", url: "https://www.tiktok.com/@x/video/3" }] });
+  await login("admin@clipboost.dz", "AdminClip2026");
+  assert.equal((await call("PATCH", `/api/campaigns/${campaignId}`, { status: "Terminée" })).status, 200);
+  // Campagne terminée : budget restant rendu à l'agence, plus aucun clip ne peut être validé ni payé.
+  await call("POST", `/api/clips/${lateId}/views`, { views: 90000 });
+  assert.deepEqual(await call("POST", `/api/clips/${lateId}/review`, { approve: true }), { status: 400, data: { error: "Cette campagne est terminée : ce clip ne peut plus être validé" } });
+  await call("POST", `/api/clips/${clipId}/views`, { views: 200000 });
+  await login("yacine@clipboost.dz");
+  assert.equal((await state()).publications.find((p: { id: string }) => p.id === clipId).paid, 6750);
   notes = (await call("GET", "/api/state")).data.notifications;
   assert.deepEqual(notes.slice(0, 2).map((n: { link: string }) => n.link), ["#/clipper/accueil", `#/clipper/publications/${refusedId}`]);
 
   await login("atlas@test.dz", "Atlas2026x");
   notes = (await call("GET", "/api/state")).data.notifications;
   assert.equal(linkOf(notes, /en cours de vérification/), `#/agence/campagnes/${campaignId}`);
-  assert.equal(linkOf(notes, /^Votre recharge de 250 000 DA a été validé/), `#/agence/budget/${recharge.id}`);
+  assert.equal(linkOf(notes, /^Votre recharge de 250 000 DA a été validée\.$/), `#/agence/budget/${recharge.id}`);
   assert.equal(linkOf(notes, /a été approuvée et est en ligne/), `#/agence/campagnes/${campaignId}`);
   assert.equal(linkOf(notes, /est terminée\.$/), `#/agence/campagnes/${campaignId}`);
   assert.equal(linkOf(notes, /non consommés sur/), `#/agence/budget/${campaignId}`);
@@ -204,6 +212,8 @@ test("campagne refusée : modification, relance, refus motivé, annulation et su
   assert.equal(notes[1].link, `#/admin/campagnes/${refused.id}`);
   assert.equal((await call("PUT", `/api/campaigns/${refused.id}`, input)).status, 403);
   assert.deepEqual(await call("PATCH", `/api/campaigns/${refused.id}`, { status: "Refusée" }), { status: 400, data: { error: "Indiquez le motif du refus" } });
+  // Une campagne en attente est approuvée (et financée) ou refusée, jamais mise en pause : une reprise la mettrait en ligne sans financement.
+  assert.deepEqual(await call("PATCH", `/api/campaigns/${refused.id}`, { status: "En pause" }), { status: 400, data: { error: "Action impossible sur cette campagne" } });
   assert.deepEqual(await call("PATCH", `/api/campaigns/${derby.id}`, { status: "Refusée", reason: "Hors charte" }), { status: 400, data: { error: "Seule une campagne en attente peut être refusée" } });
   assert.equal((await call("PATCH", `/api/campaigns/${refused.id}`, { status: "Refusée", reason: "Logo officiel manquant." })).status, 200);
 

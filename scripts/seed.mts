@@ -4,7 +4,7 @@ import * as schema from "../lib/server/db/schema";
 import { newId, newRef } from "../lib/server/ids";
 import { link } from "../lib/server/links";
 import { hashPassword } from "../lib/server/password";
-import { payoutFor } from "../lib/server/rules";
+import { payoutFor, sentence } from "../lib/server/rules";
 import { DEFAULT_SETTINGS } from "../lib/server/settings";
 import { openDb } from "./db";
 
@@ -70,10 +70,15 @@ if (process.argv.includes("--demo")) {
     acts.push([3, "🏢", `${hoggar.name} s'est inscrit (agence).`]);
     acts.push([2, "🏢", `${hoggar.name} a soumis la campagne « ${soirees.title} ».`]);
     notes.push([hoggar, 2, "⏳", `Votre campagne « ${soirees.title} » est en cours de vérification.`, link.agencyCampaign(soirees.id)]);
+    // Campagne refusée avec un motif : l'agence peut la corriger et la relancer, ou la supprimer.
     acts.push([4, "🏢", `${tassili.name} a soumis la campagne « ${coupe.title} ».`], [3.5, "🎯", `Campagne « ${coupe.title} » : En attente → Refusée.`]);
-    notes.push([tassili, 3.5, "⚠️", `Votre campagne « ${coupe.title} » a été refusée : ${coupe.reviewNote}`, link.agencyCampaign(coupe.id)]);
-    acts.push([6, "🎯", `Campagne « ${festival.title} » : En attente → Active.`]);
-    launched(festival, 6);
+    notes.push([tassili, 4, "⏳", `Votre campagne « ${coupe.title} » est en cours de vérification.`, link.agencyCampaign(coupe.id)],
+      [tassili, 3.5, "⚠️", `Votre campagne « ${coupe.title} » a été refusée : ${sentence(coupe.reviewNote!)}`, link.agencyCampaign(coupe.id)]);
+    // Agence vérifiée (badge bleu) : sa campagne approuvée et annoncée aux clippers, comme le derby.
+    notes.push([djurdjura, 6, "⏳", `Votre campagne « ${festival.title} » est en cours de vérification.`, link.agencyCampaign(festival.id)], [djurdjura, 5.9, "✅", `Votre campagne « ${festival.title} » a été approuvée et est en ligne.`, link.agencyCampaign(festival.id)]);
+    acts.push([5.9, "🎯", `Campagne « ${festival.title} » : En attente → Active.`]);
+    launched(festival, 5.9);
+    // Demande de badge de vérification en attente de l'équipe.
     acts.push([1.5, "🛡️", `${hoggar.name} demande le badge de vérification.`]);
 
     // Clips : certains validés et payés, d'autres en attente (dont un sous le seuil).
@@ -107,7 +112,7 @@ if (process.argv.includes("--demo")) {
         notes.push([p.u, p.days, "💸", `+${fmt(paid)} pour « ${p.title} ». Retirable dans ${DEFAULT_SETTINGS.holdDays} jours.`, link.clipperTx(txId)]);
       } else if (p.status === "Refusée") {
         acts.push([p.days, "🚫", `Clip « ${p.title} » refusé par Équipe ClipBoost.`]);
-        notes.push([p.u, p.days, "⚠️", `Clip « ${p.title} » refusé : ${p.reason}.`, link.clip(id)]);
+        notes.push([p.u, p.days, "⚠️", `Clip « ${p.title} » refusé : ${sentence(p.reason!)}`, link.clip(id)]);
       }
     }
     for (const c of [derby, rire, kahwa]) await db.update(schema.campaigns).set({ spent: c.spent }).where(eq(schema.campaigns.id, c.id));

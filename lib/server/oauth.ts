@@ -155,8 +155,9 @@ export async function startOAuth(req: NextRequest, provider: OAuthProvider): Pro
 
 async function callbackParams(req: NextRequest, provider: OAuthProvider): Promise<Record<string, string>> {
   if (req.method === "GET") return Object.fromEntries(req.nextUrl.searchParams);
-  // Seul Apple revient en POST (form_post).
+  // Seul Apple revient en POST (form_post) : quelques champs (code, state, id_token, user), jamais plus de quelques Ko.
   if (provider !== "apple") throw new OAuthError("state", "POST inattendu");
+  if (Number(req.headers.get("content-length") ?? 0) > 64_000) throw new OAuthError("failed", "formulaire de retour trop volumineux");
   try {
     const form = await req.formData();
     return Object.fromEntries([...form.entries()].filter((e): e is [string, string] => typeof e[1] === "string"));

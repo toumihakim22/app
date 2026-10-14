@@ -80,7 +80,7 @@ assert.equal(linkOf(st, new RegExp(`^Atlas Média ${stamp} annonce une recharge`
 ok(await admin("POST", `/api/transactions/${recharge.id}/review`, { approve: true }), "recharge confirmée");
 ok(await admin("PATCH", `/api/campaigns/${campaignId}`, { status: "Active" }), "approbation");
 r = await agency("GET", "/api/state"); assert.equal(r.data.me.credit, 120000 - 115000);
-assert.equal(linkOf(r, /^Votre recharge de 120 000 DA a été validé/), `#/agence/budget/${recharge.id}`);
+assert.equal(linkOf(r, /^Votre recharge de 120 000 DA a été validée\.$/), `#/agence/budget/${recharge.id}`);
 assert.equal(linkOf(r, /a été approuvée et est en ligne/), `#/agence/campagnes/${campaignId}`);
 assert.equal(r.data.campaigns.find((c: { id: string }) => c.id === campaignId).reviewNote, null);
 step("recharge confirmée, campagne approuvée, 115 000 DA prélevés, notifications liées");
@@ -103,6 +103,8 @@ ok(await agency("PUT", `/api/campaigns/${nightId}`, edited), "modification avant
 st = await admin("GET", "/api/state");
 assert.equal(linkOf(st, new RegExp(`^Atlas Média ${stamp} a modifié la campagne « Nuits du Sahara »`)), `#/admin/campagnes/${nightId}`);
 r = await admin("PATCH", `/api/campaigns/${nightId}`, { status: "Refusée" }); assert.equal(r.status, 400); assert.match(r.data.error, /motif/);
+// En attente : approuvée (et financée) ou refusée, jamais mise en pause (une reprise la mettrait en ligne sans financement).
+assert.equal((await admin("PATCH", `/api/campaigns/${nightId}`, { status: "En pause" })).status, 400);
 ok(await admin("PATCH", `/api/campaigns/${nightId}`, { status: "Refusée", reason: "Précisez les dates de l'événement" }), "refus avec motif");
 type Camp = { id: string; status: string; reviewNote: string | null; category: string; title: string };
 r = await agency("GET", "/api/state");
@@ -138,7 +140,7 @@ assert.equal((await clip([{ platform: "TikTok", url: "https://evil.example/video
 r = await clip([{ platform: "Facebook", url: `https://www.facebook.com/reel/${stamp}` }]); assert.equal(r.status, 400); assert.match(r.data.error, /n'accepte pas Facebook/);
 // Le même clip sur TikTok et Instagram : un envoi, deux publications du même lot.
 r = await clip([{ platform: "TikTok", url: `https://www.tiktok.com/@r/video/${stamp}` }, { platform: "Instagram", url: `https://www.instagram.com/reel/${stamp}` }]); ok(r, "soumission");
-const clipId = r.data.id; assert.equal(r.data.ids.length, 2); assert.equal(r.data.ids[0], clipId);
+const clipId = r.data.id, siblingId = r.data.ids[1]; assert.equal(r.data.ids.length, 2); assert.equal(r.data.ids[0], clipId);
 r = await clip([{ platform: "TikTok", url: `https://www.tiktok.com/@r/video/${stamp}` }]); assert.equal(r.status, 400); assert.match(r.data.error, /déjà été soumis/);
 const mine = (await clipper("GET", "/api/state")).data.publications as { id: string; platform: string; batch: string | null }[];
 assert.equal(mine.length, 2); assert.ok(mine[0].batch && mine[0].batch === mine[1].batch);
@@ -212,7 +214,9 @@ assert.equal(after - before, Math.round(80000 * 1.15));
 r = await agency("GET", "/api/state");
 assert.equal(linkOf(r, /non consommés sur/), `#/agence/budget/${campaignId}`);
 assert.equal(linkOf(r, /est terminée\.$/), `#/agence/campagnes/${campaignId}`);
-step("campagne terminée, 92 000 DA rendus à l'agence");
+// Budget restant rendu : le clip encore en attente sur Instagram ne peut plus être validé (il peut être refusé).
+r = await admin("POST", `/api/clips/${siblingId}/review`, { approve: true }); assert.equal(r.status, 400); assert.match(r.data.error, /terminée/);
+step("campagne terminée, 92 000 DA rendus à l'agence, plus aucun clip validé");
 
 // 9. Clip refusé : la notification mène au clip ; données d'exemple : chaque notification a son lien.
 const yacine = client();

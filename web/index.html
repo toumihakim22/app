@@ -14,6 +14,8 @@
 </head>
 <body class="font-sans antialiased">
   <div id="app"><div class="grid min-h-dvh place-items-center bg-canvas text-small text-fg-subtle">Chargement…</div></div>
+  <!-- « Chargement… » dans la langue de l'application (lang posé par le script de <head> ; l'accueil public reste en français). -->
+  <script>(function(){var m={en:"Loading…",ar:"جارٍ التحميل…"}[document.documentElement.lang],e=document.querySelector("#app > div");if(m&&e)e.textContent=m})();</script>
   <!--SCRIPT-->
 </body>
 </html>

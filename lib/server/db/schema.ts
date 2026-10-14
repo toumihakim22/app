@@ -7,7 +7,8 @@ export type Role = "clipper" | "agence" | "admin";
 /** Badge de vérification (agences) : demande en cours, accordé ou refusé par l'équipe. */
 export type Verification = "none" | "pending" | "verified" | "rejected";
 export type Locale = "fr" | "en" | "ar";
-export type Handles = { tiktok?: string; instagram?: string; youtube?: string };
+/** Comptes du clipper sur les plateformes (« @pseudo »), affichés aux agences. */
+export type Handles = { tiktok?: string; instagram?: string; youtube?: string; facebook?: string };
 
 export const users = pgTable("users", {
   id: id(),

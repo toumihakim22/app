@@ -1,7 +1,7 @@
 // Données de démarrage de la version autonome : le compte administrateur et les mêmes
 // données d'exemple que `scripts/seed.mts --demo`, datées par rapport au premier lancement.
 import type { CampaignStatus, PublicationStatus } from "../../lib/server/db/schema";
-import { payoutFor } from "../../lib/server/rules";
+import { payoutFor, sentence } from "../../lib/server/rules";
 import { link } from "../../lib/server/links";
 import { DEFAULT_SETTINGS } from "../../lib/server/settings";
 import { emptyStore, insertCampaign, insertPublication, insertTransaction, insertUser, newId, newRef, type CampaignRow, type Store, type UserRow } from "./db";
@@ -71,7 +71,8 @@ export async function seed(): Promise<Store> {
   notes.push([hoggar, 2, "⏳", `Votre campagne « ${soirees.title} » est en cours de vérification.`, link.agencyCampaign(soirees.id)]);
   // Campagne refusée avec un motif : l'agence peut la corriger et la relancer, ou la supprimer.
   acts.push([4, "🏢", `${tassili.name} a soumis la campagne « ${coupe.title} ».`], [3.5, "🎯", `Campagne « ${coupe.title} » : En attente → Refusée.`]);
-  notes.push([tassili, 3.5, "⚠️", `Votre campagne « ${coupe.title} » a été refusée : ${coupe.reviewNote!.replace(/[\s.]+$/, "")}.`, link.agencyCampaign(coupe.id)]);
+  notes.push([tassili, 4, "⏳", `Votre campagne « ${coupe.title} » est en cours de vérification.`, link.agencyCampaign(coupe.id)],
+    [tassili, 3.5, "⚠️", `Votre campagne « ${coupe.title} » a été refusée : ${sentence(coupe.reviewNote!)}`, link.agencyCampaign(coupe.id)]);
   // Agence vérifiée (badge bleu) : sa campagne approuvée et annoncée aux clippers, comme le derby.
   notes.push([djurdjura, 6, "⏳", `Votre campagne « ${festival.title} » est en cours de vérification.`, link.agencyCampaign(festival.id)], [djurdjura, 5.9, "✅", `Votre campagne « ${festival.title} » a été approuvée et est en ligne.`, link.agencyCampaign(festival.id)]);
   acts.push([5.9, "🎯", `Campagne « ${festival.title} » : En attente → Active.`]);
@@ -81,7 +82,7 @@ export async function seed(): Promise<Store> {
 
   let i = 0;
   for (const p of pubs) {
-    const id = newId(), host = p.platform === "TikTok" ? "www.tiktok.com/@clip/video/" : p.platform === "Instagram" ? "www.instagram.com/reel/" : "youtu.be/";
+    const id = newId(), host = ({ TikTok: "www.tiktok.com/@clip/video/", Instagram: "www.instagram.com/reel/", Facebook: "www.facebook.com/reel/" } as Record<string, string>)[p.platform] ?? "youtu.be/";
     const paid = p.status === "Validée" ? payoutFor(p.views, p.c) : 0;
     insertPublication(db, { id, userId: p.u.id, campaignId: p.c.id, title: p.title, platform: p.platform, url: p.url ?? `https://${host}demo${++i}`, batch: p.batch ?? null, views: p.views, status: p.status, reason: p.reason ?? null, paid, approvedAt: p.status === "Validée" ? daysAgo(p.days) : null, createdAt: daysAgo(p.days + 1) });
     const txId = newId();
@@ -95,7 +96,7 @@ export async function seed(): Promise<Store> {
       notes.push([p.u, p.days, "💸", `+${fmt(paid)} pour « ${p.title} ». Retirable dans ${DEFAULT_SETTINGS.holdDays} jours.`, link.clipperTx(txId)]);
     } else if (p.status === "Refusée") {
       acts.push([p.days, "🚫", `Clip « ${p.title} » refusé par Équipe ClipBoost.`]);
-      notes.push([p.u, p.days, "⚠️", `Clip « ${p.title} » refusé : ${p.reason}.`, link.clip(id)]);
+      notes.push([p.u, p.days, "⚠️", `Clip « ${p.title} » refusé : ${sentence(p.reason!)}`, link.clip(id)]);
     }
   }
   const withdrawalId = newId(), rechargeId = newId();

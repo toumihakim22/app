@@ -1,5 +1,12 @@
 import { z } from "zod";
+// Module de la seule langue française : la version autonome n'embarque que les langues de zod importées ainsi
+// (web/offline/build.mjs écarte les autres de z.locales).
+import fr from "zod/v4/locales/fr.js";
 import { PLATFORMS } from "./gradients";
+
+// Messages par défaut de zod en français (champs sans message dédié) : l'API répond dans la langue source de l'app,
+// que l'interface traduit à l'affichage (dictionnaires « server » de web/src/i18n/). Vaut aussi pour la version autonome.
+z.config(fr());
 
 const text = (label: string, max: number) => z.string({ error: `${label} manquant` }).trim().min(1, `${label} obligatoire`).max(max, `${label} trop long`);
 const money = (label: string) => z.coerce.number({ error: `${label} invalide` }).int(`${label} invalide`).min(0, `${label} invalide`).max(1_000_000_000, `${label} trop élevé`);
@@ -40,7 +47,7 @@ export const profileSchema = z.object({
   contact: z.string().trim().max(80).optional(),
   country: text("Pays", 60).optional(),
   bio: z.string().trim().max(300).optional(),
-  handles: z.object({ tiktok: z.string().trim().max(60).optional(), instagram: z.string().trim().max(60).optional(), youtube: z.string().trim().max(60).optional() }).optional(),
+  handles: z.object({ tiktok: z.string().trim().max(60).optional(), instagram: z.string().trim().max(60).optional(), youtube: z.string().trim().max(60).optional(), facebook: z.string().trim().max(60).optional() }).optional(),
   payoutMethod: z.enum(["BaridiMob", "CCP", "RIB bancaire"]).optional(),
   payoutAccount: z.string().trim().max(60).optional(),
   /** Photo de profil (tous les comptes) et photo de couverture (agences). */
@@ -55,7 +62,7 @@ export const campaignSchema = z.object({
   brand: z.string().trim().max(40).optional(),
   // Une catégorie de la liste, ou celle précisée par l'agence quand elle choisit « Autre » (texte libre).
   category: z.string({ error: "Catégorie manquante" }).trim().min(2, "Précisez la catégorie").max(30, "Catégorie trop longue (30 caractères maximum)")
-    .refine((v) => v !== "Autre", "Précisez la catégorie"),
+    .refine((v) => v.toLowerCase() !== "autre", "Précisez la catégorie"),
   rate: money("Tarif").pipe(z.number().min(20, "Tarif minimum : 20 DA pour 1 000 vues").max(2000, "Tarif trop élevé")),
   budget: money("Budget"),
   minPayout: money("Seuil minimum"),

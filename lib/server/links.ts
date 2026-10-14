@@ -62,6 +62,8 @@ export function inferLink(role: Role, text: string, ctx: LinkContext): string | 
     if (/vérifi/.test(text) && /(agence|badge)/i.test(text)) return link.agencyProfile();
   } else if (role === "admin") {
     if ((m = text.match(/ a (?:soumis|modifié|modifié et relancé) la campagne « (.+) »\.$/))) { const c = campaign(m[1]); return c ? link.adminCampaign(c.id) : "#/admin/campagnes"; }
+    if (/ a annulé la campagne « .+ » avant sa vérification\.$/.test(text)) return "#/admin/campagnes";
+    if (/ demande le badge de vérification\.$/.test(text)) return "#/admin/utilisateurs";
     if ((m = text.match(/ annonce une recharge de .+\(réf\. ([^)]+)\)\.$/))) { const t = ctx.transactions.find((x) => x.ref === m![1]); return t ? link.adminPayment(t.id) : "#/admin/retraits"; }
     if (/ demande un retrait de /.test(text)) return "#/admin/retraits";
   }
