@@ -9,14 +9,12 @@ const FOCUS = "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visi
 const BTN = `inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap font-medium transition-colors duration-150 ease-standard ${FOCUS}`;
 const LG = "h-12 rounded-control px-5 text-[15px] [&_svg]:size-5";
 const MD = "h-10 rounded-control px-4 text-sm [&_svg]:size-4";
-const PRIMARY = "bg-brand text-on-brand shadow-control hover:bg-brand-hover active:bg-brand-active";
 const SECONDARY = "border border-line-strong bg-surface text-fg shadow-control hover:border-line-control hover:bg-subtle";
 const GHOST = "text-fg-muted hover:bg-muted hover:text-fg";
 
 const links = [
   { href: "#comment-ca-marche", label: "Comment ça marche" },
-  { href: "#campagnes", label: "Campagnes" },
-  { href: "#gains", label: "Gains" },
+  { href: "#marques", label: "Pour qui" },
   { href: "#faq", label: "FAQ" },
 ];
 
@@ -48,9 +46,6 @@ export default function Header() {
           <ThemeToggle />
           <a href="/espace#/connexion" className={`${BTN} ${MD} ${GHOST}`}>
             Se connecter
-          </a>
-          <a href="/espace#/inscription" className={`${BTN} ${MD} ${PRIMARY}`}>
-            Commencer gratuitement
           </a>
         </div>
 
@@ -85,12 +80,9 @@ export default function Header() {
             </a>
           ))}
         </nav>
-        <div className="mt-3 grid gap-2 border-t border-line pt-4">
+        <div className="mt-3 grid border-t border-line pt-4">
           <a href="/espace#/connexion" onClick={() => setOpen(false)} className={`${BTN} ${LG} ${SECONDARY}`}>
             Se connecter
-          </a>
-          <a href="/espace#/inscription" onClick={() => setOpen(false)} className={`${BTN} ${LG} ${PRIMARY}`}>
-            Commencer gratuitement
           </a>
         </div>
       </div>

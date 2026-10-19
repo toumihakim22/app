@@ -22,27 +22,13 @@ export default function Hero() {
     <section className="relative isolate overflow-hidden">
       <div className="relative mx-auto grid max-w-7xl items-center gap-12 px-4 pb-20 pt-14 sm:px-6 lg:grid-cols-[1.05fr_1fr] lg:px-8 lg:pb-28 lg:pt-20">
         <div>
-          <p className="inline-flex items-center gap-2 rounded-full border border-line bg-surface px-3 py-1 text-small font-medium text-fg-muted shadow-control">
-            {/* Drapeau en SVG (jamais d'emoji) : identique à flagDz() de web/src/ui.js. */}
-            <svg viewBox="0 0 30 20" className="h-3 w-[18px] shrink-0 rounded-xs ring-1 ring-fg/10" role="img" aria-label="Algérie">
-              <rect width="15" height="20" fill="#006233" />
-              <rect x="15" width="15" height="20" fill="#ffffff" />
-              <mask id="dz-crescent-hero">
-                <rect width="30" height="20" fill="#fff" />
-                <circle cx="16.25" cy="10" r="4" fill="#000" />
-              </mask>
-              <circle cx="15" cy="10" r="5" fill="#d21034" mask="url(#dz-crescent-hero)" />
-              <polygon fill="#d21034" points="15.50,10.00 16.91,9.50 16.95,8.00 17.86,9.19 19.30,8.77 18.45,10.00 19.30,11.23 17.86,10.81 16.95,12.00 16.91,10.50" />
-            </svg>
-            La plateforme de clipping pensée pour l&apos;Algérie
-          </p>
-          <h1 className="mt-6 text-h1 text-fg [word-spacing:0.05em] sm:text-display">
+          <h1 className="text-h1 text-fg [word-spacing:0.05em] sm:text-display">
             {/* Plus Jakarta Sans n'a pas de crénage « s. » : le point est rapproché pour ne pas sembler détaché. */}
             Transformez vos clips en <span className="text-brand-fg">revenus<span className="-ml-[0.08em]">.</span></span>
           </h1>
           <p className="mt-5 max-w-xl text-lg leading-8 text-fg-muted">
             ClipBoost met en relation les marques et les créateurs de vidéos courtes. Choisissez une campagne, publiez vos clips et
-            suivez chaque dinar gagné depuis un seul tableau de bord.
+            suivez vos gains depuis un seul tableau de bord.
           </p>
           <div className="mt-8 flex flex-col gap-3 sm:flex-row">
             <a href="/espace#/inscription" className={`${BTN} ${LG} ${PRIMARY}`}>
@@ -79,7 +65,7 @@ export default function Hero() {
               <span className="size-2.5 rounded-full bg-line-strong" aria-hidden="true" />
               <span className="size-2.5 rounded-full bg-line-strong" aria-hidden="true" />
               <span className="size-2.5 rounded-full bg-line-strong" aria-hidden="true" />
-              <span className="ml-2 truncate text-micro text-fg-subtle">clipboost.dz/espace</span>
+              <span className="ml-2 truncate text-micro text-fg-subtle">Espace clipper</span>
               <span className="ml-auto inline-flex h-6 shrink-0 items-center rounded-badge border border-idle-border bg-idle-bg px-2 text-xs font-medium text-idle-fg">
                 Exemple
               </span>

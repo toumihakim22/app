@@ -1,5 +1,5 @@
 // Titre de section du landing (§7.5) : surtitre, h2 (Plus Jakarta Sans par la couche base), chapô.
-// Toujours centré ; pour l'aligner à gauche, envelopper avec [&>div]:mx-0 [&>div]:text-left (Earnings).
+// Toujours centré ; pour l'aligner à gauche, envelopper avec [&>div]:mx-0 [&>div]:text-left.
 // `center` reste accepté pour compatibilité, il n'a plus d'effet.
 // Plus Jakarta Sans n'a pas de crénage « e, » : sans correction, la virgule d'un titre semble précédée d'une espace.
 const tightPunct = (t: string) =>

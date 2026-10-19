@@ -19,7 +19,7 @@ const clipper = [
 
 const brand = [
   "Budget maîtrisé : vous payez uniquement les vues obtenues",
-  "Des centaines de créateurs dans les 48 wilayas",
+  "Des centaines de créateurs prêts à relayer votre marque",
   "Consignes et validation des clips avant diffusion",
   "Statistiques détaillées par clip et par créateur",
 ];
@@ -86,7 +86,7 @@ export default function Audiences() {
               </Icon>
             </span>
             <h3 className="mt-6 text-heading text-on-brand">Vous êtes une marque</h3>
-            <p className="mt-2 text-[15px] leading-7 text-on-brand/90">Faites parler de vous partout en Algérie grâce à des créateurs authentiques.</p>
+            <p className="mt-2 text-[15px] leading-7 text-on-brand/90">Faites parler de vous partout grâce à des créateurs authentiques.</p>
             <Bullets items={brand} bullet="bg-on-brand/15 text-on-brand" text="text-on-brand/90" />
             <div className="mt-auto pt-9">
               <a href="/espace#/inscription-agence" className={`${BTN_ON_COLOR} ${LG} ${ON_COLOR} w-full sm:w-auto`}>

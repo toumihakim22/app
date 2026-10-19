@@ -25,8 +25,8 @@
 | **C, agence** | `web/src/agency.js` | Aperçu, Campagnes, Clips, Budget, Profil, formulaire de campagne, modales (§6.3). |
 | **D, admin** | `web/src/admin.js` | Vue d'ensemble, Utilisateurs, Campagnes, Modération, Paiements, Réglages, modales (§6.4). |
 | **E, auth** | `web/src/auth.js` | Connexion, inscription, vérification, mot de passe (§6.5). |
-| **F, landing 1** | `components/landing/` : `Header`, `Logo`, `Hero`, `IncomeCard`, `StatsStrip`, `HowItWorks`, `Campaigns`, `CampaignCard`, `SectionTitle`, `ThemeToggle` | §7.1 à §7.5. |
-| **G, landing 2** | `components/landing/` : `Earnings`, `TransactionRow`, `Audiences`, `Testimonials`, `Faq`, `FinalCta`, `Footer` ; `app/page.tsx` ; `data/landing.ts` | §7.6 à §7.11. |
+| **F, landing 1** | `components/landing/` : `Header`, `Logo`, `Hero`, `IncomeCard`, `StatsStrip`, `HowItWorks`, `SectionTitle`, `ThemeToggle` | §7.1 à §7.5. |
+| **G, landing 2** | `components/landing/` : `TransactionRow`, `Audiences`, `Testimonials`, `Faq`, `FinalCta`, `Footer` ; `app/page.tsx` ; `data/landing.ts` | §7.6 à §7.11. |
 
 Fichiers que **personne** ne modifie : `web/theme.js`, `web/src/data.js`, `web/offline/*`, `lib/**`, `app/theme-init.ts`, `tests/**`, `public/**` (hors `public/espace.html`, généré).
 
@@ -46,12 +46,11 @@ Tous les fichiers `web/src/*.js` sont concaténés **dans une seule fonction** p
 | `accountCard(u)`, `handlePasswordSubmit(data)` | A (`ui.js`) | B, C, D | Rendu selon §4.8 (email vérifié, connexions Google / Apple / Discord, mot de passe à changer ou à définir). |
 | `captureDraft(form)`, `restoreDraft()`, `openStacked(modal)`, `closeStacked()`, `[data-rerender]` | A (`main.js`) | B, C, D | Brouillons et empilement des modales, §4.8. |
 | `imageField(…)`, `setImageField(el, v)`, `nameWithBadge(u, cls)`, `verifiedBadge(cls, label)`, `themeModeSwitch(…)`, `langSwitch(…)` | A (`ui.js`) | B, C, D, E | §4.8. |
-| `IncomeCard` : props `{ amount?: string; trend?: string }` | F | F (Hero) | Earnings (G) **ne l'utilise plus**. |
+| `IncomeCard` : props `{ amount?: string; trend?: string }` | F | F (Hero) | Inchangées. |
 | `TransactionRow` : props `{ t: Transaction }` | G | F (Hero), G | Inchangées. |
 | `SectionTitle` : props `{ eyebrow, title, text }` | F | G | Inchangées. |
 | `Logo` : props `{ className?: string }` | F | G (Footer) | Inchangées. |
 | `formatDA(value, { signed }?)` | G (`data/landing.ts`) | F, G | Même appel `formatDA(n)` ; passe à `U+00A0` et `U+2212` (§7). |
-| Champ `gradient` de `data/landing.ts` | G | — | **Conservé** dans cette passe, mais plus lu : F utilise `className="cover" data-cat={c.category}`. |
 
 **Noms réservés à `ui.js`** (personne d'autre ne les déclare) :
 `NB`, `MINUS`, `fmt`, `da`, `daSigned`, `money`, `BIG`, `bigMoney`, `compact`, `pct`, `plural`, `rate`, `rateShort`, `code`, `groupAccount`, `icons`, `icon`, `EVENT_ICON`, `eventIcon`, `flagDz`, `logo`, `cx`, `FOCUS`, `BTN`, `btn`, `ICON_BTN`, `iconBtn`, `inputCls`, `inputLg`, `textareaCls`, `selectCls`, `CHEVRON`, `select`, `countrySelect`, `unitInput`, `searchInput`, `field`, `OPTIONAL`, `CHOICE`, `CHOICE_DANGER`, `SEG_CHOICE`, `RADIO`, `CHECKBOX`, `switchBtn`, `CARD`, `CARD_HOVER`, `TILE`, `card`, `cardHeader`, `kpiValue`, `DELTA`, `kpi`, `BADGE`, `TONE`, `DOT`, `STATUS_TONE`, `badge`, `statusBadge`, `PLATFORM_ICON`, `platformTag`, `roleBadge`, `COUNT`, `countBadge`, `opt`, `segmented`, `pills`, `chips`, `TABLIST`, `TAB`, `pageHeader`, `sectionHeader`, `emptyState`, `progress`, `coverAttr`, `THUMB`, `coverThumb`, `AVATARS`, `AVATAR_SIZE`, `avatar`, `TBL`, `TOAST`, `toast`, `MODAL_W`, `modalShell`, `summary`, `ALERT_ICON`, `alertBox`, `accountCard`, `siteBanner`, `themeToggle`, `LIVE`, `niceMax`, `seriesDates`, `dayLabel`, `barChart`, `cumulativeChart`, `barList`, `areaChart`, plus ceux déjà présents (`esc`, `MONTHS`, `date`, `ago`, `initials`, `campaignById`, `userById`, `rawEarnings`, `belowMin`, `isCapped`, `payoutOf`, `earningsOf`, `viewsFor`, `isEmail`, `copy`, `handlePasswordSubmit`, `homeOf`).
@@ -61,16 +60,9 @@ Tous les fichiers `web/src/*.js` sont concaténés **dans une seule fonction** p
 **Récapitulatifs en direct :** un fichier de zone **n'ajoute qu'une propriété** à l'objet partagé (`LIVE.withdraw = …`, `LIVE.budget = …`, `LIVE.campaign = …`), il ne redéclare jamais `LIVE`.
 **Attention aux collisions connues :** `roleTag` existe déjà dans `admin.js` (d'où `roleBadge` dans `ui.js`) ; `campaignCard`, `campaignRow`, `incomeCard`, `txRow` existent dans `clipper.js`. Un fichier de zone qui a besoin d'un helper local le préfixe (`cl…`, `ag…`, `adm…`, `auth…`).
 
-### 0.3 Compatibilité avec le site hors ligne (`web/offline/landing.js`, intouchable)
+### 0.3 Compatibilité avec le site hors ligne (`web/offline/landing.js`)
 
-Ce script bascule des classes sur le landing statique. Il ne faut pas qu'elles prennent effet :
-- **Onglets de catégorie** : il ajoute `bg-ink text-white` à l'onglet choisi et `bg-white text-gray-600 ring-1 ring-gray-200 hover:text-ink` aux autres, et lit `textContent`, `role="tab"`, `aria-selected`, `article[data-category]`, `data-search`.
-  - Le landing **n'écrit jamais** `bg-white`, `text-white`, `bg-ink`, `text-gray-600`, `ring-gray-200` ni `hover:text-ink`.
-  - `app/globals.css` exclut `web/` et `docs/` du scan (`@source not`). Ces classes ne sont donc **pas générées** et l'ajout du script reste sans effet.
-  - L'apparence de la puce vient de `aria-selected:` (que le script met à jour).
-  - F garde `role="tab"`, `aria-selected`, le libellé seul dans le bouton (pas de compteur dans `textContent`), `data-category` et `data-search` sur chaque `article`.
-- **Bouton « Copier le lien »** : le script remplace la chaîne `"bg-brand-50 text-brand-700 hover:bg-brand-100"` et réécrit le texte en « Lien copié ✓ ». F n'utilise pas cette chaîne (le remplacement ne fait donc rien) et garde `button[data-copy]`.
-- **Le message vide** créé par le script (`rounded-3xl bg-white …`) s'affiche sans style dans la version hors ligne. C'est accepté : ce fichier n'a pas de propriétaire.
+Depuis le 19 octobre 2026, l'accueil n'a plus de section Campagnes : le script ne gère plus que le menu mobile (`aria-controls="menu-mobile"`, un seul `<path>` dans l'icône) et la bascule entre l'accueil et l'application.
 - Le blanc **fixe** du landing (bouton blanc sur la carte violette) s'écrit `bg-on-brand`, jamais `bg-white`.
 
 ### 0.4 Règle des extras (Tailwind trie, l'ordre de la chaîne ne compte pas)
@@ -127,7 +119,7 @@ Puis vérification visuelle de chaque écran du lot : clair, sombre, 390 px, et 
 | Carte « Marque » du landing | violet / encre | `bg-brand-panel` (violet en clair, violet profond `#4c1d95` en sombre), CTA `bg-on-brand text-brand-700` | Corrige le bouton devenu noir en sombre. |
 | Panneau de l'écran de connexion | faux solde / garanties | **Garanties réelles** tirées de `db.settings`, plus une courbe verte décorative **sans chiffres** | Pas de chiffres inventés sur l'écran où l'on tape son mot de passe. |
 | Témoignages | étoiles / sans | **Sans étoiles**, mention « Témoignages illustratifs » | Honnêteté. |
-| Drapeau | emoji / SVG | **SVG en ligne** (`flagDz()` dans l'app ; même SVG en JSX dans Hero et Footer) | Windows n'affiche pas les drapeaux emoji. |
+| Drapeau | emoji / SVG | **SVG en ligne** (`flagDz()`, dans l'app seulement : l'accueil n'affiche plus de drapeau depuis le 19 octobre 2026) | Windows n'affiche pas les drapeaux emoji. |
 | Halos et dégradés | partout / limités | **3 emplacements** : héros (color-mix 14 %), CTA final, panneau auth. Couvertures `.cover[data-cat]` à 2 arrêts. | Tout le reste est plat. |
 | Couvertures de campagne | classes en base / CSS | **`.cover` + `data-cat`** (CSS du thème) | Les classes stockées en base ne sont jamais compilées dans `/espace`. |
 | Tableaux | table partout / cartes | Vrai `<table>` à partir de `md`, liste en dessous (même conteneur) | Lisible à 390 px. |
@@ -914,7 +906,6 @@ grep -rnP --include=*.js --include=*.tsx --include=*.ts \
 
 - **Résultat attendu : 0 ligne.** La commande a été testée : 0 ligne sur les références du §4, 469 lignes sur le code actuel.
 - Seules exceptions tolérées par le filtre : les glyphes SVG du drapeau (`fill="#…"`) et les commentaires.
-- `data/landing.ts` est exclu, car son champ `gradient` est conservé dans cette passe.
 
 Contrôle des emoji d'interface (lots B à G). Il doit aussi rendre 0 ligne. `ui.js` (table `EVENT_ICON`), les lignes qui manipulent `emoji` (visuels de campagne choisis par l'agence) et les commentaires sont exclus. La commande a été testée : 45 lignes aujourd'hui.
 
@@ -1739,7 +1730,7 @@ Pièces partagées ajoutées avec le lot « 16 demandes » (octobre 2026). Les n
 |---|---|---|---|
 | Flux quotidien (gains du jour, budget consommé du jour, inscriptions) | **Barres verticales** (`barChart`), une par jour. Un jour à 0 n'a pas de barre. | `chart-income` (argent qui entre chez celui qui regarde), `chart-brand` (volume ou dépense) | Clipper Accueil et Statistiques (Par jour), Agence Aperçu, Admin Vue d'ensemble |
 | Stock cumulé (revenus cumulés) | **Ligne cumulée** (`cumulativeChart`) : 2 px, aire à 12 %, point final, valeur finale | `chart-income` | Carte portefeuille de l'Accueil (bord à bord), Statistiques (Cumulé), héros du landing, panneau auth (`onNight`, sans chiffres) |
-| Une valeur par catégorie (vues par plateforme, gains par campagne) | **Barres horizontales triées** (`barList`), **une seule teinte** | `chart-brand` (vues), `chart-income` (gains) | Statistiques, maquette Gains du landing |
+| Une valeur par catégorie (vues par plateforme, gains par campagne) | **Barres horizontales triées** (`barList`), **une seule teinte** | `chart-brand` (vues), `chart-income` (gains) | Statistiques |
 | Part d'un tout dans le temps (futur) | Barres empilées, 2 px d'écart couleur surface, `chart-1` à `chart-4`, légende obligatoire, au-delà de 4 regrouper en « Autres » | catégorielle | — |
 | Un seul chiffre | **Pas de graphique** : KPI ou solde héros | — | partout |
 
@@ -2174,7 +2165,7 @@ Résultats de `validate_palette.js` :
 - Les composants copient les chaînes de classes des recettes du §4 (mêmes tokens). Pas de `dark:`, sauf pour l'icône du thème.
 - **Aucune nouvelle dépendance ni nouveau fichier.** Les icônes sont des SVG en ligne, avec les mêmes tracés que `icons` de `ui.js`, en `strokeWidth="1.75"`.
 - **Rythme :**
-  - sections `py-20 lg:py-28` sur `bg-surface`, en alternance avec `bg-canvas` (Campagnes, Pour qui, FAQ) ;
+  - sections `py-20 lg:py-28` sur `bg-surface`, en alternance avec `bg-canvas` (Pour qui, FAQ) ;
   - conteneur `mx-auto max-w-7xl px-4 sm:px-6 lg:px-8` ;
   - ancres `scroll-mt-20`.
 - **Boutons en JSX :** chaînes équivalentes à `btn()`.
@@ -2192,31 +2183,20 @@ const ON_COLOR = "bg-on-brand text-brand-700 shadow-control hover:bg-brand-50";
 const ON_COLOR_GHOST = "bg-on-brand/10 text-on-brand ring-1 ring-inset ring-on-brand/25 hover:bg-on-brand/15";
 ```
 
-**Drapeau en JSX** (Hero, Footer ; identique à `flagDz()`) :
-
-```tsx
-<svg viewBox="0 0 30 20" className="h-3 w-[18px] shrink-0 rounded-[2px] ring-1 ring-fg/10" role="img" aria-label="Algérie">
-  <rect width="15" height="20" fill="#006233" /><rect x="15" width="15" height="20" fill="#ffffff" />
-  <mask id="dz-crescent-hero"><rect width="30" height="20" fill="#fff" /><circle cx="16.25" cy="10" r="4" fill="#000" /></mask>
-  <circle cx="15" cy="10" r="5" fill="#d21034" mask="url(#dz-crescent-hero)" />
-  <polygon fill="#d21034" points="15.50,10.00 16.91,9.50 16.95,8.00 17.86,9.19 19.30,8.77 18.45,10.00 19.30,11.23 17.86,10.81 16.95,12.00 16.91,10.50" />
-</svg>
-```
-
-L'`id` du masque doit être unique par instance : `dz-crescent-hero`, `dz-crescent-footer`.
+**Aucune mention de l'Algérie ni drapeau sur l'accueil** (demande du 19 octobre 2026) : ni pays, ni wilayas, ni villes, ni moyens de retrait locaux, ni adresse en `.dz`. `flagDz()` reste réservé à l'app (pays d'un profil, panneau de connexion).
 
 ### 7.1 `Header` (F)
 
 - **Conteneur :** `sticky top-0 z-50 border-b border-line bg-surface/85 backdrop-blur-md`, rangée `mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8`.
-- **Liens :** `rounded-sm text-sm font-medium text-fg-muted transition-colors hover:text-fg ${FOCUS}`, **sans emoji** (retirer le champ `icon` du tableau `links`).
-- **À droite (`lg`) :** `<ThemeToggle />`, « Se connecter » (`${BTN} ${MD} ${GHOST}`), « Commencer gratuitement » (`${BTN} ${MD} ${PRIMARY}`).
+- **Liens :** « Comment ça marche » (`#comment-ca-marche`), « Pour qui » (`#marques`) et « FAQ » (`#faq`) ; `rounded-sm text-sm font-medium text-fg-muted transition-colors hover:text-fg ${FOCUS}`, **sans emoji** (retirer le champ `icon` du tableau `links`).
+- **À droite (`lg`) :** `<ThemeToggle />` et « Se connecter » (`${BTN} ${MD} ${GHOST}`). « Commencer gratuitement » a été retiré le 19 octobre 2026.
 - **Mobile :**
   - `ThemeToggle` + bouton menu `inline-grid size-10 place-items-center rounded-lg text-fg-muted hover:bg-muted hover:text-fg ${FOCUS}` ;
   - **garder** `aria-controls="menu-mobile"`, `aria-expanded`, l'`aria-label` et **un seul `<path>`** dans le SVG (le script hors ligne réécrit son attribut `d`).
 - **`#menu-mobile` :**
   - `border-t border-line bg-surface px-4 pb-5 pt-2 lg:hidden` + `hidden` quand il est fermé (classe basculée par le script hors ligne) ;
   - liens `flex h-11 items-center rounded-lg px-3 text-[15px] font-medium text-fg hover:bg-subtle` ;
-  - puis `grid gap-2` avec deux boutons `${BTN} ${LG}` (`SECONDARY` « Se connecter », `PRIMARY` « Commencer gratuitement »).
+  - puis `grid` avec le seul bouton `${BTN} ${LG} ${SECONDARY}` « Se connecter ».
 
 ### 7.2 `Logo` (F), props `{ className?: string }`
 
@@ -2241,8 +2221,8 @@ Footer (G) l'utilise tel quel. Le mot-symbole suit `text-fg`, il bascule seul.
 ### 7.4 `Hero` (F) et `IncomeCard` (F)
 
 - **Grille :** `relative mx-auto grid max-w-7xl items-center gap-12 px-4 pb-20 pt-14 sm:px-6 lg:grid-cols-[1.05fr_1fr] lg:px-8 lg:pb-28 lg:pt-20`.
-- **Pastille :** `inline-flex items-center gap-2 rounded-full border border-line bg-surface px-3 py-1 text-small font-medium text-fg-muted shadow-control` + drapeau + « La plateforme de clipping pensée pour l'Algérie ».
-- **H1 :** `mt-6 text-h1 text-fg sm:text-display` (Jakarta, `text-wrap: balance` par la base), avec « revenus » en `text-brand-fg`.
+- **Pas de pastille** au-dessus du titre (celle « pensée pour l'Algérie », avec drapeau, a été retirée le 19 octobre 2026).
+- **H1 :** `text-h1 text-fg sm:text-display` (Jakarta, `text-wrap: balance` par la base), avec « revenus » en `text-brand-fg`.
 - **Chapô :** `mt-5 max-w-xl text-lg leading-8 text-fg-muted`.
 - **CTA :** `mt-8 flex flex-col gap-3 sm:flex-row` : « Devenir clipper » (`${BTN} ${LG} ${PRIMARY}`) et « Lancer une campagne » (`${BTN} ${LG} ${SECONDARY}`). **Sans 🚀.**
 - **Preuve sociale :**
@@ -2253,7 +2233,7 @@ Footer (G) l'utilise tel quel. Le mot-symbole suit `text-fg`, il bascule seul.
   - `relative` ;
   - halo `pointer-events-none absolute -inset-x-10 -inset-y-12 -z-10 bg-[radial-gradient(55%_55%_at_60%_35%,color-mix(in_oklab,var(--color-brand)_14%,transparent),transparent_70%)]` ;
   - fenêtre `rounded-panel border border-line bg-canvas p-3 shadow-modal sm:p-4` ;
-  - barre de fenêtre `mb-3 flex items-center gap-1.5 px-1` (3 points `size-2.5 rounded-full bg-line-strong`, URL `ml-2 text-micro text-fg-subtle` « clipboost.dz/espace ») ;
+  - barre de fenêtre `mb-3 flex items-center gap-1.5 px-1` (3 points `size-2.5 rounded-full bg-line-strong`, libellé `ml-2 text-micro text-fg-subtle` « Espace clipper ») ;
   - badge `idle` « Exemple » à droite : `ml-auto inline-flex h-6 items-center rounded-badge border border-idle-border bg-idle-bg px-2 text-xs font-medium text-idle-fg` ;
   - dedans `grid gap-3` :
     - `<IncomeCard />` ;
@@ -2286,7 +2266,7 @@ const [ex, ey] = pts[pts.length - 1];
 // </div></div>
 ```
 
-### 7.5 `StatsStrip`, `HowItWorks`, `SectionTitle`, `Campaigns`, `CampaignCard` (F)
+### 7.5 `StatsStrip`, `HowItWorks`, `SectionTitle` (F)
 
 - **`SectionTitle`** (props inchangées) :
   - `mx-auto max-w-2xl text-center` ;
@@ -2305,41 +2285,9 @@ const [ex, ey] = pts[pts.length - 1];
   - texte `mt-2 text-[15px] leading-7 text-fg-muted` ;
   - connecteur desktop `md:after:absolute md:after:-right-4 md:after:top-10 md:after:h-px md:after:w-4 md:after:bg-line-strong`, sauf la dernière (`md:last:after:hidden`).
   - **Plus de « 01 » en gris clair ni d'emoji.**
-- **`Campaigns`** (section `bg-canvas`) :
-  - barre `mt-10 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between` ;
-  - **recherche** (garder `type="search"`) : `label relative block w-full lg:max-w-sm`, icône `pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-fg-subtle`, champ = `inputCls` de §4.2 + `h-11 pl-9` ;
-  - **onglets** (garder `role="tablist"`, `role="tab"`, `aria-selected`, le libellé seul dans le bouton) :
-    `inline-flex h-9 shrink-0 items-center rounded-full px-4 text-small font-medium text-fg-muted ring-1 ring-inset ring-line-strong transition-colors not-aria-selected:hover:text-fg aria-selected:bg-brand aria-selected:text-on-brand aria-selected:ring-brand ${FOCUS}` ;
-    conteneur `-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] sm:mx-0 sm:px-0` ;
-  - grille `mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4` ;
-  - **état vide :** `mt-10 flex flex-col items-center rounded-card border border-dashed border-line-strong bg-surface px-6 py-12 text-center` (icône `search` dans `grid size-10 place-items-center rounded-full bg-muted text-fg-subtle`, titre `mt-3 text-sm font-semibold text-fg`).
-- **`CampaignCard`** : structure du §4.4, en JSX :
-  - `article` avec `data-category={c.category}` et `data-search={(c.title + " " + c.brand).toLowerCase()}` (lus par le script hors ligne) ;
-  - couverture `<div className="cover relative aspect-[16/9] overflow-hidden rounded-tile" data-cat={c.category}>` (le champ `gradient` n'est plus lu) ;
-  - puce de tarif `rateShort` sur `bg-night/80` ;
-  - « Top campagne » avec étoile SVG (`bg-on-brand/90 text-night`) ;
-  - `dl` : « Générés » `text-income` (`formatDA(c.generated, { signed: true })`) et « Créée le » ;
-  - **bouton copier** (garder `data-copy`, **ne pas** utiliser la chaîne `bg-brand-50 text-brand-700 hover:bg-brand-100`) :
-    - `${BTN} h-8 w-full rounded-lg px-3 text-small border border-line-strong bg-surface text-fg shadow-control hover:bg-subtle [&_svg]:size-4` avec icône `copy` ;
-    - état copié : icône `check` + « Lien copié » en `text-success-fg`.
+### 7.6 Sections retirées
 
-### 7.6 `Earnings` (G) : maquette de portefeuille
-
-- **Section** `id="gains"` : `grid items-center gap-14 lg:grid-cols-2`.
-- **Côté visuel**, cadre `rounded-panel border border-line bg-canvas p-3 shadow-modal sm:p-4`, badge « Exemple » comme au héros, puis `grid gap-3` :
-  1. **Moyen de retrait :**
-     - `flex items-center gap-3 rounded-card border border-line bg-surface p-4 shadow-card` ;
-     - tuile `grid size-10 place-items-center rounded-tile bg-subtle text-fg-muted` avec icône `bank` ;
-     - « BaridiMob » `text-sm font-medium text-fg` / « •••• 5678 » `font-mono text-small text-fg-subtle` ;
-     - à droite, badge `success` « Vérifié ».
-  2. **Gains par campagne** (liste en barres, même recette que `barList`) :
-     - carte `rounded-card border border-line bg-surface p-5 shadow-card`, titre `text-section` ;
-     - lignes `grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1.5` : vignette `cover size-5 rounded-[4px]` + titre, montant `text-sm font-medium tabular-nums` ;
-     - piste `col-span-2 h-2 rounded-full bg-muted`, remplissage `h-full rounded-full bg-chart-income` ;
-     - données : les 3 premières campagnes de `campaigns`, triées par `generated`.
-  3. **Historique :** `rounded-card border border-line bg-surface p-2 shadow-card` avec les 3 `<TransactionRow t={t} />`.
-  - **`IncomeCard` n'est plus utilisée ici. Supprimer « Inviter un créateur 🙋 ».**
-- **Côté texte :** `SectionTitle` aligné à gauche (envelopper avec `[&>div]:mx-0 [&>div]:text-left`), puis `ul mt-8 grid gap-4` de 3 points. Chaque point : `flex gap-3`, pastille `grid size-6 shrink-0 place-items-center rounded-full bg-income-soft text-income` (icône `check` `size-3.5`), texte `text-[15px] leading-7 text-fg-muted` avec un début en `font-medium text-fg`.
+« Campagnes à la une » (`Campaigns`, `CampaignCard`) et « Vos gains » (`Earnings`) ont été retirées le 19 octobre 2026, avec leurs liens « Campagnes » et « Gains » du menu et du pied de page. Les campagnes se découvrent dans l'app, après inscription.
 
 ### 7.7 `TransactionRow` (G), props `{ t: Transaction }` inchangées
 
@@ -2382,7 +2330,7 @@ const [ex, ey] = pts[pts.length - 1];
 - Auteur `mt-6 flex items-center gap-3` :
   - avatar `grid size-10 place-items-center rounded-full text-xs font-semibold text-on-brand` + fond pris dans un tableau de classes **complètes** (`["bg-avatar-1", "bg-avatar-2", "bg-avatar-3"][i]`) : Tailwind ne détecte pas une classe construite par concaténation ;
   - nom `text-sm font-semibold text-fg` ;
-  - rôle · ville `text-small text-fg-subtle`.
+  - rôle `text-small text-fg-subtle` (sans ville).
 - **Supprimer les étoiles.** Sous la grille : `mt-6 text-center text-xs text-fg-subtle` « Témoignages illustratifs ».
 
 ### 7.10 `Faq` (G) et `data/landing.ts` (G)
@@ -2404,10 +2352,9 @@ export function formatDA(value: number, { signed = false }: { signed?: boolean }
 }
 ```
 
-  - Réponse « Quand vais-je recevoir mon argent ? » : « Vos gains validés sont libérés après 3 jours de contrôle. Vous pouvez les retirer dès 2 000 DA vers BaridiMob, CCP ou un compte bancaire (RIB). »
+  - Réponse « Quand vais-je recevoir mon argent ? » : « Vos gains validés sont libérés après 3 jours de contrôle. Vous pouvez les retirer dès 2 000 DA vers le moyen de retrait enregistré dans votre portefeuille. »
   - `stats` : valeurs avec ` ` (`"12 400+"`, `"3,2 M"`).
   - Le champ `icon` des `steps` peut rester : il n'est plus affiché.
-  - `gradient` : conservé, non lu.
 
 ### 7.11 `FinalCta`, `Footer`, `app/page.tsx` (G)
 
@@ -2423,9 +2370,9 @@ export function formatDA(value: number, { signed = false }: { signed?: boolean }
   - `<Logo />` + phrase `mt-4 max-w-xs text-small text-fg-muted` ;
   - titres de colonne `text-small font-semibold text-fg` ;
   - liens `text-small text-fg-muted hover:text-fg` ;
-  - barre basse `flex flex-col gap-3 border-t border-line py-6 text-xs text-fg-subtle sm:flex-row sm:items-center sm:justify-between` : « © 2026 ClipBoost » et « Fait avec passion en Algérie » + drapeau SVG (`dz-crescent-footer`).
+  - barre basse `flex flex-col gap-3 border-t border-line py-6 text-xs text-fg-subtle sm:flex-row sm:items-center sm:justify-between` : « © 2026 ClipBoost » seul.
 - **`app/page.tsx`** :
-  - ordre des sections inchangé ;
+  - sections dans l'ordre : `Hero`, `StatsStrip`, `HowItWorks`, `Audiences`, `Testimonials`, `Faq`, `FinalCta` ;
   - ajouter un lien d'évitement en premier enfant : `<a href="#contenu" className="fixed left-4 top-3 z-[60] -translate-y-20 rounded-control bg-surface-raised px-4 py-2 text-sm font-medium text-fg shadow-popover transition-transform focus:translate-y-0">Aller au contenu</a>` ;
   - `<main id="contenu">`.
 

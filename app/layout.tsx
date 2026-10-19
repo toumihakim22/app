@@ -5,7 +5,7 @@ import { themeInitScript } from "./theme-init";
 export const metadata: Metadata = {
   title: "ClipBoost — Transformez vos clips en revenus",
   description:
-    "ClipBoost connecte les créateurs de clips et les marques en Algérie. Choisissez une campagne, publiez vos clips et suivez vos gains.",
+    "ClipBoost connecte les créateurs de clips et les marques. Choisissez une campagne, publiez vos clips et suivez vos gains.",
   icons: { icon: "/favicon.svg" },
 };
 

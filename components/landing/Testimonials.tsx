@@ -27,9 +27,7 @@ export default function Testimonials() {
                 </span>
                 <div className="min-w-0">
                   <p className="text-sm font-semibold text-fg">{t.name}</p>
-                  <p className="text-small text-fg-subtle">
-                    {t.role} <span className="whitespace-nowrap">· {t.city}</span>
-                  </p>
+                  <p className="text-small text-fg-subtle">{t.role}</p>
                 </div>
               </figcaption>
             </figure>
