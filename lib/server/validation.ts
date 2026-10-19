@@ -103,7 +103,8 @@ export const socialAccountSchema = z.object({
   platform: z.enum(PLATFORMS as [string, ...string[]], { error: "Plateforme inconnue" }),
   handle: text("Identifiant", 200),
 });
-export const viewsSchema = z.object({ views: z.coerce.number().int().min(0).max(1_000_000_000) });
+/** Relevé saisi par l'équipe : vues, et likes facultatifs (absents ou null : les likes connus sont gardés). */
+export const viewsSchema = z.object({ views: z.coerce.number().int().min(0).max(1_000_000_000), likes: z.coerce.number().int().min(0).max(1_000_000_000).nullish() });
 export const withdrawSchema = z.object({ amount: money("Montant").pipe(z.number().min(1, "Montant invalide")), instant: z.boolean().default(false) });
 export const CREDIT_METHODS = ["virement bancaire", "carte Edahabia", "carte CIB", "carte Visa / Mastercard"] as const;
 /**

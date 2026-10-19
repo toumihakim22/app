@@ -5,7 +5,7 @@ import * as schema from "../lib/server/db/schema";
 import { newId, newRef } from "../lib/server/ids";
 import { link } from "../lib/server/links";
 import { hashPassword } from "../lib/server/password";
-import { payoutFor, sentence, socialCode } from "../lib/server/rules";
+import { clipRisk, payoutFor, sentence, simulatedHistory, socialCode } from "../lib/server/rules";
 import { DEFAULT_SETTINGS } from "../lib/server/settings";
 import { openDb } from "./db";
 
@@ -102,26 +102,42 @@ if (process.argv.includes("--demo")) {
     for (const a of socialRows) if (a.verifiedAt) acts.push([(Date.now() - a.verifiedAt.getTime()) / 86_400_000, "🛡️", `${nameOf(a.userId)} a vérifié son compte ${a.platform} @${a.handle}.`]);
 
     // Clips : certains validés et payés, d'autres en attente (dont un sous le seuil).
+    // Historique jour par jour des vues (relevé automatique, le dernier il y a 2 heures) et score de risque : « Quand ta mère
+    // trouve ton bulletin » a un pic de vues soudain avec très peu de likes (risque élevé), l'Instagram du but de la 89e a
+    // peu de likes (risque moyen).
     // Le « But de la 89e » a été publié sur TikTok et Instagram en un seul envoi : deux publications du même lot (batch),
     // un seul événement « a soumis le clip » dans le journal.
     const goalBatch = newId();
-    const pubs: { u: typeof yacine; c: typeof derby; title: string; platform: string; views: number; status: schema.PublicationStatus; days: number; reason?: string; url?: string; batch?: string; sibling?: boolean }[] = [
+    const pubs: { u: typeof yacine; c: typeof derby; title: string; platform: string; views: number; status: schema.PublicationStatus; days: number; reason?: string; url?: string; batch?: string; sibling?: boolean; likeRate?: number; spike?: boolean }[] = [
       { u: yacine, c: derby, title: "But de la 89e en slow-motion", platform: "TikTok", views: 48200, status: "Validée", days: 2, batch: goalBatch },
-      { u: yacine, c: derby, title: "But de la 89e en slow-motion", platform: "Instagram", views: 12500, status: "En attente", days: 2, url: "https://www.instagram.com/reel/demo-batch", batch: goalBatch, sibling: true },
+      { u: yacine, c: derby, title: "But de la 89e en slow-motion", platform: "Instagram", views: 12500, status: "En attente", days: 2, url: "https://www.instagram.com/reel/demo-batch", batch: goalBatch, sibling: true, likeRate: 0.003 },
       { u: yacine, c: rire, title: "Le taxi clandestin", platform: "TikTok", views: 63400, status: "Validée", days: 8 },
       { u: yacine, c: kahwa, title: "Mon café du matin à Alger", platform: "TikTok", views: 9800, status: "Validée", days: 6 },
       { u: amira, c: kahwa, title: "Brunch à Oran", platform: "Instagram", views: 18800, status: "Validée", days: 5 },
       { u: amira, c: derby, title: "Ambiance des tribunes", platform: "Instagram", views: 31200, status: "En attente", days: 1 },
-      { u: lina, c: rire, title: "Quand ta mère trouve ton bulletin", platform: "TikTok", views: 52900, status: "En attente", days: 1 },
+      { u: lina, c: rire, title: "Quand ta mère trouve ton bulletin", platform: "TikTok", views: 52900, status: "En attente", days: 1, likeRate: 0.0007, spike: true },
       { u: yacine, c: derby, title: "Les supporters chantent", platform: "YouTube", views: 1600, status: "En attente", days: 0 },
       { u: lina, c: rire, title: "Sketch du marché", platform: "YouTube", views: 4100, status: "Refusée", days: 9, reason: "Musique protégée" },
     ];
-    let i = 0;
+    let i = 0, tracked = 0;
+    const lastRun = new Date(Date.now() - 2 * 3_600_000), earningMs = DEFAULT_SETTINGS.earningDays * 86_400_000;
     for (const p of pubs) {
       // Un lien TikTok nomme le compte : celui que le clipper a vérifié.
       const id = newId(), host = ({ TikTok: `www.tiktok.com/${p.u.handles?.tiktok}/video/`, Instagram: "www.instagram.com/reel/", Facebook: "www.facebook.com/reel/" } as Record<string, string>)[p.platform] ?? "youtu.be/";
       const paid = p.status === "Validée" ? payoutFor(p.views, p.c) : 0;
-      await db.insert(schema.publications).values({ id, userId: p.u.id, campaignId: p.c.id, title: p.title, platform: p.platform, url: p.url ?? `https://${host}demo${++i}`, batch: p.batch ?? null, views: p.views, status: p.status, reason: p.reason, paid, approvedAt: p.status === "Validée" ? daysAgo(p.days) : null, createdAt: daysAgo(p.days + 1) });
+      // Suivi : jusqu'au dernier relevé, jusqu'au refus, ou jusqu'à la fin de la fenêtre de gains d'un clip validé.
+      const createdAt = daysAgo(p.days + 1).getTime(), decidedAt = daysAgo(p.days).getTime();
+      const endAt = p.status === "Refusée" ? decidedAt : Math.min(lastRun.getTime(), p.status === "Validée" ? decidedAt + earningMs : Infinity);
+      if (endAt === lastRun.getTime()) tracked++;
+      const snaps = simulatedHistory(id, createdAt, endAt, p.views, { likeRate: p.likeRate, spike: p.spike }), last = snaps.at(-1);
+      const social = socialRows.find((a) => a.userId === p.u.id && a.platform === p.platform && a.verifiedAt);
+      const risk = clipRisk({ createdAt, views: p.views, likes: last?.likes ?? null }, snaps, { userCreatedAt: (p.u.createdAt as Date).getTime(), socialVerifiedAt: social?.verifiedAt?.getTime() ?? null });
+      await db.insert(schema.publications).values({
+        id, userId: p.u.id, campaignId: p.c.id, title: p.title, platform: p.platform, url: p.url ?? `https://${host}demo${++i}`, batch: p.batch ?? null, views: p.views, status: p.status, reason: p.reason, paid,
+        approvedAt: p.status === "Validée" ? daysAgo(p.days) : null, createdAt: new Date(createdAt),
+        likes: last?.likes ?? null, checkedAt: last ? new Date(last.at) : null, riskScore: risk.score, riskFlags: risk.flags,
+      });
+      if (snaps.length) await db.insert(schema.viewSnapshots).values(snaps.map((x) => ({ publicationId: id, day: x.day, views: x.views, likes: x.likes, recordedAt: new Date(x.at) })));
       const txId = newId();
       if (paid) {
         await db.insert(schema.transactions).values({ id: txId, ref: newRef(), userId: p.u.id, type: "gain", label: p.c.title, amount: paid, status: "Validé", availableAt: daysAgo(p.days - 3), publicationId: id, createdAt: daysAgo(p.days) });
@@ -137,6 +153,8 @@ if (process.argv.includes("--demo")) {
       }
     }
     for (const c of [derby, rire, kahwa]) await db.update(schema.campaigns).set({ spent: c.spent }).where(eq(schema.campaigns.id, c.id));
+    // Dernier relevé automatique des vues (tâche « views » de job_runs, toutes les 6 heures), tout en mode simulé.
+    await db.insert(schema.jobRuns).values({ name: "views", lastRunAt: lastRun, summary: { by: "cron", total: tracked, updated: tracked, simulated: tracked, failed: 0 } });
     const withdrawalId = newId(), rechargeId = newId();
     await db.insert(schema.transactions).values({ id: withdrawalId, ref: newRef(), userId: amira.id, type: "retrait", label: "Retrait vers BaridiMob", amount: -2000, status: "En cours", method: "BaridiMob", createdAt: daysAgo(1) });
     const rechargeRef = newRef();

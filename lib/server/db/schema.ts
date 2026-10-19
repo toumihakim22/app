@@ -160,8 +160,35 @@ export const publications = pgTable("publications", {
   // Total déjà crédité au clipper pour ce clip (seuil et plafond appliqués).
   paid: integer("paid").notNull().default(0),
   approvedAt: timestamp("approved_at", { withTimezone: true }),
+  /** Likes au dernier relevé ; null : inconnus (plateforme qui ne les donne pas, vues saisies sans likes). */
+  likes: integer("likes"),
+  /** Dernier relevé des vues (tâche planifiée toutes les 6 heures, ou saisie de l'équipe). */
+  checkedAt: timestamp("checked_at", { withTimezone: true }),
+  /** Risque de fraude (0 à 100) et ses signaux (fraudRisk, lib/server/rules.ts), recalculés à chaque relevé. Vus par l'admin seul. */
+  riskScore: integer("risk_score").notNull().default(0),
+  riskFlags: jsonb("risk_flags").$type<string[]>().notNull().default([]),
   createdAt: createdAt(),
 }, (t) => [index("publications_user_idx").on(t.userId), index("publications_campaign_idx").on(t.campaignId), uniqueIndex("publications_url_idx").on(t.url)]);
+
+/**
+ * Historique jour par jour des vues d'un clip : une ligne par clip et par jour (UTC), remplacée par le dernier relevé
+ * du jour. Sert au score de risque (pic de vues) et aux vues gagnées sur une période (classement hebdomadaire).
+ */
+export const viewSnapshots = pgTable("view_snapshots", {
+  publicationId: text("publication_id").notNull().references(() => publications.id, { onDelete: "cascade" }),
+  /** Jour UTC « AAAA-MM-JJ » (même découpage que les séries de GET /api/state). */
+  day: text("day").notNull(),
+  views: integer("views").notNull(),
+  likes: integer("likes"),
+  recordedAt: timestamp("recorded_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [primaryKey({ columns: [t.publicationId, t.day] }), index("view_snapshots_day_idx").on(t.day)]);
+
+/** Dernière exécution de chaque tâche planifiée (« views » : relevé des vues), avec son bilan. */
+export const jobRuns = pgTable("job_runs", {
+  name: text("name").primaryKey(),
+  lastRunAt: timestamp("last_run_at", { withTimezone: true }).notNull(),
+  summary: jsonb("summary").$type<Record<string, unknown>>().notNull().default({}),
+});
 
 export type TransactionType = "gain" | "retrait" | "recharge";
 export type TransactionStatus = "Validé" | "En cours" | "Refusé";

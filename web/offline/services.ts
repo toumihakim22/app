@@ -3,7 +3,7 @@
 import type { CampaignStatus, Handles, Locale, Role, SignupPayload } from "../../lib/server/db/schema";
 import { GRADIENTS, PLATFORM_HOSTS } from "../../lib/server/gradients";
 import { link } from "../../lib/server/links";
-import { belowMin, fundingCost, instantFee, normalizeHandle, payoutDelta, sentence, socialLinkError, validateCampaignNumbers, viewsFor } from "../../lib/server/rules";
+import { belowMin, clipRisk, fundingCost, instantFee, normalizeHandle, payoutDelta, RISK_WINDOW_DAYS, sentence, socialLinkError, utcDay, validateCampaignNumbers, viewsFor } from "../../lib/server/rules";
 import { IMAGE_DATA_URL, type OAuthProvider } from "../../lib/server/validation";
 import {
   ApiError, badRequest, forbidden, getSettings, insertCampaign, insertPublication, insertTransaction, insertUser, logActivity,
@@ -293,6 +293,7 @@ export function deleteCampaign({ db }: Ctx, user: UserRow, id: string) {
   db.campaigns = db.campaigns.filter((x) => x.id !== id);
   db.members = db.members.filter((m) => m.campaignId !== id);
   db.publications = db.publications.filter((p) => p.campaignId !== id);
+  db.snapshots = db.snapshots.filter((x) => !pubIds.has(x.publicationId));
   for (const t of db.transactions) if (t.publicationId && pubIds.has(t.publicationId)) t.publicationId = null;
   // Les notifications déjà reçues sur cette campagne mènent désormais à la liste des campagnes.
   for (const n of db.notifications) {
@@ -400,7 +401,7 @@ export function setTop({ db }: Ctx, id: string, top: boolean) {
  * Un clip publié sur une ou plusieurs plateformes de la campagne : un lien par plateforme, chacun enregistré comme
  * une publication (vues, examen et paiement propres), reliées par le même identifiant de lot. Tous les liens sont
  * vérifiés avant d'enregistrer quoi que ce soit, dont le compte : vérifié par le clipper sur cette plateforme, et le
- * même quand le lien le nomme (socialLinkError).
+ * même quand le lien le nomme (socialLinkError). Le score de risque part de l'âge des comptes (« Compte récent »).
  */
 export function submitClip({ db }: Ctx, user: UserRow, input: { campaignId: string; title: string; links: { platform: string; url: string }[] }) {
   const c = db.campaigns.find((x) => x.id === input.campaignId);
@@ -429,10 +430,12 @@ export function submitClip({ db }: Ctx, user: UserRow, input: { campaignId: stri
   // Lien déjà soumis (par ce clipper ou un autre) : le premier dans l'ordre de l'envoi est cité.
   const dup = urls.find((u) => db.publications.some((p) => p.url === u));
   if (dup) throw badRequest(`Ce lien a déjà été soumis : ${dup}`);
-  const title = input.title.trim(), batch = newId();
+  const title = input.title.trim(), batch = newId(), now = Date.now();
   const ids = links.map((l) => {
     const id = newId();
-    insertPublication(db, { id, userId: user.id, campaignId: c.id, title, platform: l.platform, url: l.url, batch });
+    const social = db.social.find((a) => a.userId === user.id && a.platform === l.platform && a.status === "verified");
+    const { score, flags } = clipRisk({ createdAt: now, views: 0, likes: null }, [], { userCreatedAt: user.createdAt, socialVerifiedAt: social?.verifiedAt ?? null });
+    insertPublication(db, { id, userId: user.id, campaignId: c.id, title, platform: l.platform, url: l.url, batch, riskScore: score, riskFlags: flags, createdAt: now });
     return id;
   });
   logActivity(db, "🎬", `${user.name} a soumis le clip « ${title} » (${c.title}).`);
@@ -446,15 +449,25 @@ export function submitClip({ db }: Ctx, user: UserRow, input: { campaignId: stri
 const paying = (c: CampaignRow) => c.status === "Active" || c.status === "En pause";
 
 /**
- * Relevé des vues d'un clip. Pendant la fenêtre de gains, un clip validé est payé pour ses vues supplémentaires,
- * si sa campagne est encore financée.
+ * Relevé des vues d'un clip : saisi par l'équipe, ou par le relevé automatique (tracking.ts, `auto` : un nombre inférieur
+ * au dernier relevé garde le dernier relevé au lieu d'être refusé). `likes` : undefined ou null garde les likes connus.
+ * Chaque relevé remplace celui du jour dans l'historique (snapshots), date le dernier relevé et recalcule le score de
+ * risque. Pendant la fenêtre de gains, un clip validé est payé pour ses vues supplémentaires, si sa campagne est encore financée.
  */
-export function recordViews({ db }: Ctx, id: string, views: number) {
+export function recordViews({ db }: Ctx, id: string, views: number, likes?: number | null, { auto = false } = {}) {
   const settings = getSettings(db);
   const p = db.publications.find((x) => x.id === id);
   if (!p) throw notFound("Clip introuvable");
-  if (views < p.views) throw badRequest("Le nombre de vues ne peut pas diminuer");
-  p.views = views;
+  if (views < p.views) {
+    if (!auto) throw badRequest("Le nombre de vues ne peut pas diminuer");
+    views = p.views;
+  }
+  const now = Date.now(), day = utcDay(now), nextLikes = likes ?? p.likes;
+  const snap = db.snapshots.find((x) => x.publicationId === id && x.day === day);
+  if (snap) Object.assign(snap, { views, likes: nextLikes, recordedAt: now });
+  else db.snapshots.push({ publicationId: id, day, views, likes: nextLikes, recordedAt: now });
+  const { score, flags } = riskOf(db, p, views, nextLikes);
+  Object.assign(p, { views, likes: nextLikes, checkedAt: now, riskScore: score, riskFlags: flags } satisfies Partial<PubRow>);
   if (p.status !== "Validée" || !p.approvedAt) return;
   if (Date.now() - p.approvedAt > settings.earningDays * 86_400_000) return;
   const c = getCampaign(db, p.campaignId);
@@ -462,6 +475,13 @@ export function recordViews({ db }: Ctx, id: string, views: number) {
   const extra = payoutDelta(views, c, p.paid);
   if (!extra) return;
   credit(db, p, c, extra, `${c.title} · vues supplémentaires`, settings.holdDays);
+}
+
+/** Score de risque d'un clip (clipRisk) : ses derniers relevés, l'inscription du clipper, la vérification de son compte social. */
+function riskOf(db: Store, p: PubRow, views: number, likes: number | null) {
+  const latest = db.snapshots.filter((x) => x.publicationId === p.id).sort((a, b) => b.day.localeCompare(a.day)).slice(0, RISK_WINDOW_DAYS + 2);
+  const social = db.social.find((a) => a.userId === p.userId && a.platform === p.platform && a.status === "verified");
+  return clipRisk({ createdAt: p.createdAt, views, likes }, latest, { userCreatedAt: db.users.find((u) => u.id === p.userId)?.createdAt ?? null, socialVerifiedAt: social?.verifiedAt ?? null });
 }
 
 function credit(db: Store, p: PubRow, c: CampaignRow, amount: number, label: string, holdDays: number) {

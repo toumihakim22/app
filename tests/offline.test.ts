@@ -335,7 +335,9 @@ test("ancienne copie du navigateur : colonnes ajoutées complétées ; stockage 
   delete store.social;
   for (const u of store.users) for (const k of ["avatar", "cover", "verification", "verificationNote", "locale"]) delete u[k];
   for (const c of store.campaigns) for (const k of ["image", "reviewNote", "updatedAt"]) delete c[k];
-  for (const p of store.publications) delete p.batch;
+  for (const p of store.publications) for (const k of ["batch", "likes", "checkedAt", "riskScore", "riskFlags"]) delete p[k];
+  delete store.snapshots;
+  delete store.jobRuns;
   storage.set(STORAGE_KEY, JSON.stringify(store));
   await login("agence@clipboost.dz");
   const s = await state();
@@ -344,6 +346,13 @@ test("ancienne copie du navigateur : colonnes ajoutées complétées ; stockage 
   assert.deepEqual((await state()).me.socialAccounts, []);
   await login("agence@clipboost.dz");
   assert.ok(s.campaigns.every((c: { updatedAt: string; createdAt: string }) => c.updatedAt.startsWith(c.createdAt)));
+  // Sans historique ni dernier relevé : le relevé des vues a été lancé au premier chargement, l'historique commence.
+  await login("admin@clipboost.dz", "AdminClip2026");
+  const adm = await state();
+  assert.equal(adm.tracking.summary.by, "auto");
+  assert.ok(adm.publications.every((p: { riskScore: number; riskFlags: string[]; history: unknown[] }) => typeof p.riskScore === "number" && Array.isArray(p.riskFlags) && Array.isArray(p.history)));
+  assert.ok(adm.publications.some((p: { history: unknown[] }) => p.history.length === 1));
+  await login("agence@clipboost.dz");
 
   const saved = storage.get(STORAGE_KEY)!;
   quota = saved.length + 100;
@@ -425,6 +434,86 @@ test("comptes sociaux : code dans la bio, vérification, un compte par clipper ;
   assert.equal((await call("POST", "/api/social", { platform: "TikTok", handle: "tassili" })).status, 403);
   // Une agence ne reçoit pas les comptes sociaux (ni les codes) des auteurs de ses clips.
   assert.ok(!JSON.stringify(await state()).includes("socialAccounts"));
+});
+
+test("relevé des vues : bouton de l'admin, relevé dû toutes les 6 heures, historique et risque réservés à l'admin", async () => {
+  type Day = { day: string; views: number; likes: number | null; gain: number | null };
+  type Pub = { id: string; title: string; platform: string; status: string; views: number; likes: number | null; paid: number; checkedAt: string | null; riskScore?: number; riskFlags?: string[]; history?: Day[] };
+  await offlineApi.reset();
+  await login("admin@clipboost.dz", "AdminClip2026");
+  const s0 = await state();
+  // Données d'exemple : dernier relevé il y a 2 heures (pas de relevé à l'ouverture), 7 clips suivis, tout est simulé.
+  assert.deepEqual([s0.tracking.everyHours, s0.tracking.simulated, s0.tracking.summary], [6, ["TikTok", "Instagram", "YouTube", "Facebook"], { by: "cron", total: 7, updated: 7, simulated: 7, failed: 0 }]);
+  assert.ok(Math.abs(Date.now() - 2 * 3_600_000 - Date.parse(s0.tracking.lastRunAt)) < 60_000);
+  const byTitle = (list: Pub[], title: string, platform?: string) => list.find((p) => p.title === title && (!platform || p.platform === platform))!;
+  const pubs0: Pub[] = s0.publications;
+  // Clip suspect : pic de vues soudain et très peu de likes (80) ; l'Instagram du but de la 89e : peu de likes (35).
+  const suspect = byTitle(pubs0, "Quand ta mère trouve ton bulletin");
+  assert.deepEqual([suspect.riskScore, suspect.riskFlags], [80, ["Pic de vues soudain", "Beaucoup de vues, peu de likes"]]);
+  assert.deepEqual([byTitle(pubs0, "But de la 89e en slow-motion", "Instagram").riskScore, byTitle(pubs0, "Ambiance des tribunes").riskScore], [35, 0]);
+  // Historique jour par jour (14 jours au plus) : le dernier jour porte le dernier relevé, le pic y est visible.
+  assert.ok(pubs0.every((p) => p.history!.length <= 14 && new Set(p.history!.map((h) => h.day)).size === p.history!.length));
+  assert.equal(suspect.history!.at(-1)!.views, suspect.views);
+  assert.ok(suspect.history!.at(-1)!.gain! > 5000 && suspect.likes! < suspect.views * 0.005);
+
+  // Bouton de l'admin : seuls les clips suivis (en attente, ou validés depuis moins de 7 jours) sont relevés.
+  const run = await call("POST", "/api/admin/track-views");
+  assert.equal(run.status, 200);
+  assert.deepEqual({ ...run.data, at: undefined }, { ok: true, by: "admin", total: 7, updated: 7, simulated: 7, failed: 0, at: undefined });
+  const s1 = await state(), pubs1: Pub[] = s1.publications, today = new Date().toISOString().slice(0, 10);
+  for (const p of pubs1) {
+    const before = pubs0.find((x) => x.id === p.id)!;
+    const tracked = p.status === "En attente" || ["But de la 89e en slow-motion", "Mon café du matin à Alger", "Brunch à Oran"].includes(p.title);
+    if (tracked) {
+      assert.ok(p.views >= before.views && Date.now() - Date.parse(p.checkedAt!) < 60_000, p.title);
+      assert.deepEqual(p.history!.at(-1), { ...p.history!.at(-1)!, day: today, views: p.views, likes: p.likes });
+    } else assert.deepEqual([p.views, p.checkedAt], [before.views, before.checkedAt], p.title);
+  }
+  assert.ok(pubs1.reduce((n, p) => n + p.views, 0) > pubs0.reduce((n, p) => n + p.views, 0));
+  assert.equal(byTitle(pubs1, "Le taxi clandestin").views, byTitle(pubs0, "Le taxi clandestin").views);
+  // Clip validé encore dans sa fenêtre de gains : ses vues supplémentaires sont payées.
+  assert.ok(byTitle(pubs1, "But de la 89e en slow-motion", "TikTok").paid > byTitle(pubs0, "But de la 89e en slow-motion", "TikTok").paid);
+  assert.match(s1.activity[0].text, /^Vues relevées par Équipe ClipBoost : 7 clips mis à jour\.$/);
+  assert.equal(s1.tracking.summary.by, "admin");
+
+  // Saisie de l'équipe avec les likes : le score est recalculé (le pic reste, les likes ne sont plus suspects).
+  const s = byTitle(pubs1, "Quand ta mère trouve ton bulletin");
+  assert.deepEqual(await call("POST", `/api/clips/${s.id}/views`, { views: s.views + 100, likes: 4000 }), { status: 200, data: { ok: true } });
+  let after = byTitle((await state()).publications, s.title);
+  assert.deepEqual([after.views, after.likes, after.riskScore, after.riskFlags], [s.views + 100, 4000, 45, ["Pic de vues soudain"]]);
+  assert.equal(after.history!.filter((h: Day) => h.day === today).length, 1);
+  // Sans likes : ceux connus sont gardés. Vues en baisse ou likes invalides : refusés.
+  assert.equal((await call("POST", `/api/clips/${s.id}/views`, { views: s.views + 200 })).status, 200);
+  after = byTitle((await state()).publications, s.title);
+  assert.deepEqual([after.views, after.likes], [s.views + 200, 4000]);
+  assert.deepEqual(await call("POST", `/api/clips/${s.id}/views`, { views: 10 }), { status: 400, data: { error: "Le nombre de vues ne peut pas diminuer" } });
+  assert.equal((await call("POST", `/api/clips/${s.id}/views`, { views: s.views + 300, likes: -1 })).status, 400);
+
+  // Clipper et agence : ni score, ni signaux, ni historique, ni relevé ; le bouton leur est refusé.
+  for (const [email, password] of [["lina@clipboost.dz", undefined], ["agence@clipboost.dz", undefined]] as const) {
+    await login(email, password);
+    const other = await state();
+    assert.ok(other.publications.length > 0 && other.publications.every((p: Pub) => !("riskScore" in p) && !("riskFlags" in p) && !("history" in p) && "likes" in p && "checkedAt" in p));
+    assert.equal(other.tracking, undefined);
+    assert.equal((await call("POST", "/api/admin/track-views")).status, 403);
+  }
+
+  // Version autonome sans tâche planifiée : à l'ouverture, le relevé est lancé si le dernier a plus de 6 heures, puis enregistré.
+  const store = JSON.parse(storage.get(STORAGE_KEY)!);
+  store.jobRuns[0].lastRunAt = Date.now() - 7 * 3_600_000;
+  storage.set(STORAGE_KEY, JSON.stringify(store));
+  const lina = await state();
+  assert.ok(lina.publications.some((p: Pub) => Date.now() - Date.parse(p.checkedAt!) < 60_000));
+  const saved = JSON.parse(storage.get(STORAGE_KEY)!).jobRuns[0];
+  assert.deepEqual([saved.summary.by, saved.summary.total], ["auto", 7]);
+  assert.ok(Date.now() - saved.lastRunAt < 60_000);
+  // Relevé récent : rien n'est relancé au chargement suivant.
+  await state();
+  assert.equal(JSON.parse(storage.get(STORAGE_KEY)!).jobRuns[0].lastRunAt, saved.lastRunAt);
+  // Adresse de la tâche planifiée du serveur, ouverte hors ligne.
+  const cron = await call("GET", "/api/cron/views");
+  assert.deepEqual([cron.status, cron.data.by, cron.data.total], [200, "cron", 7]);
+  assert.equal(JSON.parse(storage.get(STORAGE_KEY)!).jobRuns[0].summary.by, "cron");
 });
 
 test("réinitialisation : retour aux données d'exemple", async () => {

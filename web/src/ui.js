@@ -191,7 +191,8 @@ const icon = (name, cls = "size-5", fill = false) =>
 const EVENT_ICON = { "✅": ["check", "bg-success-bg text-success-fg"], "🚫": ["ban", "bg-danger-bg text-danger-fg"], "⛔": ["ban", "bg-danger-bg text-danger-fg"], "⚠": ["alert", "bg-warning-bg text-warning-fg"],
   "⏳": ["clock", "bg-muted text-fg-muted"], "⚙": ["gear", "bg-muted text-fg-muted"], "🎬": ["film", "bg-muted text-fg-muted"], "🎯": ["target", "bg-muted text-fg-muted"],
   "🏁": ["flag", "bg-muted text-fg-muted"], "🏢": ["building", "bg-muted text-fg-muted"], "🏦": ["bank", "bg-muted text-fg-muted"], "💰": ["wallet", "bg-muted text-fg-muted"], "💸": ["wallet", "bg-muted text-fg-muted"],
-  "🛡": ["shield", "bg-info-bg text-info-fg"], "✏": ["pencil", "bg-muted text-fg-muted"], "🗑": ["trash", "bg-muted text-fg-muted"] };
+  "🛡": ["shield", "bg-info-bg text-info-fg"], "✏": ["pencil", "bg-muted text-fg-muted"], "🗑": ["trash", "bg-muted text-fg-muted"],
+  "📈": ["trend", "bg-brand-soft text-brand-fg"] };
 const eventIcon = (emoji) => {
   const [ic, tone] = EVENT_ICON[String(emoji || "").replace(/️/g, "")] || ["bell", "bg-muted text-fg-muted"];
   return `<span class="grid size-8 shrink-0 place-items-center rounded-full ${tone}" aria-hidden="true">${icon(ic, "size-4")}</span>`;

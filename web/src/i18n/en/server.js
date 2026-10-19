@@ -113,6 +113,7 @@ Object.assign(I18N.en, {
   "Lien invalide": "Invalid link",
   "Clip introuvable": "Clip not found",
   "Le nombre de vues ne peut pas diminuer": "The view count cannot go down",
+  "Relevé planifié désactivé : définissez CRON_SECRET": "Scheduled tracking disabled: set CRON_SECRET",
   "Ce clip a déjà été traité": "This clip has already been reviewed",
 
   // ---------- Comptes sociaux des clippers (lib/server/services/social.ts, validation.ts) ----------
@@ -204,6 +205,9 @@ I18N_RX.en.push(
 
   // ---------- Clips ----------
   [/^(.+) a soumis le clip « (.+) » \((.+)\)\.$/, "$1 submitted the clip “$2” ($3)."],
+  // Relevé des vues lancé depuis la modération (viewsTrackedText, lib/server/rules.ts).
+  [/^Vues relevées par (.+) : (\d+) clips? mis à jour, (\d+) en erreur\.$/, "Views tracked by $1: $2 updated, $3 failed."],
+  [/^Vues relevées par (.+) : (\d+) clips? mis à jour\.$/, "Views tracked by $1: $2 updated."],
   [/^\+([\d\s]+ DA) pour « (.+) »\. Retirable dans 0 jours?\.$/, "+$1 for “$2”. Withdrawable now."],
   [/^\+([\d\s]+ DA) pour « (.+) »\. Retirable dans 1 jours?\.$/, "+$1 for “$2”. Withdrawable in 1 day."],
   [/^\+([\d\s]+ DA) pour « (.+) »\. Retirable dans (\d+) jours?\.$/, "+$1 for “$2”. Withdrawable in $3 days."],

@@ -29,6 +29,13 @@
       "when": 1792420628153,
       "tag": "0003_social_accounts",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1792422787239,
+      "tag": "0004_view_tracking",
+      "breakpoints": true
     }
   ]
 }

@@ -17,6 +17,8 @@ const emptyDb = () => ({
   series: { daily: [], label: "" },
   // Connexions Google, Apple, Discord proposées (configurées sur le serveur ; toutes, simulées, dans la version autonome).
   oauth: [],
+  // Relevé automatique des vues (admin seulement) : { everyHours, lastRunAt, summary, simulated }.
+  tracking: null,
 });
 let db = emptyDb();
 

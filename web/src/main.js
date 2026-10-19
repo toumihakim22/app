@@ -25,7 +25,7 @@ const state = {
   // Accueil du clipper : graphique par jour ou cumulé, tableau des clips récents ou les plus vus.
   clChart: "jour",
   clClips: "recent",
-  adm: { userQ: "", userStatus: "Tous", userRole: "Tous les rôles", campQ: "", campStatus: "Toutes", modStatus: "En attente", payTab: "retraits" },
+  adm: { userQ: "", userStatus: "Tous", userRole: "Tous les rôles", campQ: "", campStatus: "Toutes", modStatus: "En attente", modSort: "recent", payTab: "retraits" },
   ag: { q: "", status: "Toutes", clipStatus: "Toutes" },
   pwdError: "",
   auth: null,

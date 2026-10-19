@@ -10,6 +10,8 @@ import {
 import { ApiError, badRequest, clear, forbidden, load, logActivity, save } from "./db";
 import * as svc from "./services";
 import { publicState, stateFor } from "./state";
+import { runDueJobs, trackViews } from "./tracking";
+import { viewsTrackedText } from "../../lib/server/rules";
 
 type Req = svc.Ctx & { body: string | undefined; params: Record<string, string> };
 type Res = { status?: number; data: unknown };
@@ -29,7 +31,16 @@ const ok = (data: object = {}, status = 200): Res => ({ status, data: { ok: true
 
 const routes: Record<string, Record<string, Handler>> = {
   "/api/state": {
-    GET: ({ db }) => {
+    GET: (req) => {
+      const { db } = req;
+      // Pas de tâche planifiée dans un fichier HTML : le relevé des vues dû (plus de 6 heures) est lancé ici, puis enregistré.
+      if (runDueJobs(req)) {
+        try {
+          req.commit();
+        } catch {
+          // Stockage plein : la base enregistrée reste celle d'avant ; le relevé sera refait au prochain chargement.
+        }
+      }
       const user = svc.currentUser(db);
       if (!user || (user.status === "Suspendu" && user.role !== "admin")) return { data: { user: null, public: publicState(db) } };
       return { data: { user: user.id, ...stateFor(db, user) } };
@@ -167,9 +178,26 @@ const routes: Record<string, Record<string, Handler>> = {
   "/api/clips/:id/views": {
     POST: (req) => {
       svc.requireUser(req.db, "admin");
-      const { views } = body(req, viewsSchema);
-      svc.recordViews(req, req.params.id, views);
+      const { views, likes } = body(req, viewsSchema);
+      svc.recordViews(req, req.params.id, views, likes);
       return ok();
+    },
+  },
+  // Relevé des vues (toujours simulé hors ligne) : bouton de l'admin, et l'adresse de la tâche planifiée du serveur.
+  "/api/admin/track-views": {
+    POST: (req) => {
+      const admin = svc.requireUser(req.db, "admin");
+      const summary = trackViews(req, "admin");
+      logActivity(req.db, "📈", viewsTrackedText(admin.name, summary.updated, summary.failed));
+      return ok(summary);
+    },
+  },
+  "/api/cron/views": {
+    // Sans CRON_SECRET (comme en développement) ; une requête GET n'est pas enregistrée d'office.
+    GET: (req) => {
+      const summary = trackViews(req, "cron");
+      req.commit();
+      return ok(summary);
     },
   },
   // Comptes sociaux du clipper : ajout (code « CB-XXXX »), vérification (toujours simulée hors ligne), retrait.

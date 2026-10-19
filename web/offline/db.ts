@@ -12,7 +12,7 @@ export type UserRow = Row<typeof schema.users.$inferSelect, "createdAt">;
 export type CodeRow = Row<typeof schema.emailCodes.$inferSelect, "createdAt" | "expiresAt">;
 export type CampaignRow = Row<typeof schema.campaigns.$inferSelect, "createdAt" | "updatedAt">;
 export type MemberRow = Row<typeof schema.campaignMembers.$inferSelect, "createdAt">;
-export type PubRow = Row<typeof schema.publications.$inferSelect, "createdAt" | "approvedAt">;
+export type PubRow = Row<typeof schema.publications.$inferSelect, "createdAt" | "approvedAt" | "checkedAt">;
 export type TxRow = Row<typeof schema.transactions.$inferSelect, "createdAt" | "availableAt">;
 export type NotifRow = Row<typeof schema.notifications.$inferSelect, "createdAt">;
 export type ActivityRow = Row<typeof schema.activity.$inferSelect, "createdAt">;
@@ -20,6 +20,10 @@ export type ActivityRow = Row<typeof schema.activity.$inferSelect, "createdAt">;
 export type OAuthRow = Row<typeof schema.oauthAccounts.$inferSelect, "createdAt">;
 /** Compte social d'un clipper, vérifié par un code « CB-XXXX » dans sa bio (vérification simulée hors ligne). */
 export type SocialRow = Row<typeof schema.socialAccounts.$inferSelect, "createdAt" | "verifiedAt" | "checkedAt">;
+/** Relevé du jour d'un clip (historique jour par jour des vues). */
+export type SnapshotRow = Row<typeof schema.viewSnapshots.$inferSelect, "recordedAt">;
+/** Dernière exécution d'une tâche planifiée (« views » : relevé des vues, lancé à la demande toutes les 6 heures). */
+export type JobRunRow = Row<typeof schema.jobRuns.$inferSelect, "lastRunAt">;
 
 export type Store = {
   version: number;
@@ -33,6 +37,8 @@ export type Store = {
   activity: ActivityRow[];
   oauth: OAuthRow[];
   social: SocialRow[];
+  snapshots: SnapshotRow[];
+  jobRuns: JobRunRow[];
   settings: Partial<Settings>;
   /** Session du navigateur (l'équivalent du cookie cb_session). */
   session: { userId: string; expiresAt: number } | null;
@@ -45,7 +51,7 @@ export const STORAGE_KEY = `clipboost-offline-v${VERSION}`;
 
 export const emptyStore = (): Store => ({
   version: VERSION, users: [], emailCodes: [], campaigns: [], members: [], publications: [], transactions: [],
-  notifications: [], activity: [], oauth: [], social: [], settings: {}, session: null,
+  notifications: [], activity: [], oauth: [], social: [], snapshots: [], jobRuns: [], settings: {}, session: null,
 });
 
 // ---------- Persistance ----------
@@ -73,6 +79,8 @@ let memory: string | null = null;
 function upgrade(s: Store): Store {
   s.oauth ??= [];
   s.social ??= [];
+  s.snapshots ??= [];
+  s.jobRuns ??= [];
   for (const u of s.users) {
     u.avatar ??= null;
     u.cover ??= null;
@@ -85,7 +93,13 @@ function upgrade(s: Store): Store {
     c.reviewNote ??= null;
     c.updatedAt ??= c.createdAt;
   }
-  for (const p of s.publications) p.batch ??= null;
+  for (const p of s.publications) {
+    p.batch ??= null;
+    p.likes ??= null;
+    p.checkedAt ??= null;
+    p.riskScore ??= 0;
+    p.riskFlags ??= [];
+  }
   return s;
 }
 
@@ -220,7 +234,7 @@ export function insertCampaign(db: Store, v: CampaignInsert) {
 }
 
 export function insertPublication(db: Store, v: Pick<PubRow, "id" | "userId" | "campaignId" | "title" | "platform" | "url"> & Partial<PubRow>) {
-  const row: PubRow = { batch: null, views: 0, status: "En attente", reason: null, paid: 0, approvedAt: null, createdAt: Date.now(), ...v };
+  const row: PubRow = { batch: null, views: 0, status: "En attente", reason: null, paid: 0, approvedAt: null, likes: null, checkedAt: null, riskScore: 0, riskFlags: [], createdAt: Date.now(), ...v };
   db.publications.push(row);
   return row;
 }

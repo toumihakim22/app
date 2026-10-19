@@ -4,6 +4,8 @@ import { balances } from "./services";
 import { inferLink, type LinkContext } from "../../lib/server/links";
 import { OAUTH_PROVIDERS } from "../../lib/server/validation";
 import { PLATFORMS } from "../../lib/server/gradients";
+import { dailyGains, RISK_WINDOW_DAYS, utcDay } from "../../lib/server/rules";
+import { lastJobRun, simulatedPlatforms, TRACK_EVERY_HOURS, VIEWS_JOB } from "./tracking";
 
 const day = (ms: number) => new Date(ms).toISOString().slice(0, 10);
 const time = (ms: number) => new Date(ms).toISOString().slice(11, 16);
@@ -74,6 +76,15 @@ export function stateFor(db: Store, user: UserRow) {
   const socialOf = (id: string) => db.social.filter((a) => a.userId === id).sort((a, b) => PLATFORMS.indexOf(a.platform) - PLATFORMS.indexOf(b.platform)).map(socialView);
   const since = Date.now() - 30 * 86_400_000;
 
+  // Admin : historique jour par jour des clips (RISK_WINDOW_DAYS derniers jours, avec le gain de chaque jour) et dernier
+  // relevé des vues (même forme que le serveur).
+  const snapSince = Date.now() - 45 * 86_400_000, windowStart = utcDay(Date.now() - (RISK_WINDOW_DAYS - 1) * 86_400_000);
+  const snapsOf = new Map<string, Store["snapshots"]>();
+  if (isAdmin) for (const x of db.snapshots) if (x.day >= utcDay(snapSince)) snapsOf.set(x.publicationId, [...(snapsOf.get(x.publicationId) ?? []), x]);
+  const historyOf = (p: (typeof pubRows)[number]) => dailyGains(snapsOf.get(p.id) ?? [], p.createdAt >= snapSince ? utcDay(p.createdAt) : undefined)
+    .filter((h) => h.day >= windowStart).map(({ day, views, likes, gain }) => ({ day, views, likes, gain }));
+  const viewsRun = isAdmin ? lastJobRun(db, VIEWS_JOB) : null;
+
   // Séries des graphiques.
   let series: { daily: number[]; label: string };
   if (isAdmin) {
@@ -112,11 +123,18 @@ export function stateFor(db: Store, user: UserRow) {
       createdAt: day(c.createdAt), updatedAt: new Date(c.updatedAt).toISOString(), clippers: clippersOf.get(c.id) ?? 0,
     })),
     agencies: agencyRows.map(publicAgency).sort((a, b) => a.name.localeCompare(b.name, "fr") || a.id.localeCompare(b.id)),
-    publications: pubRows.map((p) => ({ id: p.id, userId: p.userId, campaign: p.campaignId, title: p.title, platform: p.platform, url: p.url, batch: p.batch, views: p.views, status: p.status, reason: p.reason, paid: p.paid, date: day(p.createdAt) })),
+    // Score de risque, signaux et historique : pour l'admin seulement.
+    publications: pubRows.map((p) => ({
+      id: p.id, userId: p.userId, campaign: p.campaignId, title: p.title, platform: p.platform, url: p.url, batch: p.batch, views: p.views, likes: p.likes,
+      checkedAt: p.checkedAt === null ? null : new Date(p.checkedAt).toISOString(), status: p.status, reason: p.reason, paid: p.paid, date: day(p.createdAt),
+      ...(isAdmin ? { riskScore: p.riskScore, riskFlags: p.riskFlags, history: historyOf(p) } : {}),
+    })),
     transactions: txRows.map((t) => ({ id: t.id, ref: t.ref, userId: t.userId, type: t.type, label: t.label, amount: t.amount, fee: t.fee, status: t.status, method: t.method, date: day(t.createdAt), time: time(t.createdAt), availableAt: t.availableAt === null ? null : new Date(t.availableAt).toISOString() })),
     notifications: notifRows.map((n) => ({ id: n.id, icon: n.icon, text: n.text, link: n.link ?? inferLink(user.role, n.text, linkCtx), unread: !n.read, at: new Date(n.createdAt).toISOString() })),
     activity: activityRows.map((a) => ({ icon: a.icon, text: a.text, at: new Date(a.createdAt).toISOString() })),
     series,
+    // Relevé des vues (admin) : dernière exécution, son bilan, plateformes en mode simulé (toutes, hors ligne).
+    ...(isAdmin ? { tracking: { everyHours: TRACK_EVERY_HOURS, lastRunAt: viewsRun ? new Date(viewsRun.lastRunAt).toISOString() : null, summary: viewsRun?.summary ?? null, simulated: simulatedPlatforms() } } : {}),
   };
 }
 

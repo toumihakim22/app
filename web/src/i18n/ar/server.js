@@ -117,6 +117,7 @@ Object.assign(I18N.ar, {
   "Lien invalide": "رابط غير صالح",
   "Clip introuvable": "المقطع غير موجود",
   "Le nombre de vues ne peut pas diminuer": "لا يمكن أن ينخفض عدد المشاهدات",
+  "Relevé planifié désactivé : définissez CRON_SECRET": "الرصد المجدول معطَّل: عرِّف CRON_SECRET",
   "Ce clip a déjà été traité": "سبقت مراجعة هذا المقطع",
 
   // ---------- Comptes sociaux des clippers (lib/server/services/social.ts, validation.ts) ----------
@@ -212,6 +213,9 @@ I18N_RX.ar.push(
 
   // ---------- Clips ----------
   [/^(.+) a soumis le clip « (.+) » \((.+)\)\.$/, "مقطع جديد من $1: « $2 » ($3)."],
+  // Relevé des vues lancé depuis la modération (viewsTrackedText, lib/server/rules.ts).
+  [/^Vues relevées par (.+) : (\d+) clips? mis à jour, (\d+) en erreur\.$/, "رصد $1 المشاهدات: عدد المقاطع المحدَّثة $2، وتعذّر رصد $3."],
+  [/^Vues relevées par (.+) : (\d+) clips? mis à jour\.$/, "رصد $1 المشاهدات: عدد المقاطع المحدَّثة $2."],
   [/^\+([\d\s]+ DA) pour « (.+) »\. Retirable dans 0 jours?\.$/, "+$1 مقابل « $2 ». قابلة للسحب فورًا."],
   [/^\+([\d\s]+ DA) pour « (.+) »\. Retirable dans 1 jours?\.$/, "+$1 مقابل « $2 ». قابلة للسحب بعد يوم واحد."],
   [/^\+([\d\s]+ DA) pour « (.+) »\. Retirable dans 2 jours?\.$/, "+$1 مقابل « $2 ». قابلة للسحب بعد يومين."],

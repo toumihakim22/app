@@ -28,6 +28,7 @@ Ouvrir http://localhost:3000 (accueil) et http://localhost:3000/espace (applicat
 |---|---|---|
 | `yacine@clipboost.dz` | Clipper | Gains, retraits, un clip publié sur TikTok et Instagram en un seul envoi, comptes TikTok, Instagram et YouTube vérifiés |
 | `amira@clipboost.dz`, `lina@clipboost.dz` | Clipper | Clips en attente, validés ou refusés ; Amira a aussi un compte TikTok en attente de vérification (code à coller dans sa bio) |
+| `admin@clipboost.dz` | Administration | Modération avec le score de risque de chaque clip : « Quand ta mère trouve ton bulletin » (Lina) a un pic de vues soudain et très peu de likes (risque élevé), l'Instagram du but de la 89e peu de likes (risque moyen) ; historique des vues sur 14 jours dans la fiche d'un clip, dernier relevé automatique il y a 2 heures |
 | `agence@clipboost.dz` | Agence (Tassili Sport) | Campagnes actives et en pause, une campagne refusée avec son motif (à modifier et relancer, ou à supprimer) |
 | `hoggar@clipboost.dz` | Agence (Hoggar Boissons) | Campagne en attente de vérification, recharge à confirmer, badge de vérification demandé |
 | `djurdjura@clipboost.dz` | Agence (Djurdjura Médias) | Agence vérifiée (badge bleu), campagne active sur YouTube, Facebook et Instagram |
@@ -37,6 +38,8 @@ Pour une vraie installation, utilisez `npm run db:seed`, qui crée seulement l'a
 Avec la base embarquée, lancez le seed **avant** `npm run dev` : PGlite n'accepte qu'un processus à la fois.
 
 Sans clé `RESEND_API_KEY`, les codes de vérification sont affichés dans le terminal du serveur, et aussi à l'écran en développement.
+
+En local, le relevé automatique des vues se lance à la main (`npm run cron:views`, serveur arrêté avec la base embarquée) ou avec le bouton « Relever les vues maintenant » de la modération ; voir « Relevé automatique des vues ».
 
 ## Variables d'environnement
 
@@ -51,12 +54,13 @@ Sans clé `RESEND_API_KEY`, les codes de vérification sont affichés dans le te
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Connexion avec Google (facultatif). |
 | `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET` | Connexion avec Discord (facultatif). |
 | `APPLE_CLIENT_ID`, `APPLE_TEAM_ID`, `APPLE_KEY_ID`, `APPLE_PRIVATE_KEY` | Connexion avec Apple (facultatif) : Services ID, identifiant d'équipe, identifiant et contenu de la clé privée `.p8` (les retours à la ligne peuvent être écrits `\n`). |
-| `YOUTUBE_API_KEY` | Vérification des comptes YouTube des clippers : clé de l'API YouTube Data v3. |
-| `INSTAGRAM_ACCESS_TOKEN`, `INSTAGRAM_BUSINESS_ID` | Vérification des comptes Instagram : jeton d'accès de la Graph API de Meta et identifiant du compte Instagram professionnel de ClipBoost qui interroge la Business Discovery. |
-| `FACEBOOK_ACCESS_TOKEN` | Vérification des pages Facebook : jeton d'accès de la Graph API de Meta. |
-| `TIKTOK_CLIENT_KEY`, `TIKTOK_CLIENT_SECRET` | Vérification des comptes TikTok : clé et secret d'une application TikTok qui a accès à l'API Research. |
+| `YOUTUBE_API_KEY` | Vérification des comptes YouTube des clippers et relevé des vues de leurs clips : clé de l'API YouTube Data v3. |
+| `INSTAGRAM_ACCESS_TOKEN`, `INSTAGRAM_BUSINESS_ID` | Vérification des comptes Instagram et relevé des vues : jeton d'accès de la Graph API de Meta et identifiant du compte Instagram professionnel de ClipBoost qui interroge la Business Discovery. |
+| `FACEBOOK_ACCESS_TOKEN` | Vérification des pages Facebook et relevé des vues des vidéos : jeton d'accès de la Graph API de Meta. |
+| `TIKTOK_CLIENT_KEY`, `TIKTOK_CLIENT_SECRET` | Vérification des comptes TikTok et relevé des vues : clé et secret d'une application TikTok qui a accès à l'API Research. |
+| `CRON_SECRET` | Secret de la tâche planifiée du relevé des vues : `GET /api/cron/views` exige l'en-tête `Authorization: Bearer <CRON_SECRET>` (Vercel Cron l'envoie de lui-même). **Obligatoire en production** pour ce relevé (sans lui, la route est refusée) ; facultatif en développement. |
 
-Un bouton « Continuer avec … » n'apparaît que si les variables de son fournisseur sont toutes définies. Une plateforme sans toutes ses variables est vérifiée en **mode simulé** (voir ci-dessous).
+Un bouton « Continuer avec … » n'apparaît que si les variables de son fournisseur sont toutes définies. Une plateforme sans toutes ses variables est vérifiée, et ses vues relevées, en **mode simulé** (voir ci-dessous).
 
 ## Connexion avec Google, Apple ou Discord
 
@@ -85,7 +89,36 @@ Un clipper relie ses comptes dans Profil → Comptes sociaux : un compte par pla
 
 **Mode simulé** : une plateforme dont les variables ne sont pas toutes définies n'est pas interrogée et **la vérification réussit toujours** (le serveur le signale une fois par plateforme dans ses journaux en production, et l'app l'indique au clipper). C'est une facilité pour le développement et la démonstration (la version autonome est toujours en mode simulé) : en production, définissez les variables de chaque plateforme, sinon n'importe quel compte peut être déclaré vérifié. Limites des API : la Business Discovery ne voit que les comptes Instagram professionnels ; la lecture d'une page Facebook demande l'accès « Page Public Metadata Access » (examen de l'application par Meta) ; l'API Research de TikTok est réservée aux organismes agréés par TikTok. Une API en panne ou qui refuse la requête laisse le compte en attente avec un message clair (« Vérification TikTok indisponible pour le moment… ») ; le détail va dans les journaux du serveur.
 
-Ces clients (jeton TikTok, Graph API de Meta, requête avec délai maximal) servent aussi à tout autre appel aux mêmes API, comme un futur relevé automatique des vues.
+Ces clients (jeton TikTok, Graph API de Meta, requête avec délai maximal) servent aussi au relevé automatique des vues.
+
+## Relevé automatique des vues et score de risque
+
+Toutes les 6 heures, le serveur relève les vues (et les likes) de chaque clip suivi : en attente, ou validé depuis moins de 7 jours (il rapporte encore), dont la campagne est active ou en pause. Chaque relevé (`recordViews`, `lib/server/services/clips.ts`) remplace celui du jour dans l'historique jour par jour (table `view_snapshots`, un relevé par clip et par jour UTC), recalcule le score de risque du clip et paie les vues supplémentaires d'un clip validé, comme une saisie de l'équipe. Les vues ne baissent jamais : un nombre inférieur lu sur une plateforme garde le dernier relevé. La dernière exécution et son bilan (clips suivis, mis à jour, simulés, en erreur) sont gardés dans la table `job_runs` (tâche `views`) et affichés dans la modération.
+
+Trois façons de le lancer (même relevé, `lib/server/services/tracking.ts`) :
+
+- **Vercel Cron** : `vercel.json` appelle `GET /api/cron/views` à `0 */6 * * *`, avec `CRON_SECRET`. L'offre gratuite Hobby de Vercel limite les tâches planifiées à une par jour : passez à l'offre Pro, ou appelez la route depuis un autre planificateur (crontab, GitHub Actions…) avec l'en-tête `Authorization: Bearer <CRON_SECRET>`.
+- **Crontab** d'un serveur Node.js : `0 */6 * * * cd /chemin/vers/clipboost && npm run cron:views` (`scripts/track-views.mts`, avec les mêmes variables d'environnement que le site ; avec la base embarquée PGlite, serveur arrêté).
+- **Bouton « Relever les vues maintenant »** de la modération (`POST /api/admin/track-views`, 5 fois par quart d'heure au plus).
+
+| Plateforme | Appel (`fetchClipStats`, `lib/server/platforms.ts`) | Limites |
+|---|---|---|
+| YouTube | `GET googleapis.com/youtube/v3/videos?part=statistics&id=<vidéo>` (lien `/shorts/<id>`, `watch?v=<id>`, `youtu.be/<id>`) | Likes absents si la chaîne les masque |
+| TikTok | `POST open.tiktokapis.com/v2/research/video/query/?fields=id,view_count,like_count`, vidéo cherchée par son identifiant (lien `/@compte/video/<id>`) parmi celles créées dans les 30 jours avant l'envoi | API Research réservée aux organismes agréés ; liens courts `vm.tiktok.com` non lus (pas d'identifiant) |
+| Instagram | Business Discovery du compte vérifié du clipper : `…?fields=business_discovery.username(<compte>){media.limit(50){permalink,like_count,view_count}}`, publication retrouvée par son code (`/reel/<code>`) | Comptes professionnels seulement, 50 dernières publications ; `view_count` n'est pas toujours fourni (clip alors compté en erreur) |
+| Facebook | `GET graph.facebook.com/v21.0/<vidéo>?fields=views,likes.summary(true)` (lien `/videos/<id>`, `/reel/<id>`, `watch?v=<id>`) | Vidéos publiques de pages ; accès accordé par Meta après examen de l'application |
+
+**Mode simulé** : une plateforme sans toutes ses clés n'est pas interrogée ; ses vues suivent une croissance plausible et déterministe tirée de l'identifiant et de l'âge du clip (rapide au début puis de plus en plus lente, likes de 3 à 8 % des vues ; `simulatedStats`, `lib/server/rules.ts`). La modération indique les plateformes simulées. Avec des clés, une API en panne ou une vidéo introuvable fait passer le clip pour ce tour : rien n'est inventé, le clip est compté en erreur et le détail va dans les journaux du serveur. La version autonome est toujours en mode simulé et lance le relevé à l'ouverture de l'app quand le dernier a plus de 6 heures.
+
+**Score de risque de fraude** (0 à 100, `fraudRisk`, `lib/server/rules.ts`), recalculé à chaque relevé et dès l'envoi du clip, montré seulement à l'équipe (pastille dans les listes de clips, tri par risque dans la modération, détail et historique des 14 derniers jours dans la fiche d'un clip) :
+
+| Signal | Condition | Poids |
+|---|---|---|
+| Pic de vues soudain | Un jour des 14 derniers gagne plus de 5 fois la moyenne des jours précédents et plus de 5 000 vues, ou plus de 50 000 vues par jour au premier relevé, fait le jour de la publication ou le lendemain | 45 |
+| Beaucoup de vues, peu de likes | Au moins 5 000 vues et moins de 0,5 % de likes (likes connus seulement) | 35 |
+| Compte récent | Compte ClipBoost du clipper, ou son compte vérifié sur la plateforme du clip, de moins de 7 jours à l'envoi du clip | 20 |
+
+Niveaux : faible sous 30, moyen de 30 à 59, élevé à partir de 60. Le score aide l'équipe à choisir quoi vérifier : il ne refuse ni ne bloque rien.
 
 ## Mettre en ligne
 
@@ -96,7 +129,8 @@ Ces clients (jeton TikTok, Graph API de Meta, requête avec délai maximal) serv
    DATABASE_URL=postgres://… ADMIN_EMAIL=… ADMIN_PASSWORD=… npm run db:seed
    ```
    À chaque mise à jour, relancez `npm run db:migrate` (migrations SQL de `drizzle/`, appliquées une seule fois). En développement avec la base embarquée, elles s'appliquent au démarrage.
-3. Déployer (Vercel ou tout hébergeur Node.js) avec `DATABASE_URL`, `RESEND_API_KEY`, `EMAIL_FROM`, `APP_URL`, les clés des API des plateformes (vérification des comptes sociaux) et, si besoin, les identifiants Google, Apple et Discord, puis `npm run build` et `npm start`.
+3. Déployer (Vercel ou tout hébergeur Node.js) avec `DATABASE_URL`, `RESEND_API_KEY`, `EMAIL_FROM`, `APP_URL`, `CRON_SECRET`, les clés des API des plateformes (vérification des comptes sociaux, relevé des vues) et, si besoin, les identifiants Google, Apple et Discord, puis `npm run build` et `npm start`.
+4. Planifier le relevé des vues toutes les 6 heures : sur Vercel, `vercel.json` s'en charge ; ailleurs, une crontab (voir « Relevé automatique des vues et score de risque »).
 
 ## Images
 
@@ -110,7 +144,7 @@ npm run build:offline        # next build, puis web/dist/clipboost-site.html
 
 Produit un seul fichier HTML (accueil, connexion, espaces Clipper, Agence et Admin) qui s'ouvre directement depuis le disque, sans serveur ni connexion internet : pratique pour une démonstration. L'API y est simulée dans le navigateur (`web/offline/`) avec les mêmes règles (`lib/server/rules.ts`) et les mêmes contrôles (`lib/server/validation.ts`) que le serveur ; les données sont enregistrées dans le `localStorage` du navigateur.
 
-Au premier lancement, le fichier contient les données d'exemple de `db:seed:demo` et le compte `admin@clipboost.dz` (mot de passe `AdminClip2026`). Les codes de vérification sont affichés à l'écran. Les connexions Google, Apple et Discord y sont simulées (fenêtre de consentement fictive, aucun échange avec le fournisseur), avec les mêmes règles que sur le serveur ; les images sont gardées dans la base du navigateur, et une requête qui dépasserait la place disponible est refusée sans rien perdre des données déjà enregistrées. « Réinitialiser la démo », dans les réglages de l'administration, efface les données du navigateur.
+Au premier lancement, le fichier contient les données d'exemple de `db:seed:demo` et le compte `admin@clipboost.dz` (mot de passe `AdminClip2026`). Les codes de vérification sont affichés à l'écran. Les connexions Google, Apple et Discord y sont simulées (fenêtre de consentement fictive, aucun échange avec le fournisseur), avec les mêmes règles que sur le serveur ; les images sont gardées dans la base du navigateur, et une requête qui dépasserait la place disponible est refusée sans rien perdre des données déjà enregistrées. Le relevé des vues y est simulé et lancé à l'ouverture de l'app quand le dernier a plus de 6 heures (ou avec le bouton de la modération). « Réinitialiser la démo », dans les réglages de l'administration, efface les données du navigateur.
 
 Si l'accueil a déjà été construit (`.next/`), `node web/build.mjs --offline [fichier]` suffit.
 
@@ -123,6 +157,8 @@ Les réglages sont modifiables par l'administrateur (page « Réglages du site �
 - **Catégories** : 17 catégories proposées, ou « Autre » avec la catégorie précisée par l'agence.
 - **Comptes sociaux** : un compte par plateforme et par clipper, vérifié par le code `CB-XXXX` collé dans sa bio (voir « Vérification des comptes sociaux »). Un compte en attente peut changer d'identifiant (il garde son code) ; un compte vérifié doit être retiré avant d'en relier un autre sur la même plateforme. Un même compte n'est vérifié que par un seul clipper (« Ce compte est déjà vérifié par un autre clipper »). Les `@compte` du profil montrés aux agences et à l'équipe suivent les comptes vérifiés ; l'administrateur voit les comptes de chaque clipper, vérifiés ou en attente, sur sa fiche. Vérifications limitées à 10 par quart d'heure et par clipper, ajouts à 30 par heure.
 - **Clips** : lien TikTok, Instagram, YouTube ou Facebook obligatoire, unique, publié depuis le compte vérifié du clipper sur cette plateforme (sinon « Vérifiez d'abord votre compte … ») ; quand le lien nomme son compte (TikTok `tiktok.com/@compte/video/…`, YouTube `youtube.com/@compte/…`), ce doit être le compte vérifié. Le clipper publie sur toutes les plateformes de la campagne ou sur une seule : un lien par plateforme, enregistrés ensemble (même lot) et examinés séparément. Gain = vues × tarif aux 1 000 vues, nul sous le seuil minimum et limité au plafond par clip. Après validation, le clip continue de rapporter pendant 7 jours, tant que la campagne est active ou en pause : une campagne terminée ne paie plus rien (son budget restant a été rendu à l'agence) et ses clips en attente ne peuvent plus qu'être refusés.
+- **Relevé des vues** : automatique toutes les 6 heures pour les clips en attente et les clips validés depuis moins de 7 jours ; l'équipe peut aussi saisir les vues (et, facultativement, les likes) d'un clip, sans jamais les faire baisser. Historique jour par jour gardé pour chaque clip.
+- **Score de risque de fraude** : pic de vues soudain (45), beaucoup de vues pour peu de likes (35), compte récent (20), plafonné à 100 ; faible sous 30, moyen jusqu'à 59, élevé au-delà. Réservé à l'équipe (voir « Relevé automatique des vues et score de risque »).
 - **Gains** : 3 jours de rétention avant d'être retirables.
 - **Retraits** : minimum 2 000 DA vers BaridiMob, CCP ou RIB. Standard gratuit, ou instantané avec 2 % de frais (100 DA minimum).
 - **Crédit agence** : demande de recharge (virement, Edahabia, CIB ou carte Visa / Mastercard) avec une référence, confirmée par l'administrateur à réception du paiement. Pour une carte, seuls la marque et les 4 derniers chiffres sont transmis et ajoutés au libellé.
@@ -151,7 +187,9 @@ Les routes répondent en JSON (`{ ok: true, … }` ou `{ error: "message" }`), s
 | `POST /api/social/<id>/verify` | clipper | Vérifie le code dans la bio du compte → `{ simulated }` (`true` : plateforme en mode simulé) |
 | `DELETE /api/social/<id>` | clipper | Retire un compte (en attente ou vérifié) |
 | `POST /api/clips` | clipper | Clip : `{ campaignId, title, links: [{ platform, url }] }`, depuis les comptes vérifiés du clipper |
-| `POST /api/clips/<id>/views`, `…/review` | admin | Vues relevées ; validation ou refus |
+| `POST /api/clips/<id>/views`, `…/review` | admin | Vues relevées `{ views, likes? }` (likes facultatifs, gardés s'ils sont absents) ; validation ou refus |
+| `POST /api/admin/track-views` | admin | Relève tout de suite les vues des clips suivis → bilan `{ by, total, updated, simulated, failed, at }` |
+| `GET /api/cron/views` | tâche planifiée | Relevé des vues toutes les 6 heures (Vercel Cron), avec `Authorization: Bearer <CRON_SECRET>` → même bilan |
 | `POST /api/credit`, `/api/withdrawals` | agence, clipper | Recharge du crédit ; demande de retrait |
 | `POST /api/verification` | agence | Demande du badge de vérification |
 | `POST /api/admin/users/<id>/verification` | admin | Badge : `{ decision: "approve" \| "reject" \| "revoke", reason? }` |
@@ -160,7 +198,7 @@ Les routes répondent en JSON (`{ ok: true, … }` ou `{ error: "message" }`), s
 ## Tests
 
 ```bash
-npm test                                   # règles de calcul, API simulée hors ligne, lecture des bios (API des plateformes simulées)
+npm test                                   # règles de calcul et score de risque, API simulée hors ligne (relevé des vues compris), lecture des bios et des statistiques (API des plateformes simulées)
 npm run dev                                # puis, dans un autre terminal :
 BASE_URL=http://localhost:3000 npx tsx tests/api-flow.mts   # parcours API complet
 ```
@@ -174,16 +212,16 @@ app/                 accueil (React) et routes API
 components/landing/  sections de la page d'accueil
 lib/server/          base de données, authentification, règles et services
 drizzle/             migrations SQL
-scripts/             migrate et seed
+scripts/             migrate, seed et relevé des vues (cron:views)
 web/                 application /espace (JavaScript, sans framework) et version autonome (web/offline/)
 tests/               tests des règles et du parcours API
 ```
 
 ## Reste à faire avant un lancement public
 
-- Relevé automatique des vues par les API TikTok, Instagram, YouTube et Facebook (aujourd'hui saisies par l'administrateur).
 - Paiement en ligne des recharges par carte Edahabia, CIB, Visa ou Mastercard via une passerelle de paiement (aujourd'hui confirmées à la main).
 - Vérification de fond des agences avant le badge (documents, registre du commerce).
 - Pages « Mentions légales » et « Aide et support » du menu du compte.
-- Accès de production aux API des plateformes pour la vérification des comptes sociaux (examen de l'application par Meta, accès à l'API Research de TikTok ou, à défaut, connexion du clipper avec TikTok Login Kit).
+- Accès de production aux API des plateformes pour la vérification des comptes sociaux et le relevé des vues (examen de l'application par Meta, accès à l'API Research de TikTok ou, à défaut, connexion du clipper avec TikTok Login Kit).
+- Relevé des vues des liens courts (`vm.tiktok.com`, `fb.watch`) : suivre la redirection pour trouver l'identifiant de la vidéo (ces clips sont aujourd'hui comptés en erreur quand la plateforme a ses clés).
 - Pages légales (CGU, confidentialité) validées par un juriste.

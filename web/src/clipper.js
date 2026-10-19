@@ -289,7 +289,8 @@ function clCampaignItem(c) {
 // fiche ; admin, le clip ouvre sa fiche d'examen (#/admin/moderation/<id>), la campagne la sienne (#/admin/campagnes/<id>)
 // et le clippeur son profil (#/admin/utilisateur/<id>). Un clip publié sur plusieurs plateformes (même lot) le signale :
 // « Aussi publié sur … ».
-function publicationsTable(list, { showUser = false, actions = false, amountLabel = actions ? "Gain estimé" : "Gains" } = {}) {
+// tag(p) : pastille facultative après le titre de chaque clip (HTML ; l'admin y montre le risque de fraude, admRiskTag).
+function publicationsTable(list, { showUser = false, actions = false, amountLabel = actions ? "Gain estimé" : "Gains", tag = null } = {}) {
   if (!list.length) return emptyState("film", t("Aucun clip pour le moment"), t("Les clips soumis apparaîtront ici."));
   const dash = `<span class="font-normal text-fg-subtle">—</span>`;
   const area = state.route.area, clipperArea = area === "clipper", adminArea = area === "admin";
@@ -311,11 +312,14 @@ function publicationsTable(list, { showUser = false, actions = false, amountLabe
     // Lien transformé en bouton par admPubTable (admin.js) : garder la forme <a href="#/admin/moderation/…" class="…" …>titre</a>.
     const reviewLink = (cls) => `<a href="#/admin/moderation/${encodeURIComponent(p.id)}" class="${cls} underline-offset-2 hover:underline ${FOCUS}" title="${t("Examiner le clip")}">${esc(p.title)}</a>`;
     // La cellule Clip prend la place restante (w-full max-w-0) : seul le texte trop long est tronqué.
+    // Pastille : après le titre dans le tableau, sur sa propre ligne dans la liste (le titre garde toute la largeur).
+    const extra = tag ? tag(p) : "", extraLine = extra ? `<span class="mt-1.5 flex">${extra}</span>` : "";
+    const withTag = (html) => (extra ? `<span class="flex min-w-0 items-center gap-1.5">${html}${extra}</span>` : html);
     const title = adminArea
-      ? `<span class="flex min-w-0 items-center gap-1">${reviewLink("block min-w-0 truncate rounded-sm font-medium text-fg")}${external}</span>`
-      : p.url
-        ? `<a href="${esc(p.url)}" target="_blank" rel="noopener noreferrer" class="block truncate font-medium text-fg underline-offset-2 hover:underline ${FOCUS}">${esc(p.title)}</a>`
-        : `<span class="block truncate font-medium text-fg">${esc(p.title)}</span>`;
+      ? `<span class="flex min-w-0 items-center gap-1">${reviewLink("block min-w-0 truncate rounded-sm font-medium text-fg")}${external}${extra ? `<span class="ms-0.5 flex shrink-0">${extra}</span>` : ""}</span>`
+      : withTag(p.url
+        ? `<a href="${esc(p.url)}" target="_blank" rel="noopener noreferrer" class="block min-w-0 truncate font-medium text-fg underline-offset-2 hover:underline ${FOCUS}">${esc(p.title)}</a>`
+        : `<span class="block min-w-0 truncate font-medium text-fg">${esc(p.title)}</span>`);
     const titleMobile = adminArea
       ? `<span class="flex min-w-0 items-center gap-1">${reviewLink("min-w-0 truncate rounded-sm text-sm font-medium text-fg")}${external}</span>`
       : `<p class="truncate text-sm font-medium text-fg">${p.url ? `<a href="${esc(p.url)}" target="_blank" rel="noopener noreferrer" class="underline-offset-2 hover:underline">${esc(p.title)}</a>` : esc(p.title)}</p>`;
@@ -370,7 +374,7 @@ function publicationsTable(list, { showUser = false, actions = false, amountLabe
       </tr>`,
       li: `<li data-row="${p.id}" class="${TBL.item}">
         <div class="flex items-start gap-3">${coverThumb(c, "sm")}<div class="min-w-0 flex-1">${titleMobile}
-          ${subLine}${also}${reason}</div>${actions && pending ? "" : statusBadge(p.status)}</div>
+          ${subLine}${also}${reason}${extraLine}</div>${actions && pending ? "" : statusBadge(p.status)}</div>
         <div class="flex items-center justify-between gap-3 text-small"><span class="flex min-w-0 items-center gap-1.5 truncate text-fg-subtle">${icon(PLATFORM_ICON[p.platform] || "film", "size-3.5 shrink-0")}<span class="truncate">${esc(p.platform)} · ${plural(p.views, "vue", "vues")}</span></span><span class="shrink-0 font-medium">${amountMobile}</span></div>
         ${under && !actions ? thresholdBar("w-full") : ""}${decisionMobile}
       </li>`,

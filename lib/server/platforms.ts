@@ -1,8 +1,8 @@
 // Accès aux API officielles des plateformes (TikTok, Instagram, YouTube, Facebook), sans SDK : fetch et JSON.
 // Identifiants dans les variables d'environnement (voir .env.example). Une plateforme sans ses identifiants est en
 // « mode simulé » : l'appel n'a pas lieu et le service fait comme s'il avait réussi (démonstration, développement).
-// Utilisé par la vérification des comptes sociaux (services/social.ts) ; les clients ci-dessous (jeton TikTok, Graph API
-// de Meta, requête avec délai) servent aussi à tout autre appel aux mêmes API (relevé des vues…).
+// Utilisé par la vérification des comptes sociaux (services/social.ts : fetchProfileBio) et par le relevé automatique des
+// vues (services/tracking.ts : fetchClipStats) ; les clients (jeton TikTok, Graph API de Meta, requête avec délai) sont communs.
 
 const TIMEOUT_MS = 10_000;
 const GRAPH = "https://graph.facebook.com/v21.0";
@@ -134,6 +134,107 @@ export async function fetchProfileBio(platform: string, handle: string): Promise
     // Compte inexistant ou privé : erreur « invalid_params » avec un message explicite.
     if (/not exist|not found|private/i.test(String(dig(reply.data, "error", "message") ?? ""))) return { status: "not_found" };
     throw failed(platform, reply);
+  }
+  throw new PlatformError(`Plateforme inconnue : ${platform}`);
+}
+
+// ---------- Statistiques d'un clip (relevé automatique des vues) ----------
+
+/** Statistiques d'un clip : simulées (pas d'identifiants), lues (likes null s'ils sont masqués), ou introuvables. */
+export type StatsResult = { status: "simulated" } | { status: "found"; views: number; likes: number | null } | { status: "not_found" };
+
+const segments = (url: URL) => url.pathname.split("/").filter(Boolean);
+/** Segment qui suit l'un des mots donnés dans le chemin (« /shorts/<id> », « /video/<id> »…). */
+const after = (parts: string[], ...words: string[]) => { const i = parts.findIndex((p) => words.includes(p.toLowerCase())); return i >= 0 ? parts[i + 1] ?? null : null; };
+const valid = (id: string | null | undefined, re: RegExp) => (id && re.test(id) ? id : null);
+
+/**
+ * Identifiant de la vidéo dans le lien d'un clip, null si le lien ne le contient pas (lien court à résoudre, profil…) :
+ * - YouTube : « youtu.be/<id> », « watch?v=<id> », « /shorts/<id> », « /live/<id> », « /embed/<id> » (11 signes) ;
+ * - TikTok : « /@compte/video/<id> » ou « /photo/<id> » (chiffres) ; les liens courts « vm.tiktok.com/… » ne le contiennent pas ;
+ * - Instagram : code de la publication, « /reel/<code> », « /reels/<code> », « /p/<code> », « /tv/<code> » ;
+ * - Facebook : « /videos/<id> », « /reel/<id> », « watch?v=<id> », « video.php?v=<id> » (chiffres).
+ */
+export function videoIdOf(platform: string, raw: string): string | null {
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    return null;
+  }
+  const parts = segments(url), host = url.hostname.toLowerCase();
+  if (platform === "YouTube") {
+    const id = host.endsWith("youtu.be") ? parts[0] : url.searchParams.get("v") ?? after(parts, "shorts", "live", "embed", "v");
+    return valid(id, /^[A-Za-z0-9_-]{11}$/);
+  }
+  if (platform === "TikTok") return valid(after(parts, "video", "photo"), /^\d{6,25}$/);
+  if (platform === "Instagram") return valid(after(parts, "reel", "reels", "p", "tv"), /^[A-Za-z0-9_-]{5,40}$/);
+  if (platform === "Facebook") return valid(url.searchParams.get("v") ?? after(parts, "videos", "reel", "reels"), /^\d{5,25}$/);
+  return null;
+}
+
+const count = (v: unknown) => (v === undefined || v === null || v === "" || !Number.isFinite(Number(v)) ? null : Math.max(0, Math.floor(Number(v))));
+const compactDay = (d: Date) => d.toISOString().slice(0, 10).replace(/-/g, "");
+
+/**
+ * Vues et likes d'un clip par l'API officielle de sa plateforme (`url` : le lien soumis par le clipper) :
+ * - YouTube : videos?part=statistics (viewCount, likeCount ; likeCount absent si les likes sont masqués) ;
+ * - TikTok : API Research, video/query (view_count, like_count) sur les vidéos créées dans les 30 jours avant l'envoi du
+ *   clip (`submittedAt`, fenêtre imposée par l'API) ;
+ * - Instagram : Business Discovery du compte vérifié du clipper (`handle`), ses 50 dernières publications, retrouvée par
+ *   son code (like_count, view_count : compte professionnel seulement ; sans view_count, le clip est introuvable) ;
+ * - Facebook : nœud vidéo de la Graph API (views, likes.summary).
+ * Lève PlatformError si l'API ne répond pas ou refuse la requête ; { status: "not_found" } si la vidéo n'est pas trouvée
+ * ou si l'API ne donne pas ses vues.
+ */
+export async function fetchClipStats(platform: string, url: string, opts: { handle?: string | null; submittedAt?: Date } = {}): Promise<StatsResult> {
+  if (!platformConfigured(platform)) {
+    warnSimulated(platform);
+    return { status: "simulated" };
+  }
+  const id = videoIdOf(platform, url);
+  if (!id) return { status: "not_found" };
+  if (platform === "YouTube") {
+    const reply = await requestJson(`https://www.googleapis.com/youtube/v3/videos?${new URLSearchParams({ part: "statistics", id, key: env("YOUTUBE_API_KEY") })}`);
+    if (!reply.ok) throw failed(platform, reply);
+    const stats = dig(reply.data, "items", 0, "statistics"), views = count(dig(stats, "viewCount"));
+    return views === null ? { status: "not_found" } : { status: "found", views, likes: count(dig(stats, "likeCount")) };
+  }
+  if (platform === "TikTok") {
+    const sent = opts.submittedAt ?? new Date();
+    const body = {
+      query: { and: [{ operation: "EQ", field_name: "video_id", field_values: [id] }] },
+      start_date: compactDay(new Date(sent.getTime() - 28 * 86_400_000)), end_date: compactDay(new Date(sent.getTime() + 86_400_000)), max_count: 1,
+    };
+    const reply = await tiktokResearch("video/query/", "id,view_count,like_count", body);
+    if (!reply.ok) throw failed(platform, reply);
+    // L'API filtre déjà sur l'identifiant ; il revient en entier JSON de 64 bits, arrondi par JSON.parse au-delà de
+    // 2^53 : la seule vidéo renvoyée est donc acceptée telle quelle.
+    const videos = dig(reply.data, "data", "videos");
+    const video = Array.isArray(videos) ? videos.find((v) => String(dig(v, "id")) === id) ?? (videos.length === 1 ? videos[0] : undefined) : undefined;
+    const views = count(dig(video, "view_count"));
+    return views === null ? { status: "not_found" } : { status: "found", views, likes: count(dig(video, "like_count")) };
+  }
+  if (platform === "Instagram") {
+    if (!opts.handle) return { status: "not_found" };
+    const reply = await graphGet(env("INSTAGRAM_BUSINESS_ID"), { fields: `business_discovery.username(${opts.handle}){media.limit(50){permalink,like_count,view_count}}` }, env("INSTAGRAM_ACCESS_TOKEN"));
+    if (!reply.ok) {
+      if (dig(reply.data, "error", "code") === 110 || dig(reply.data, "error", "error_subcode") === 2207013) return { status: "not_found" };
+      throw failed(platform, reply);
+    }
+    const media = dig(reply.data, "business_discovery", "media", "data");
+    const post = Array.isArray(media) ? media.find((m) => videoIdOf("Instagram", String(dig(m, "permalink") ?? "")) === id) : undefined;
+    const views = count(dig(post, "view_count"));
+    return views === null ? { status: "not_found" } : { status: "found", views, likes: count(dig(post, "like_count")) };
+  }
+  if (platform === "Facebook") {
+    const reply = await graphGet(id, { fields: "views,likes.summary(true)" }, env("FACEBOOK_ACCESS_TOKEN"));
+    if (!reply.ok) {
+      if (dig(reply.data, "error", "code") === 100 && dig(reply.data, "error", "error_subcode") === 33) return { status: "not_found" };
+      throw failed(platform, reply);
+    }
+    const views = count(dig(reply.data, "views"));
+    return views === null ? { status: "not_found" } : { status: "found", views, likes: count(dig(reply.data, "likes", "summary", "total_count")) };
   }
   throw new PlatformError(`Plateforme inconnue : ${platform}`);
 }

@@ -205,6 +205,30 @@ ok(await admin("POST", `/api/clips/${clipId}/views`, { views: 400000 }), "vues +
 r = await clipper("GET", "/api/state"); assert.equal(r.data.me.pending, 20000);
 step("seuil appliqué, 10 000 DA crédités, plafond de 20 000 DA respecté, gains en rétention");
 
+// 5 bis. Relevé des vues : likes saisis, historique du jour et score de risque (pour l'admin seulement), relevé immédiat,
+// tâche planifiée (sans CRON_SECRET en développement, la route est ouverte).
+type Tracked = { id: string; likes: number | null; checkedAt: string | null; riskScore?: number; riskFlags?: string[]; history?: { day: string; views: number }[] };
+ok(await admin("POST", `/api/clips/${siblingId}/views`, { views: 20000, likes: 30 }), "vues et likes");
+r = await admin("POST", `/api/clips/${siblingId}/views`, { views: 20000, likes: -1 }); assert.equal(r.status, 400);
+let sib: Tracked = (await admin("GET", "/api/state")).data.publications.find((p: Tracked) => p.id === siblingId);
+// Clipper inscrit aujourd'hui (compte récent) et 0,15 % de likes : 20 + 35.
+assert.deepEqual([sib.likes, sib.riskScore, sib.riskFlags], [30, 55, ["Beaucoup de vues, peu de likes", "Compte récent"]]);
+assert.deepEqual(sib.history!.map((h) => h.views), [20000]);
+r = await clipper("GET", "/api/state");
+assert.ok(r.data.publications.every((p: Tracked) => !("riskScore" in p) && !("history" in p) && "likes" in p)); assert.equal(r.data.tracking, undefined);
+assert.equal((await clipper("POST", "/api/admin/track-views")).status, 403);
+r = await admin("POST", "/api/admin/track-views"); ok(r, "relevé immédiat");
+assert.equal(r.data.by, "admin"); assert.ok(r.data.total >= 1 && r.data.updated + r.data.failed === r.data.total);
+st = await admin("GET", "/api/state");
+assert.equal(st.data.tracking.summary.by, "admin"); assert.equal(st.data.tracking.everyHours, 6);
+assert.match(st.data.activity[0].text, /^Vues relevées par .+ : \d+ clips? mis à jour/);
+sib = st.data.publications.find((p: Tracked) => p.id === siblingId);
+assert.ok(Date.now() - Date.parse(sib.checkedAt!) < 120_000);
+const cronRes = await fetch(`${BASE}/api/cron/views`, { headers: process.env.CRON_SECRET ? { Authorization: `Bearer ${process.env.CRON_SECRET}` } : {} });
+assert.equal(cronRes.status, 200); assert.equal((await cronRes.json()).by, "cron");
+if (process.env.CRON_SECRET) assert.equal((await fetch(`${BASE}/api/cron/views`, { headers: { Authorization: "Bearer faux" } })).status, 401);
+step("vues et likes relevés, score de risque réservé à l'admin, relevé immédiat et tâche planifiée");
+
 // 6. Retrait impossible pendant la rétention et sans moyen de paiement.
 r = await clipper("POST", "/api/withdrawals", { amount: 5000, instant: false }); assert.equal(r.status, 400); assert.match(r.data.error, /moyen de retrait/);
 ok(await clipper("PATCH", "/api/me", { payoutMethod: "BaridiMob", payoutAccount: "00799999000000000001" }), "profil");

@@ -11,6 +11,7 @@
     "db:migrate": "tsx scripts/migrate.mts",
     "db:seed": "tsx scripts/seed.mts",
     "db:seed:demo": "tsx scripts/seed.mts --demo",
+    "cron:views": "tsx scripts/track-views.mts",
     "test": "tsx --test tests/*.test.ts",
     "build:app": "node web/build.mjs",
     "build:offline": "next build && node web/build.mjs --offline"
