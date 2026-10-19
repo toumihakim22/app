@@ -17,6 +17,15 @@ export function json(data: unknown, init?: ResponseInit) {
 
 type Handler<C> = (req: NextRequest, ctx: C) => Promise<Response>;
 
+/** Hôte d'une origine (« https://clipboost.dz » → « clipboost.dz »), null si ce n'en est pas une. */
+function hostOf(origin: string) {
+  try {
+    return new URL(origin).host;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Enveloppe commune des routes : erreurs JSON homogènes et protection CSRF
  * (une requête qui modifie des données doit venir du site lui-même).
@@ -26,7 +35,8 @@ export function route<C>(handler: Handler<C>): Handler<C> {
     try {
       if (req.method !== "GET" && req.method !== "HEAD") {
         const origin = req.headers.get("origin");
-        if (origin && new URL(origin).host !== req.headers.get("host")) throw forbidden("Origine non autorisée");
+        // « Origin: null » (page locale, iframe isolée, redirection d'un autre site) n'est pas une adresse : refusée aussi.
+        if (origin && hostOf(origin) !== req.headers.get("host")) throw forbidden("Origine non autorisée");
       }
       return await handler(req, ctx);
     } catch (err) {
@@ -79,6 +89,8 @@ export async function body<T>(req: NextRequest, schema: ZodType<T>): Promise<T> 
 const hits = new Map<string, { count: number; reset: number }>();
 export function rateLimit(key: string, max: number, windowMs: number) {
   const now = Date.now();
+  // Les fenêtres écoulées sont oubliées de temps en temps : la table ne grossit pas sans fin (essais sur des milliers d'emails).
+  if (hits.size > 10_000) for (const [k, e] of hits) if (e.reset < now) hits.delete(k);
   const entry = hits.get(key);
   if (!entry || entry.reset < now) {
     hits.set(key, { count: 1, reset: now + windowMs });

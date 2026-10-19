@@ -98,7 +98,7 @@ export const reviewClipSchema = z.discriminatedUnion("approve", [
   z.object({ approve: z.literal(false), reason: text("Motif", 200) }),
 ]);
 export const viewsSchema = z.object({ views: z.coerce.number().int().min(0).max(1_000_000_000) });
-export const withdrawSchema = z.object({ amount: money("Montant").pipe(z.number().min(1)), instant: z.boolean().default(false) });
+export const withdrawSchema = z.object({ amount: money("Montant").pipe(z.number().min(1, "Montant invalide")), instant: z.boolean().default(false) });
 export const CREDIT_METHODS = ["virement bancaire", "carte Edahabia", "carte CIB", "carte Visa / Mastercard"] as const;
 /**
  * Recharge du crédit d'une agence. Carte Visa / Mastercard : seules la marque et les 4 derniers chiffres sont transmis

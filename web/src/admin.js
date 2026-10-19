@@ -186,7 +186,8 @@ function aApercu() {
     kpi({ label: t("Commissions ClipBoost"), value: admIncome(commission), sub: t("sur le budget consommé") }),
   ];
 
-  // 3. Inscriptions (un comptage : barres entières) et activité récente (textes du serveur, traduits à l'affichage).
+  // 3. Inscriptions (un comptage : barres entières ; barChart se lit de gauche à droite, y compris en arabe, alors que
+  // l'état vide suit le sens de la langue) et activité récente (textes du serveur, traduits à l'affichage).
   const period = state.period === 7 ? 7 : 30, series = (db.series.daily || []).slice(-period);
   const total = admSum(series, (v) => v), activeDays = series.filter((v) => v > 0).length;
   const chart = `<header class="flex flex-wrap items-start justify-between gap-3">
@@ -195,7 +196,7 @@ function aApercu() {
         <p class="mt-0.5 text-small text-fg-subtle">${t("sur {days}", { days: plural(period, "jour", "jours") })} · ${plural(activeDays, "jour actif", "jours actifs")}</p></div>
       ${segmented("adm-period", period, [[7, t("7 j")], [30, t("30 j")]], t("Période du graphique"))}
     </header>
-    <div class="mt-5" dir="ltr">${total
+    <div class="mt-5">${total
       ? barChart(series, { tone: "brand", unit: "inscription", unitPlural: "inscriptions", integer: true, caption: period === 7 ? t("Nouvelles inscriptions par jour, 7 derniers jours") : t("Nouvelles inscriptions par jour, 30 derniers jours") })
       : emptyState("users", t("Aucune inscription sur la période"), t("Les nouveaux comptes clippers et agences apparaîtront ici."), "", { inCard: true })}</div>`;
   const acts = (db.activity || []).slice(0, 6);
@@ -709,7 +710,7 @@ function aParametres() {
       <form data-form="adm-settings" data-live="admSettings" novalidate class="grid gap-4 lg:gap-5">
         ${card(`${cardHeader(t("Annonce"), t("Bandeau affiché en haut du site et des espaces."))}
           <div class="mt-4 grid gap-1.5">
-            <div class="flex items-baseline justify-between gap-3"><label for="set-announcement" class="text-small font-medium text-fg">${t("Texte de l'annonce")}</label><span data-live-out="count" class="text-xs tabular-nums text-fg-subtle">${live.count}</span></div>
+            <div class="flex items-baseline justify-between gap-3"><label for="set-announcement" class="text-small font-medium text-fg">${t("Texte de l'annonce")}</label><span data-live-out="count" dir="ltr" class="text-xs tabular-nums text-fg-subtle">${live.count}</span></div>
             <textarea id="set-announcement" name="announcement" rows="3" maxlength="140" dir="auto" placeholder="${esc(t("Ex. Nouvelle campagne Ramadan disponible"))}" aria-describedby="set-announcement-desc" class="${textareaCls}">${esc(s.announcement)}</textarea>
             <span id="set-announcement-desc" class="text-xs text-fg-subtle">${t("Laisser vide pour masquer le bandeau.")}</span>
           </div>
@@ -1002,7 +1003,7 @@ LIVE.admViews = (d) => {
   return summary(rows);
 };
 
-// Motif d'un refus (campagne : 300 caractères, badge : 200) : compteur en direct.
+// Motif d'un refus (campagne : 300 caractères, badge : 200) : compteur en direct (« 12 / 300 », de gauche à droite).
 LIVE.admReason = (d) => ({ count: `${fmt(String(d.reason || "").length)}${NB}/${NB}${state.modal && state.modal.type === "adm-refuse" ? 300 : 200}` });
 
 // Motifs fréquents de refus d'une campagne : [puce, texte inséré dans le motif], sources françaises. Le texte est
@@ -1019,7 +1020,7 @@ const ADM_CLIP_REASONS = ["Règles de la campagne non respectées", "Vues suspec
 const ADM_REASON_CHIP = `inline-flex h-10 shrink-0 items-center rounded-full border border-line-strong bg-surface px-3.5 text-small font-medium text-fg-muted transition-colors duration-150 hover:border-line-control hover:text-fg md:h-8 ${FOCUS}`;
 // Champ de motif avec compteur (refus d'une campagne, refus ou retrait d'un badge). Textes déjà traduits.
 const admReasonField = (id, label, max, required, placeholder, hint) => `<div class="grid gap-1.5" data-field>
-    <div class="flex items-baseline justify-between gap-3"><label for="${id}" class="text-small font-medium text-fg">${label}</label><span data-live-out="count" class="text-xs tabular-nums text-fg-subtle">0${NB}/${NB}${max}</span></div>
+    <div class="flex items-baseline justify-between gap-3"><label for="${id}" class="text-small font-medium text-fg">${label}</label><span data-live-out="count" dir="ltr" class="text-xs tabular-nums text-fg-subtle">0${NB}/${NB}${max}</span></div>
     <textarea id="${id}" name="reason" rows="4" maxlength="${max}" ${required ? "required " : ""}autofocus dir="auto" placeholder="${esc(placeholder)}" aria-describedby="${id}-hint" class="${textareaCls}"></textarea>
     <span id="${id}-hint" class="text-xs text-fg-subtle">${hint}</span>
   </div>`;
