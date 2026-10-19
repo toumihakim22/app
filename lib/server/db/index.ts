@@ -28,4 +28,10 @@ export function getDb(): Promise<Db> {
   return globalForDb.clipboostDb;
 }
 
+/** Erreur PostgreSQL de clé unique (23505), éventuellement enveloppée par le pilote (PGlite, node-postgres). */
+export const isUniqueViolation = (err: unknown): boolean => {
+  const e = err as { code?: string; cause?: unknown } | null;
+  return !!e && (e.code === "23505" || (e.cause !== undefined && e.cause !== err && isUniqueViolation(e.cause)));
+};
+
 export { schema };

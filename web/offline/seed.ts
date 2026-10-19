@@ -4,7 +4,7 @@ import type { CampaignStatus, PublicationStatus } from "../../lib/server/db/sche
 import { payoutFor, sentence } from "../../lib/server/rules";
 import { link } from "../../lib/server/links";
 import { DEFAULT_SETTINGS } from "../../lib/server/settings";
-import { emptyStore, insertCampaign, insertPublication, insertTransaction, insertUser, newId, newRef, type CampaignRow, type Store, type UserRow } from "./db";
+import { emptyStore, insertCampaign, insertPublication, insertTransaction, insertUser, newId, newRef, newSocialCode, type CampaignRow, type Store, type UserRow } from "./db";
 import { hashPassword } from "./password";
 
 export const ADMIN_EMAIL = "admin@clipboost.dz";
@@ -18,9 +18,9 @@ export async function seed(): Promise<Store> {
   const daysAgo = (n: number) => Date.now() - n * 86_400_000;
   const U = async (role: "clipper" | "agence", name: string, email: string, extra: Partial<UserRow> = {}) =>
     insertUser(db, { id: newId(), role, name, email, passwordHash: await hashPassword(DEMO_PASSWORD), ...extra });
-  const yacine = await U("clipper", "Yacine Benali", "yacine@clipboost.dz", { level: "Clipper Argent", bio: "Monteur passionné de foot et d'humour.", handles: { tiktok: "@yacine.clips" }, payoutMethod: "CCP", payoutAccount: "0021234567 clé 89", createdAt: daysAgo(210) });
+  const yacine = await U("clipper", "Yacine Benali", "yacine@clipboost.dz", { level: "Clipper Argent", bio: "Monteur passionné de foot et d'humour.", handles: { tiktok: "@yacine.clips", instagram: "@yacine.clips", youtube: "@yacineclips" }, payoutMethod: "CCP", payoutAccount: "0021234567 clé 89", createdAt: daysAgo(210) });
   const amira = await U("clipper", "Amira Khelifi", "amira@clipboost.dz", { level: "Clipper Or", bio: "Lifestyle et mode à Oran.", handles: { instagram: "@amira.style" }, payoutMethod: "BaridiMob", payoutAccount: "00799999001234567890", createdAt: daysAgo(190) });
-  const lina = await U("clipper", "Lina Mansouri", "lina@clipboost.dz", { level: "Clipper Bronze", handles: { tiktok: "@lina.lol" }, createdAt: daysAgo(60) });
+  const lina = await U("clipper", "Lina Mansouri", "lina@clipboost.dz", { level: "Clipper Bronze", handles: { tiktok: "@lina.lol", youtube: "@lina.lol" }, createdAt: daysAgo(60) });
   const tassili = await U("agence", "Tassili Sport", "agence@clipboost.dz", { contact: "Nassim Ait Ali", bio: "Équipementier sportif algérien : maillots, ballons et tenues d'entraînement. Nous cherchons des clippers passionnés de foot pour faire vivre chaque match.", credit: 400000, createdAt: daysAgo(240) });
   const hoggar = await U("agence", "Hoggar Boissons", "hoggar@clipboost.dz", { contact: "Meriem Saadi", bio: "Boissons fraîches produites en Algérie, du Hoggar à la côte. Nos campagnes célèbrent les soirées d'été entre amis.", credit: 0, verification: "pending", verificationNote: "Marque déposée en Algérie depuis 2015, registre du commerce disponible sur demande.", createdAt: daysAgo(3) });
   const djurdjura = await U("agence", "Djurdjura Médias", "djurdjura@clipboost.dz", { contact: "Karim Ouali", country: "Algérie", bio: "Studio de production basé à Tizi Ouzou : courts-métrages, clips musicaux et documentaires.", credit: 150000, verification: "verified", createdAt: daysAgo(120) });
@@ -37,6 +37,18 @@ export async function seed(): Promise<Store> {
     { reserved: 0, reviewNote: "Les règles doivent préciser les dates de la compétition et le logo officiel à afficher.", createdAt: daysAgo(4), updatedAt: daysAgo(3.5) });
   const festival = C(djurdjura.id, "Festival du court-métrage", "Djurdjura Médias", "Cinéma", 120, 300000, "Active", "🎬", "from-violet-500 via-fuchsia-500 to-pink-500", ["YouTube", "Facebook", "Instagram"], ["Extrait de 30 à 90 secondes", "Mentionner @djurdjuramedias", "Pas de spoiler de la fin"], { createdAt: daysAgo(6) });
 
+  // Comptes sociaux vérifiés (code dans la bio) sur les plateformes de leurs clips ; Amira a aussi un compte TikTok
+  // en attente de vérification (code à coller dans sa bio). Les « @compte » des profils (handles) sont ceux-là.
+  const social = (u: UserRow, platform: string, handle: string, verifiedDaysAgo: number | null) => db.social.push({
+    id: newId(), userId: u.id, platform, handle, code: newSocialCode(db), status: verifiedDaysAgo === null ? "pending" : "verified",
+    verifiedAt: verifiedDaysAgo === null ? null : daysAgo(verifiedDaysAgo), checkedAt: verifiedDaysAgo === null ? null : daysAgo(verifiedDaysAgo),
+    createdAt: daysAgo(verifiedDaysAgo === null ? 0.2 : verifiedDaysAgo + 0.01),
+  });
+  social(yacine, "TikTok", "yacine.clips", 30); social(yacine, "Instagram", "yacine.clips", 12); social(yacine, "YouTube", "yacineclips", 12);
+  social(amira, "Instagram", "amira.style", 25); social(amira, "TikTok", "amira.style", null);
+  social(lina, "TikTok", "lina.lol", 40); social(lina, "YouTube", "lina.lol", 15);
+
+  const userOf = (id: string) => db.users.find((u) => u.id === id)!;
   const join = (u: UserRow, c: CampaignRow, favorite = false) => db.members.push({ campaignId: c.id, userId: u.id, joined: true, favorite, createdAt: Date.now() });
   join(yacine, derby, true); join(yacine, kahwa); join(yacine, rire, true); join(amira, kahwa); join(amira, derby); join(lina, rire);
 
@@ -79,10 +91,12 @@ export async function seed(): Promise<Store> {
   launched(festival, 5.9);
   // Demande de badge de vérification en attente de l'équipe.
   acts.push([1.5, "🛡️", `${hoggar.name} demande le badge de vérification.`]);
+  for (const a of db.social) if (a.verifiedAt !== null) acts.push([(Date.now() - a.verifiedAt) / 86_400_000, "🛡️", `${userOf(a.userId).name} a vérifié son compte ${a.platform} @${a.handle}.`]);
 
   let i = 0;
   for (const p of pubs) {
-    const id = newId(), host = ({ TikTok: "www.tiktok.com/@clip/video/", Instagram: "www.instagram.com/reel/", Facebook: "www.facebook.com/reel/" } as Record<string, string>)[p.platform] ?? "youtu.be/";
+    // Un lien TikTok nomme le compte : celui que le clipper a vérifié.
+    const id = newId(), host = ({ TikTok: `www.tiktok.com/${p.u.handles.tiktok}/video/`, Instagram: "www.instagram.com/reel/", Facebook: "www.facebook.com/reel/" } as Record<string, string>)[p.platform] ?? "youtu.be/";
     const paid = p.status === "Validée" ? payoutFor(p.views, p.c) : 0;
     insertPublication(db, { id, userId: p.u.id, campaignId: p.c.id, title: p.title, platform: p.platform, url: p.url ?? `https://${host}demo${++i}`, batch: p.batch ?? null, views: p.views, status: p.status, reason: p.reason ?? null, paid, approvedAt: p.status === "Validée" ? daysAgo(p.days) : null, createdAt: daysAgo(p.days + 1) });
     const txId = newId();

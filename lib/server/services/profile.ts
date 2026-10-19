@@ -14,7 +14,7 @@ export type ProfileInput = {
 
 /**
  * Profil du compte connecté. Tous les comptes (admin compris) : nom, pays, photo de profil, langue de l'interface.
- * Agence : contact, présentation, photo de couverture. Clipper : présentation, comptes sociaux, moyen de retrait.
+ * Agence : contact, présentation, photo de couverture. Clipper : présentation, moyen de retrait.
  */
 export async function updateProfile(user: User, input: ProfileInput) {
   const db = await getDb();
@@ -32,8 +32,8 @@ export async function updateProfile(user: User, input: ProfileInput) {
     }
     // Bio : présentation du clipper (vue par les marques) ou de l'agence (vue par les clippers sur sa page).
     if (input.bio !== undefined && (me.role === "clipper" || me.role === "agence")) patch.bio = input.bio.trim();
+    // Comptes sociaux (users.handles) : plus modifiables ici, ils suivent les comptes vérifiés (services/social.ts).
     if (me.role === "clipper") {
-      if (input.handles !== undefined) patch.handles = input.handles;
       if (input.payoutMethod !== undefined) patch.payoutMethod = input.payoutMethod;
       if (input.payoutAccount !== undefined) patch.payoutAccount = input.payoutAccount.trim();
     }

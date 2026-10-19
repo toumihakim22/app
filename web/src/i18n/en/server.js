@@ -115,6 +115,16 @@ Object.assign(I18N.en, {
   "Le nombre de vues ne peut pas diminuer": "The view count cannot go down",
   "Ce clip a déjà été traité": "This clip has already been reviewed",
 
+  // ---------- Comptes sociaux des clippers (lib/server/services/social.ts, validation.ts) ----------
+  "Identifiant manquant": "Username is missing",
+  "Identifiant obligatoire": "Username is required",
+  "Identifiant trop long": "Username is too long",
+  "Identifiant invalide : lettres, chiffres, points, tirets ou tirets bas (60 signes au plus)": "Invalid username: letters, numbers, dots, hyphens or underscores (60 characters max)",
+  "Ce compte est déjà vérifié par un autre clipper": "This account is already verified by another clipper",
+  "Ce compte a été modifié entre-temps : réessayez": "This account was changed in the meantime: please try again",
+  "Ce compte est déjà vérifié": "This account is already verified",
+  "Compte introuvable": "Account not found",
+
   // ---------- Portefeuille, crédit, transactions ----------
   "Ajoutez d'abord un moyen de retrait (BaridiMob, CCP ou RIB) dans votre profil": "First add a payout method (BaridiMob, CCP or RIB) to your profile",
   "Transaction introuvable": "Transaction not found",
@@ -159,6 +169,12 @@ I18N_RX.en.push(
   [/^Le lien doit être un lien (.+) \(https:\/\/…\)\.$/, "The link must be a $1 link (https://…)."],
   [/^Le lien doit être un lien (.+) \(https:\/\/…\)$/, "The link must be a $1 link (https://…)"],
   [/^Ce lien a déjà été soumis : (.+)$/, "This link has already been submitted: $1"],
+  [/^Vérifiez d'abord votre compte (.+) \(Profil → Comptes sociaux\)$/, "First verify your $1 account (Profile → Social accounts)"],
+  [/^Ce lien ne vient pas de votre compte (.+) vérifié \(@(.+)\)$/, "This link isn't from your verified $1 account (@$2)"],
+  [/^Vous avez déjà un compte (.+) vérifié : retirez-le d'abord pour en changer$/, "You already have a verified $1 account: remove it first to change it"],
+  [/^Compte (.+) @(.+) introuvable : vérifiez l'identifiant$/, "$1 account @$2 not found: check the username"],
+  [/^Code (.+) absent de la bio de @(.+) : collez-le, enregistrez, puis réessayez$/, "Code $1 isn't in the bio of @$2: paste it, save, then try again"],
+  [/^Vérification (.+) indisponible pour le moment, réessayez plus tard$/, "$1 verification is unavailable right now, please try again later"],
   [/^Cette campagne n'accepte pas (.+)$/, "This campaign doesn't accept $1"],
   [/^Seuil non atteint : ([\d\s]+) vues minimum$/, "Threshold not reached: $1 views minimum"],
   [/^Le retrait minimum est de ([+-]?[\d\s]+ DA)$/, "The minimum withdrawal is $1"],
@@ -227,6 +243,8 @@ I18N_RX.en.push(
   [/^Votre demande de badge de vérification a été refusée : (.+)$/, "Your verification badge request was rejected: $1"],
   [/^Le badge de vérification de votre agence a été retiré : (.+)$/, "Your agency's verification badge has been removed: $1"],
   [/^Réglages modifiés par (.+) : (.+)\.$/, "Settings changed by $1: $2."],
+  [/^(.+) a vérifié son compte (TikTok|Instagram|YouTube|Facebook) @(.+)\.$/, "$1 verified their $2 account @$3."],
+  [/^(.+) a retiré son compte (TikTok|Instagram|YouTube|Facebook) @(.+)\.$/, "$1 removed their $2 account @$3."],
 
   // ---------- Libellés des opérations (transactions[].label) ----------
   [/^Retrait instantané vers RIB bancaire$/, "Instant withdrawal to bank account (RIB)"],

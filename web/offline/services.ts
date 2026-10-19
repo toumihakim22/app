@@ -3,11 +3,11 @@
 import type { CampaignStatus, Handles, Locale, Role, SignupPayload } from "../../lib/server/db/schema";
 import { GRADIENTS, PLATFORM_HOSTS } from "../../lib/server/gradients";
 import { link } from "../../lib/server/links";
-import { belowMin, fundingCost, instantFee, payoutDelta, sentence, validateCampaignNumbers, viewsFor } from "../../lib/server/rules";
+import { belowMin, fundingCost, instantFee, normalizeHandle, payoutDelta, sentence, socialLinkError, validateCampaignNumbers, viewsFor } from "../../lib/server/rules";
 import { IMAGE_DATA_URL, type OAuthProvider } from "../../lib/server/validation";
 import {
   ApiError, badRequest, forbidden, getSettings, insertCampaign, insertPublication, insertTransaction, insertUser, logActivity,
-  newId, newRef, notFound, notify, notifyRole, randomInt, type CampaignRow, type PubRow, type Store, type UserRow,
+  newId, newRef, newSocialCode, notFound, notify, notifyRole, randomInt, type CampaignRow, type PubRow, type Store, type UserRow,
 } from "./db";
 import { hashPassword, sha256Hex, strongEnough, verifyPassword } from "./password";
 
@@ -399,7 +399,8 @@ export function setTop({ db }: Ctx, id: string, top: boolean) {
 /**
  * Un clip publié sur une ou plusieurs plateformes de la campagne : un lien par plateforme, chacun enregistré comme
  * une publication (vues, examen et paiement propres), reliées par le même identifiant de lot. Tous les liens sont
- * vérifiés avant d'enregistrer quoi que ce soit.
+ * vérifiés avant d'enregistrer quoi que ce soit, dont le compte : vérifié par le clipper sur cette plateforme, et le
+ * même quand le lien le nomme (socialLinkError).
  */
 export function submitClip({ db }: Ctx, user: UserRow, input: { campaignId: string; title: string; links: { platform: string; url: string }[] }) {
   const c = db.campaigns.find((x) => x.id === input.campaignId);
@@ -407,6 +408,8 @@ export function submitClip({ db }: Ctx, user: UserRow, input: { campaignId: stri
   if (c.status !== "Active") throw badRequest("Cette campagne n'accepte plus de clips");
   const member = db.members.find((m) => m.campaignId === c.id && m.userId === user.id && m.joined);
   if (!member) throw badRequest("Rejoignez la campagne avant de soumettre un clip");
+  // Comptes sociaux vérifiés du clipper (Profil → Comptes sociaux), par plateforme.
+  const verified = new Map(db.social.filter((a) => a.userId === user.id && a.status === "verified").map((a) => [a.platform, a.handle]));
   const links = input.links.map(({ platform, url: raw }) => {
     if (!c.platforms.includes(platform)) throw badRequest(`Cette campagne n'accepte pas ${platform}`);
     let url: URL | null = null;
@@ -417,6 +420,8 @@ export function submitClip({ db }: Ctx, user: UserRow, input: { campaignId: stri
     }
     // Le lien doit pointer vers la plateforme déclarée (lib/server/gradients.ts).
     if (!url || url.protocol !== "https:" || !PLATFORM_HOSTS[platform]?.test(url.hostname)) throw badRequest(`Le lien doit être un lien ${platform} (https://…)`);
+    const accountError = socialLinkError(platform, url.toString(), verified.get(platform));
+    if (accountError) throw badRequest(accountError);
     return { platform, url: url.toString() };
   });
   const urls = links.map((l) => l.url);
@@ -577,8 +582,8 @@ export function updateProfile({ db }: Ctx, user: UserRow, input: {
   if (user.role === "agence" && input.contact !== undefined) patch.contact = input.contact.trim();
   // Bio : présentation du clipper (vue par les marques) ou de l'agence (vue par les clippers sur sa page).
   if (input.bio !== undefined && (user.role === "clipper" || user.role === "agence")) patch.bio = input.bio.trim();
+  // Comptes sociaux (handles) : plus modifiables ici, ils suivent les comptes vérifiés (addSocialAccount…).
   if (user.role === "clipper") {
-    if (input.handles !== undefined) patch.handles = input.handles;
     if (input.payoutMethod !== undefined) patch.payoutMethod = input.payoutMethod;
     if (input.payoutAccount !== undefined) patch.payoutAccount = input.payoutAccount.trim();
   }
@@ -633,6 +638,61 @@ export function reviewVerification({ db }: Ctx, admin: UserRow, id: string, inpu
     notify(db, u.id, "⚠️", reason ? `Le badge de vérification de votre agence a été retiré : ${sentence(reason)}` : "Le badge de vérification de votre agence a été retiré.", link.agencyProfile());
     logActivity(db, "🛡️", `Badge de vérification retiré à ${u.name} par ${admin.name}.`);
   }
+}
+
+// ---------- Comptes sociaux des clippers (social.ts) ----------
+// Hors ligne, la vérification est toujours simulée (aucun appel aux plateformes) : elle réussit, avec les mêmes
+// contrôles que le serveur (compte d'un autre clipper, compte déjà vérifié…).
+
+const handleKey = (platform: string) => platform.toLowerCase() as keyof Handles;
+const SOCIAL_TAKEN = "Ce compte est déjà vérifié par un autre clipper";
+
+function assertFree(db: Store, platform: string, handle: string, userId: string) {
+  if (db.social.some((a) => a.platform === platform && a.handle === handle && a.status === "verified" && a.userId !== userId)) throw badRequest(SOCIAL_TAKEN);
+}
+
+/** Ajout d'un compte (ou nouvel identifiant d'un compte en attente, qui garde son code) : renvoie son code « CB-XXXX ». */
+export function addSocialAccount({ db }: Ctx, user: UserRow, input: { platform: string; handle: string }) {
+  const handle = normalizeHandle(input.platform, input.handle);
+  if (!handle) throw badRequest("Identifiant invalide : lettres, chiffres, points, tirets ou tirets bas (60 signes au plus)");
+  assertFree(db, input.platform, handle, user.id);
+  const mine = db.social.find((a) => a.userId === user.id && a.platform === input.platform);
+  if (mine?.status === "verified") throw badRequest(`Vous avez déjà un compte ${input.platform} vérifié : retirez-le d'abord pour en changer`);
+  if (mine) {
+    Object.assign(mine, { handle, checkedAt: null });
+    return { id: mine.id, code: mine.code };
+  }
+  const id = newId(), code = newSocialCode(db);
+  db.social.push({ id, userId: user.id, platform: input.platform, handle, code, status: "pending", verifiedAt: null, checkedAt: null, createdAt: Date.now() });
+  return { id, code };
+}
+
+/** Vérification simulée : le compte devient vérifié et son « @compte » s'affiche dans le profil (handles). */
+export function verifySocialAccount({ db }: Ctx, user: UserRow, id: string) {
+  const a = db.social.find((x) => x.id === id && x.userId === user.id);
+  if (!a) throw notFound("Compte introuvable");
+  if (a.status === "verified") throw badRequest("Ce compte est déjà vérifié");
+  assertFree(db, a.platform, a.handle, user.id);
+  const now = Date.now(), me = userOf(db, user.id);
+  Object.assign(a, { status: "verified", verifiedAt: now, checkedAt: now });
+  me.handles = { ...me.handles, [handleKey(a.platform)]: `@${a.handle}` };
+  logActivity(db, "🛡️", `${me.name} a vérifié son compte ${a.platform} @${a.handle}.`);
+  return { simulated: true };
+}
+
+/** Retrait d'un compte ; un compte vérifié disparaît aussi du profil (handles). */
+export function removeSocialAccount({ db }: Ctx, user: UserRow, id: string) {
+  const a = db.social.find((x) => x.id === id && x.userId === user.id);
+  if (!a) throw notFound("Compte introuvable");
+  db.social.splice(db.social.indexOf(a), 1);
+  if (a.status !== "verified") return;
+  const me = userOf(db, user.id), key = handleKey(a.platform);
+  if (me.handles[key] === `@${a.handle}`) {
+    const handles = { ...me.handles };
+    delete handles[key];
+    me.handles = handles;
+  }
+  logActivity(db, "🗑️", `${me.name} a retiré son compte ${a.platform} @${a.handle}.`);
 }
 
 export function markNotificationsRead({ db }: Ctx, userId: string, ids?: string[]) {

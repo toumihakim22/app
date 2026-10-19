@@ -445,7 +445,7 @@ function aUtilisateur() {
       ${txs.length ? admTxList(txs) : emptyState("bank", t("Aucune recharge"), t("Les recharges de crédit annoncées par l'agence apparaîtront ici."))}`;
   }
 
-  // Clipper : gains, moyen de retrait, clips (décision possible depuis sa fiche) et retraits.
+  // Clipper : gains, moyen de retrait, comptes sociaux, clips (décision possible depuis sa fiche) et retraits.
   const count = (s) => pubs.filter((p) => p.status === s).length;
   const views = admSum(pubs.filter((p) => p.status === "Validée"), (p) => p.views), acc = admAccountValue(u.payoutAccount);
   const kpis = [
@@ -458,10 +458,25 @@ function aUtilisateur() {
       <div class="mt-4 flex flex-wrap items-center gap-x-3 gap-y-2">${u.payoutMethod
         ? `${badge(esc(t(u.payoutMethod)), "idle")}${acc ? `<span class="flex min-w-0 items-center gap-0.5"><span class="min-w-0 break-all font-mono text-small font-medium text-fg" dir="ltr">${admAccount(acc)}</span>${admCopyBtn(acc, t("Copier le numéro"), t("Numéro copié"))}</span>` : `<span class="text-small text-fg-subtle">${t("Numéro non renseigné")}</span>`}`
         : `<span class="text-small text-fg-subtle">${t("Aucun moyen de retrait enregistré.")}</span>`}</div>`);
-  const handles = u.handles ? Object.entries({ tiktok: "TikTok", instagram: "Instagram", youtube: "YouTube", facebook: "Facebook" }).filter(([k]) => u.handles[k]) : [];
-  const accounts = card(`${cardHeader(t("Comptes de publication"), t("Déclarés par le clipper dans son profil."))}
-      ${handles.length ? `<ul class="mt-4 grid gap-2">${handles.map(([k, label]) => `<li class="flex min-w-0 items-center gap-2 text-sm text-fg">${icon(PLATFORM_ICON[label] || "film", "size-4 shrink-0 text-fg-muted")}<span class="text-fg-muted">${label}</span><span class="min-w-0 truncate font-medium" dir="ltr">${esc(u.handles[k])}</span></li>`).join("")}</ul>`
-        : `<p class="mt-4 text-small text-fg-subtle">${t("Aucun compte déclaré.")}</p>`}`);
+  // Comptes sociaux : vérifiés (code dans la bio) ou en attente (avec le code remis au clipper). Un « @compte » du profil
+  // sans compte vérifié derrière (saisi avant la vérification des comptes) est montré « Non vérifié ».
+  const social = u.socialAccounts || [];
+  const legacy = PLATFORMS.filter((p) => u.handles && u.handles[p.toLowerCase()] && !social.some((a) => a.platform === p && a.status === "verified"))
+    .map((p) => ({ id: `legacy-${p}`, platform: p, handle: String(u.handles[p.toLowerCase()]).replace(/^@+/, ""), status: "legacy" }));
+  const accRow = (a) => {
+    const tag = a.status === "verified" ? badge(t("Vérifié"), "success", { ic: "check" }) : a.status === "pending" ? badge(t("En attente"), "warning", { dot: true }) : badge(t("Non vérifié"), "idle");
+    const meta = a.status === "verified" ? t("Vérifié le {date}", { date: date(a.verifiedAt) })
+      : a.status === "pending" ? `${t("Code {code}", { code: code(a.code) })}${a.checkedAt ? ` · ${t("Dernier essai : {when}", { when: ago(a.checkedAt).replace(/^./, (ch) => ch.toLowerCase()) })}` : ""}`
+      : t("Indiqué dans le profil, jamais vérifié");
+    return `<li class="flex items-start gap-3 py-3 first:pt-0 last:pb-0">
+      <span class="grid size-9 shrink-0 place-items-center rounded-tile bg-muted text-fg">${icon(PLATFORM_ICON[a.platform] || "film", "size-4")}</span>
+      <div class="min-w-0 flex-1"><p class="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1"><span class="min-w-0 truncate text-sm font-medium text-fg" dir="ltr">@${esc(a.handle)}</span>${tag}</p>
+        <p class="mt-0.5 text-xs text-fg-subtle">${esc(a.platform)} · ${meta}</p></div></li>`;
+  };
+  const rows = [...social, ...legacy];
+  const accounts = card(`${cardHeader(t("Comptes sociaux"), t("Vérifiés par un code dans leur bio : seuls leurs clips sont acceptés."))}
+      ${rows.length ? `<ul class="mt-4 divide-y divide-line">${rows.map(accRow).join("")}</ul>`
+        : `<p class="mt-4 text-small text-fg-subtle">${t("Aucun compte social ajouté.")}</p>`}`);
   // amountLabel : texte source français, traduit par publicationsTable.
   return `${crumb(u.name)}${header}
     <div class="mt-4 grid grid-cols-2 gap-3 sm:gap-4 lg:mt-5 lg:gap-5 xl:grid-cols-4">${kpis.join("")}</div>

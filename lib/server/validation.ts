@@ -47,6 +47,7 @@ export const profileSchema = z.object({
   contact: z.string().trim().max(80).optional(),
   country: text("Pays", 60).optional(),
   bio: z.string().trim().max(300).optional(),
+  // Ignoré depuis la vérification des comptes sociaux (users.handles suit les comptes vérifiés) ; accepté pour les anciennes versions de l'app.
   handles: z.object({ tiktok: z.string().trim().max(60).optional(), instagram: z.string().trim().max(60).optional(), youtube: z.string().trim().max(60).optional(), facebook: z.string().trim().max(60).optional() }).optional(),
   payoutMethod: z.enum(["BaridiMob", "CCP", "RIB bancaire"]).optional(),
   payoutAccount: z.string().trim().max(60).optional(),
@@ -97,6 +98,11 @@ export const reviewClipSchema = z.discriminatedUnion("approve", [
   z.object({ approve: z.literal(true) }),
   z.object({ approve: z.literal(false), reason: text("Motif", 200) }),
 ]);
+/** Compte social d'un clipper (Profil → Comptes sociaux) : identifiant ou adresse du profil, normalisé par le service (normalizeHandle). */
+export const socialAccountSchema = z.object({
+  platform: z.enum(PLATFORMS as [string, ...string[]], { error: "Plateforme inconnue" }),
+  handle: text("Identifiant", 200),
+});
 export const viewsSchema = z.object({ views: z.coerce.number().int().min(0).max(1_000_000_000) });
 export const withdrawSchema = z.object({ amount: money("Montant").pipe(z.number().min(1, "Montant invalide")), instant: z.boolean().default(false) });
 export const CREDIT_METHODS = ["virement bancaire", "carte Edahabia", "carte CIB", "carte Visa / Mastercard"] as const;

@@ -26,8 +26,8 @@ Ouvrir http://localhost:3000 (accueil) et http://localhost:3000/espace (applicat
 
 | Compte | Rôle | Ce qu'il montre |
 |---|---|---|
-| `yacine@clipboost.dz` | Clipper | Gains, retraits, un clip publié sur TikTok et Instagram en un seul envoi |
-| `amira@clipboost.dz`, `lina@clipboost.dz` | Clipper | Clips en attente, validés ou refusés |
+| `yacine@clipboost.dz` | Clipper | Gains, retraits, un clip publié sur TikTok et Instagram en un seul envoi, comptes TikTok, Instagram et YouTube vérifiés |
+| `amira@clipboost.dz`, `lina@clipboost.dz` | Clipper | Clips en attente, validés ou refusés ; Amira a aussi un compte TikTok en attente de vérification (code à coller dans sa bio) |
 | `agence@clipboost.dz` | Agence (Tassili Sport) | Campagnes actives et en pause, une campagne refusée avec son motif (à modifier et relancer, ou à supprimer) |
 | `hoggar@clipboost.dz` | Agence (Hoggar Boissons) | Campagne en attente de vérification, recharge à confirmer, badge de vérification demandé |
 | `djurdjura@clipboost.dz` | Agence (Djurdjura Médias) | Agence vérifiée (badge bleu), campagne active sur YouTube, Facebook et Instagram |
@@ -51,8 +51,12 @@ Sans clé `RESEND_API_KEY`, les codes de vérification sont affichés dans le te
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Connexion avec Google (facultatif). |
 | `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET` | Connexion avec Discord (facultatif). |
 | `APPLE_CLIENT_ID`, `APPLE_TEAM_ID`, `APPLE_KEY_ID`, `APPLE_PRIVATE_KEY` | Connexion avec Apple (facultatif) : Services ID, identifiant d'équipe, identifiant et contenu de la clé privée `.p8` (les retours à la ligne peuvent être écrits `\n`). |
+| `YOUTUBE_API_KEY` | Vérification des comptes YouTube des clippers : clé de l'API YouTube Data v3. |
+| `INSTAGRAM_ACCESS_TOKEN`, `INSTAGRAM_BUSINESS_ID` | Vérification des comptes Instagram : jeton d'accès de la Graph API de Meta et identifiant du compte Instagram professionnel de ClipBoost qui interroge la Business Discovery. |
+| `FACEBOOK_ACCESS_TOKEN` | Vérification des pages Facebook : jeton d'accès de la Graph API de Meta. |
+| `TIKTOK_CLIENT_KEY`, `TIKTOK_CLIENT_SECRET` | Vérification des comptes TikTok : clé et secret d'une application TikTok qui a accès à l'API Research. |
 
-Un bouton « Continuer avec … » n'apparaît que si les variables de son fournisseur sont toutes définies.
+Un bouton « Continuer avec … » n'apparaît que si les variables de son fournisseur sont toutes définies. Une plateforme sans toutes ses variables est vérifiée en **mode simulé** (voir ci-dessous).
 
 ## Connexion avec Google, Apple ou Discord
 
@@ -68,6 +72,21 @@ Adresses de retour (« redirect URI ») à déclarer chez chaque fournisseur, av
 
 En local, Google et Discord acceptent `http://localhost:3000/api/auth/oauth/<fournisseur>/callback` ; Apple exige un domaine en HTTPS. Apple revient sur le site par un formulaire envoyé depuis `appleid.apple.com` : son cookie de parcours est `SameSite=None; Secure`. Le cookie de parcours est posé sur le domaine où l'utilisateur clique le bouton : servez le site sur le seul domaine de `APP_URL` (redirigez par exemple `www.` vers le domaine principal), sinon le retour du fournisseur ne le retrouve pas (« La connexion a expiré »).
 
+## Vérification des comptes sociaux
+
+Un clipper relie ses comptes dans Profil → Comptes sociaux : un compte par plateforme (TikTok, Instagram, YouTube, Facebook), saisi par son identifiant (`@compte`) ou l'adresse de son profil. ClipBoost lui donne un code `CB-XXXX` (4 signes sans ambiguïté : ni 0/O ni 1/I/L) ; il le colle dans la bio du compte, puis clique « Vérifier ». Le serveur lit la bio par l'API officielle de la plateforme (`lib/server/platforms.ts`) et y cherche le code, en majuscules ou en minuscules. Une fois le compte vérifié, le code peut être retiré de la bio.
+
+| Plateforme | Appel | Ce qui est lu |
+|---|---|---|
+| YouTube | `GET googleapis.com/youtube/v3/channels?part=snippet&forHandle=@<compte>` | Description de la chaîne |
+| Instagram | `GET graph.facebook.com/v21.0/<INSTAGRAM_BUSINESS_ID>?fields=business_discovery.username(<compte>){biography}` | Biographie (comptes professionnels seulement : créateur ou entreprise) |
+| Facebook | `GET graph.facebook.com/v21.0/<page>?fields=about,description` | « À propos » et description d'une page |
+| TikTok | jeton `POST open.tiktokapis.com/v2/oauth/token/` (client credentials), puis `POST …/v2/research/user/info/?fields=bio_description` | Bio du compte |
+
+**Mode simulé** : une plateforme dont les variables ne sont pas toutes définies n'est pas interrogée et **la vérification réussit toujours** (le serveur le signale une fois par plateforme dans ses journaux en production, et l'app l'indique au clipper). C'est une facilité pour le développement et la démonstration (la version autonome est toujours en mode simulé) : en production, définissez les variables de chaque plateforme, sinon n'importe quel compte peut être déclaré vérifié. Limites des API : la Business Discovery ne voit que les comptes Instagram professionnels ; la lecture d'une page Facebook demande l'accès « Page Public Metadata Access » (examen de l'application par Meta) ; l'API Research de TikTok est réservée aux organismes agréés par TikTok. Une API en panne ou qui refuse la requête laisse le compte en attente avec un message clair (« Vérification TikTok indisponible pour le moment… ») ; le détail va dans les journaux du serveur.
+
+Ces clients (jeton TikTok, Graph API de Meta, requête avec délai maximal) servent aussi à tout autre appel aux mêmes API, comme un futur relevé automatique des vues.
+
 ## Mettre en ligne
 
 1. Créer une base PostgreSQL (Neon, Supabase ou un serveur PostgreSQL).
@@ -77,7 +96,7 @@ En local, Google et Discord acceptent `http://localhost:3000/api/auth/oauth/<fou
    DATABASE_URL=postgres://… ADMIN_EMAIL=… ADMIN_PASSWORD=… npm run db:seed
    ```
    À chaque mise à jour, relancez `npm run db:migrate` (migrations SQL de `drizzle/`, appliquées une seule fois). En développement avec la base embarquée, elles s'appliquent au démarrage.
-3. Déployer (Vercel ou tout hébergeur Node.js) avec `DATABASE_URL`, `RESEND_API_KEY`, `EMAIL_FROM`, `APP_URL` et, si besoin, les identifiants Google, Apple et Discord, puis `npm run build` et `npm start`.
+3. Déployer (Vercel ou tout hébergeur Node.js) avec `DATABASE_URL`, `RESEND_API_KEY`, `EMAIL_FROM`, `APP_URL`, les clés des API des plateformes (vérification des comptes sociaux) et, si besoin, les identifiants Google, Apple et Discord, puis `npm run build` et `npm start`.
 
 ## Images
 
@@ -102,7 +121,8 @@ Les réglages sont modifiables par l'administrateur (page « Réglages du site �
 - **Campagnes** : budget minimum 50 000 DA, commission de 15 % payée par l'agence en plus du budget. À l'approbation, le budget et la commission sont débités du crédit de l'agence ; à la fin de la campagne, le budget non dépensé est rendu avec sa commission.
 - **Vérification des campagnes** : une agence peut modifier ou annuler sa campagne tant que l'équipe ne l'a pas examinée. Une campagne refusée l'est avec un motif ; l'agence peut la modifier et la relancer (elle repasse en vérification) ou la supprimer. Une campagne en ligne ne se refuse plus : elle se termine, ce qui rend son budget.
 - **Catégories** : 17 catégories proposées, ou « Autre » avec la catégorie précisée par l'agence.
-- **Clips** : lien TikTok, Instagram, YouTube ou Facebook obligatoire, unique. Le clipper publie sur toutes les plateformes de la campagne ou sur une seule : un lien par plateforme, enregistrés ensemble (même lot) et examinés séparément. Gain = vues × tarif aux 1 000 vues, nul sous le seuil minimum et limité au plafond par clip. Après validation, le clip continue de rapporter pendant 7 jours, tant que la campagne est active ou en pause : une campagne terminée ne paie plus rien (son budget restant a été rendu à l'agence) et ses clips en attente ne peuvent plus qu'être refusés.
+- **Comptes sociaux** : un compte par plateforme et par clipper, vérifié par le code `CB-XXXX` collé dans sa bio (voir « Vérification des comptes sociaux »). Un compte en attente peut changer d'identifiant (il garde son code) ; un compte vérifié doit être retiré avant d'en relier un autre sur la même plateforme. Un même compte n'est vérifié que par un seul clipper (« Ce compte est déjà vérifié par un autre clipper »). Les `@compte` du profil montrés aux agences et à l'équipe suivent les comptes vérifiés ; l'administrateur voit les comptes de chaque clipper, vérifiés ou en attente, sur sa fiche. Vérifications limitées à 10 par quart d'heure et par clipper, ajouts à 30 par heure.
+- **Clips** : lien TikTok, Instagram, YouTube ou Facebook obligatoire, unique, publié depuis le compte vérifié du clipper sur cette plateforme (sinon « Vérifiez d'abord votre compte … ») ; quand le lien nomme son compte (TikTok `tiktok.com/@compte/video/…`, YouTube `youtube.com/@compte/…`), ce doit être le compte vérifié. Le clipper publie sur toutes les plateformes de la campagne ou sur une seule : un lien par plateforme, enregistrés ensemble (même lot) et examinés séparément. Gain = vues × tarif aux 1 000 vues, nul sous le seuil minimum et limité au plafond par clip. Après validation, le clip continue de rapporter pendant 7 jours, tant que la campagne est active ou en pause : une campagne terminée ne paie plus rien (son budget restant a été rendu à l'agence) et ses clips en attente ne peuvent plus qu'être refusés.
 - **Gains** : 3 jours de rétention avant d'être retirables.
 - **Retraits** : minimum 2 000 DA vers BaridiMob, CCP ou RIB. Standard gratuit, ou instantané avec 2 % de frais (100 DA minimum).
 - **Crédit agence** : demande de recharge (virement, Edahabia, CIB ou carte Visa / Mastercard) avec une référence, confirmée par l'administrateur à réception du paiement. Pour une carte, seuls la marque et les 4 derniers chiffres sont transmis et ajoutés au libellé.
@@ -127,7 +147,10 @@ Les routes répondent en JSON (`{ ok: true, … }` ou `{ error: "message" }`), s
 | `DELETE /api/campaigns/<id>` | agence | Annuler une campagne en attente, ou supprimer une campagne refusée |
 | `PATCH /api/campaigns/<id>` | agence, admin | Statut (refus avec `reason`), mise en avant |
 | `POST /api/campaigns/<id>/budget`, `…/membership` | agence, clipper | Budget ; rejoindre une campagne, favoris |
-| `POST /api/clips` | clipper | Clip : `{ campaignId, title, links: [{ platform, url }] }` |
+| `POST /api/social` | clipper | Compte social : `{ platform, handle }` (identifiant ou adresse du profil) → `{ id, code }` ; remplace l'identifiant d'un compte en attente de la même plateforme (même code) |
+| `POST /api/social/<id>/verify` | clipper | Vérifie le code dans la bio du compte → `{ simulated }` (`true` : plateforme en mode simulé) |
+| `DELETE /api/social/<id>` | clipper | Retire un compte (en attente ou vérifié) |
+| `POST /api/clips` | clipper | Clip : `{ campaignId, title, links: [{ platform, url }] }`, depuis les comptes vérifiés du clipper |
 | `POST /api/clips/<id>/views`, `…/review` | admin | Vues relevées ; validation ou refus |
 | `POST /api/credit`, `/api/withdrawals` | agence, clipper | Recharge du crédit ; demande de retrait |
 | `POST /api/verification` | agence | Demande du badge de vérification |
@@ -137,12 +160,12 @@ Les routes répondent en JSON (`{ ok: true, … }` ou `{ error: "message" }`), s
 ## Tests
 
 ```bash
-npm test                                   # règles de calcul
+npm test                                   # règles de calcul, API simulée hors ligne, lecture des bios (API des plateformes simulées)
 npm run dev                                # puis, dans un autre terminal :
 BASE_URL=http://localhost:3000 npx tsx tests/api-flow.mts   # parcours API complet
 ```
 
-Le parcours API crée une agence et un clipper, envoie des images, finance et approuve une campagne, en modifie, refuse, relance et supprime une autre, traite une demande de badge, valide un clip publié sur deux plateformes et vérifie les paiements, les rôles et la protection CSRF. Il lit le code de vérification renvoyé en développement : lancez-le contre `npm run dev`, pas contre `npm start`.
+Le parcours API crée une agence et un clipper, envoie des images, finance et approuve une campagne, en modifie, refuse, relance et supprime une autre, traite une demande de badge, vérifie les comptes TikTok et Instagram du clipper (mode simulé : lancez-le sans les clés des API), valide un clip publié sur deux plateformes et vérifie les paiements, les rôles et la protection CSRF. Il lit le code de vérification renvoyé en développement : lancez-le contre `npm run dev`, pas contre `npm start`.
 
 ## Structure
 
@@ -162,5 +185,5 @@ tests/               tests des règles et du parcours API
 - Paiement en ligne des recharges par carte Edahabia, CIB, Visa ou Mastercard via une passerelle de paiement (aujourd'hui confirmées à la main).
 - Vérification de fond des agences avant le badge (documents, registre du commerce).
 - Pages « Mentions légales » et « Aide et support » du menu du compte.
-- Liaison vérifiée des comptes sociaux des clippers.
+- Accès de production aux API des plateformes pour la vérification des comptes sociaux (examen de l'application par Meta, accès à l'API Research de TikTok ou, à défaut, connexion du clipper avec TikTok Login Kit).
 - Pages légales (CGU, confidentialité) validées par un juriste.

@@ -1,10 +1,11 @@
 // Crée le compte administrateur (ADMIN_EMAIL / ADMIN_PASSWORD) et, avec --demo, des données d'exemple.
+import { randomBytes } from "node:crypto";
 import { eq } from "drizzle-orm";
 import * as schema from "../lib/server/db/schema";
 import { newId, newRef } from "../lib/server/ids";
 import { link } from "../lib/server/links";
 import { hashPassword } from "../lib/server/password";
-import { payoutFor, sentence } from "../lib/server/rules";
+import { payoutFor, sentence, socialCode } from "../lib/server/rules";
 import { DEFAULT_SETTINGS } from "../lib/server/settings";
 import { openDb } from "./db";
 
@@ -32,14 +33,31 @@ if (process.argv.includes("--demo")) {
     const pwd = await hashPassword("Clipboost2026");
     const U = (role: "clipper" | "agence", name: string, email: string, extra: Partial<typeof schema.users.$inferInsert> = {}) =>
       ({ id: newId(), role, name, email, passwordHash: pwd, ...extra });
-    const yacine = U("clipper", "Yacine Benali", "yacine@clipboost.dz", { level: "Clipper Argent", bio: "Monteur passionné de foot et d'humour.", handles: { tiktok: "@yacine.clips" }, payoutMethod: "CCP", payoutAccount: "0021234567 clé 89", createdAt: daysAgo(210) });
+    const yacine = U("clipper", "Yacine Benali", "yacine@clipboost.dz", { level: "Clipper Argent", bio: "Monteur passionné de foot et d'humour.", handles: { tiktok: "@yacine.clips", instagram: "@yacine.clips", youtube: "@yacineclips" }, payoutMethod: "CCP", payoutAccount: "0021234567 clé 89", createdAt: daysAgo(210) });
     const amira = U("clipper", "Amira Khelifi", "amira@clipboost.dz", { level: "Clipper Or", bio: "Lifestyle et mode à Oran.", handles: { instagram: "@amira.style" }, payoutMethod: "BaridiMob", payoutAccount: "00799999001234567890", createdAt: daysAgo(190) });
-    const lina = U("clipper", "Lina Mansouri", "lina@clipboost.dz", { level: "Clipper Bronze", handles: { tiktok: "@lina.lol" }, createdAt: daysAgo(60) });
+    const lina = U("clipper", "Lina Mansouri", "lina@clipboost.dz", { level: "Clipper Bronze", handles: { tiktok: "@lina.lol", youtube: "@lina.lol" }, createdAt: daysAgo(60) });
     const tassili = U("agence", "Tassili Sport", "agence@clipboost.dz", { contact: "Nassim Ait Ali", bio: "Équipementier sportif algérien : maillots, ballons et tenues d'entraînement. Nous cherchons des clippers passionnés de foot pour faire vivre chaque match.", credit: 400000, createdAt: daysAgo(240) });
     // Hoggar a demandé le badge de vérification (en attente de l'équipe) ; Djurdjura est déjà vérifiée.
     const hoggar = U("agence", "Hoggar Boissons", "hoggar@clipboost.dz", { contact: "Meriem Saadi", bio: "Boissons fraîches produites en Algérie, du Hoggar à la côte. Nos campagnes célèbrent les soirées d'été entre amis.", credit: 0, verification: "pending", verificationNote: "Marque déposée en Algérie depuis 2015, registre du commerce disponible sur demande.", createdAt: daysAgo(3) });
     const djurdjura = U("agence", "Djurdjura Médias", "djurdjura@clipboost.dz", { contact: "Karim Ouali", country: "Algérie", bio: "Studio de production basé à Tizi Ouzou : courts-métrages, clips musicaux et documentaires.", credit: 150000, verification: "verified", createdAt: daysAgo(120) });
     await db.insert(schema.users).values([yacine, amira, lina, tassili, hoggar, djurdjura]);
+
+    // Comptes sociaux vérifiés (code dans la bio) sur les plateformes de leurs clips ; Amira a aussi un compte TikTok
+    // en attente de vérification (code à coller dans sa bio). Les « @compte » des profils (handles) sont ceux-là.
+    const codes = new Set<string>();
+    const social = (u: typeof yacine, platform: string, handle: string, verifiedDaysAgo: number | null) => {
+      let code = socialCode(randomBytes(4));
+      while (codes.has(code)) code = socialCode(randomBytes(4));
+      codes.add(code);
+      const at = verifiedDaysAgo === null ? null : daysAgo(verifiedDaysAgo);
+      return { id: newId(), userId: u.id, platform, handle, code, status: at ? "verified" as const : "pending" as const, verifiedAt: at, checkedAt: at, createdAt: daysAgo(verifiedDaysAgo === null ? 0.2 : verifiedDaysAgo + 0.01) };
+    };
+    const socialRows = [
+      social(yacine, "TikTok", "yacine.clips", 30), social(yacine, "Instagram", "yacine.clips", 12), social(yacine, "YouTube", "yacineclips", 12),
+      social(amira, "Instagram", "amira.style", 25), social(amira, "TikTok", "amira.style", null),
+      social(lina, "TikTok", "lina.lol", 40), social(lina, "YouTube", "lina.lol", 15),
+    ];
+    await db.insert(schema.socialAccounts).values(socialRows);
 
     const C = (ownerId: string | null, title: string, brand: string, category: string, rate: number, budget: number, status: schema.CampaignStatus, emoji: string, gradient: string, platforms: string[], rules: string[], extra: Partial<typeof schema.campaigns.$inferInsert> = {}) =>
       ({ id: newId(), ownerId, title, brand, category, rate, budget, status, emoji, gradient, platforms, rules, minPayout: rate * 2, maxPayout: rate * 200, commissionRate: ownerId ? 15 : 0, reserved: ownerId && status !== "En attente" ? Math.round(budget * 1.15) : 0, ...extra, updatedAt: extra.updatedAt ?? extra.createdAt });
@@ -80,6 +98,8 @@ if (process.argv.includes("--demo")) {
     launched(festival, 5.9);
     // Demande de badge de vérification en attente de l'équipe.
     acts.push([1.5, "🛡️", `${hoggar.name} demande le badge de vérification.`]);
+    const nameOf = (id: string) => [yacine, amira, lina].find((u) => u.id === id)!.name;
+    for (const a of socialRows) if (a.verifiedAt) acts.push([(Date.now() - a.verifiedAt.getTime()) / 86_400_000, "🛡️", `${nameOf(a.userId)} a vérifié son compte ${a.platform} @${a.handle}.`]);
 
     // Clips : certains validés et payés, d'autres en attente (dont un sous le seuil).
     // Le « But de la 89e » a été publié sur TikTok et Instagram en un seul envoi : deux publications du même lot (batch),
@@ -98,7 +118,8 @@ if (process.argv.includes("--demo")) {
     ];
     let i = 0;
     for (const p of pubs) {
-      const id = newId(), host = ({ TikTok: "www.tiktok.com/@clip/video/", Instagram: "www.instagram.com/reel/", Facebook: "www.facebook.com/reel/" } as Record<string, string>)[p.platform] ?? "youtu.be/";
+      // Un lien TikTok nomme le compte : celui que le clipper a vérifié.
+      const id = newId(), host = ({ TikTok: `www.tiktok.com/${p.u.handles?.tiktok}/video/`, Instagram: "www.instagram.com/reel/", Facebook: "www.facebook.com/reel/" } as Record<string, string>)[p.platform] ?? "youtu.be/";
       const paid = p.status === "Validée" ? payoutFor(p.views, p.c) : 0;
       await db.insert(schema.publications).values({ id, userId: p.u.id, campaignId: p.c.id, title: p.title, platform: p.platform, url: p.url ?? `https://${host}demo${++i}`, batch: p.batch ?? null, views: p.views, status: p.status, reason: p.reason, paid, approvedAt: p.status === "Validée" ? daysAgo(p.days) : null, createdAt: daysAgo(p.days + 1) });
       const txId = newId();

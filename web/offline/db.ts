@@ -2,6 +2,7 @@
 // dans un objet JSON enregistré dans le localStorage du navigateur. Sans table media : une image
 // (photo de profil, couverture, photo de campagne) est gardée en data URL dans sa propre colonne.
 import type * as schema from "../../lib/server/db/schema";
+import { socialCode } from "../../lib/server/rules";
 import { DEFAULT_SETTINGS, type Settings } from "../../lib/server/settings";
 import { seed } from "./seed";
 
@@ -17,6 +18,8 @@ export type NotifRow = Row<typeof schema.notifications.$inferSelect, "createdAt"
 export type ActivityRow = Row<typeof schema.activity.$inferSelect, "createdAt">;
 /** Compte Google, Apple ou Discord relié (connexion simulée : sujet « demo:<email> »). */
 export type OAuthRow = Row<typeof schema.oauthAccounts.$inferSelect, "createdAt">;
+/** Compte social d'un clipper, vérifié par un code « CB-XXXX » dans sa bio (vérification simulée hors ligne). */
+export type SocialRow = Row<typeof schema.socialAccounts.$inferSelect, "createdAt" | "verifiedAt" | "checkedAt">;
 
 export type Store = {
   version: number;
@@ -29,6 +32,7 @@ export type Store = {
   notifications: NotifRow[];
   activity: ActivityRow[];
   oauth: OAuthRow[];
+  social: SocialRow[];
   settings: Partial<Settings>;
   /** Session du navigateur (l'équivalent du cookie cb_session). */
   session: { userId: string; expiresAt: number } | null;
@@ -41,7 +45,7 @@ export const STORAGE_KEY = `clipboost-offline-v${VERSION}`;
 
 export const emptyStore = (): Store => ({
   version: VERSION, users: [], emailCodes: [], campaigns: [], members: [], publications: [], transactions: [],
-  notifications: [], activity: [], oauth: [], settings: {}, session: null,
+  notifications: [], activity: [], oauth: [], social: [], settings: {}, session: null,
 });
 
 // ---------- Persistance ----------
@@ -68,6 +72,7 @@ let memory: string | null = null;
  */
 function upgrade(s: Store): Store {
   s.oauth ??= [];
+  s.social ??= [];
   for (const u of s.users) {
     u.avatar ??= null;
     u.cover ??= null;
@@ -149,6 +154,14 @@ export function newId(size = 16) {
 }
 
 export const newRef = () => `T-${newId(6).toUpperCase()}`;
+
+/** Code de vérification « CB-XXXX » libre (même format que le serveur, lib/server/rules.ts). */
+export function newSocialCode(db: Store) {
+  for (;;) {
+    const code = socialCode(crypto.getRandomValues(new Uint8Array(4)));
+    if (!db.social.some((a) => a.code === code)) return code;
+  }
+}
 
 /** Entier aléatoire uniforme dans [min, max[. */
 export function randomInt(min: number, max: number) {

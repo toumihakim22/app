@@ -4,7 +4,7 @@
 import { z, ZodError, type ZodType } from "zod";
 import {
   amountSchema, approveSchema, campaignSchema, campaignStatusSchema, changePasswordSchema, clipSchema, creditSchema, forgotSchema,
-  loginSchema, membershipSchema, oauthDemoSchema, profileSchema, resetSchema, reviewClipSchema, settingsSchema, signupSchema,
+  loginSchema, membershipSchema, oauthDemoSchema, profileSchema, resetSchema, reviewClipSchema, settingsSchema, signupSchema, socialAccountSchema,
   userStatusSchema, verificationRequestSchema, verificationReviewSchema, verifySchema, viewsSchema, withdrawSchema,
 } from "../../lib/server/validation";
 import { ApiError, badRequest, clear, forbidden, load, logActivity, save } from "./db";
@@ -169,6 +169,26 @@ const routes: Record<string, Record<string, Handler>> = {
       svc.requireUser(req.db, "admin");
       const { views } = body(req, viewsSchema);
       svc.recordViews(req, req.params.id, views);
+      return ok();
+    },
+  },
+  // Comptes sociaux du clipper : ajout (code « CB-XXXX »), vérification (toujours simulée hors ligne), retrait.
+  "/api/social": {
+    POST: (req) => {
+      const user = svc.requireUser(req.db, "clipper");
+      return ok(svc.addSocialAccount(req, user, body(req, socialAccountSchema)), 201);
+    },
+  },
+  "/api/social/:id/verify": {
+    POST: (req) => {
+      const user = svc.requireUser(req.db, "clipper");
+      return ok(svc.verifySocialAccount(req, user, req.params.id));
+    },
+  },
+  "/api/social/:id": {
+    DELETE: (req) => {
+      const user = svc.requireUser(req.db, "clipper");
+      svc.removeSocialAccount(req, user, req.params.id);
       return ok();
     },
   },

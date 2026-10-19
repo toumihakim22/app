@@ -1,8 +1,9 @@
 // Données renvoyées par GET /api/state : même forme que lib/server/services/state.ts.
-import { getSettings, newestFirst, type Store, type UserRow } from "./db";
+import { getSettings, newestFirst, type SocialRow, type Store, type UserRow } from "./db";
 import { balances } from "./services";
 import { inferLink, type LinkContext } from "../../lib/server/links";
 import { OAUTH_PROVIDERS } from "../../lib/server/validation";
+import { PLATFORMS } from "../../lib/server/gradients";
 
 const day = (ms: number) => new Date(ms).toISOString().slice(0, 10);
 const time = (ms: number) => new Date(ms).toISOString().slice(11, 16);
@@ -27,6 +28,12 @@ function fullUser(u: UserRow) {
     cover: u.cover, verification: u.verification, verificationNote: u.verificationNote, locale: u.locale, emailVerified: true,
   };
 }
+
+/** Compte social tel que l'app le reçoit (socialView, lib/server/services/social.ts). */
+const socialView = (a: SocialRow) => ({
+  id: a.id, platform: a.platform, handle: a.handle, code: a.code, status: a.status,
+  verifiedAt: a.verifiedAt === null ? null : new Date(a.verifiedAt).toISOString(), checkedAt: a.checkedAt === null ? null : new Date(a.checkedAt).toISOString(),
+});
 
 /** Série quotidienne sur 30 jours (jours UTC, comme le serveur). */
 function daily30(rows: { at: number; v: number }[]) {
@@ -63,6 +70,8 @@ export function stateFor(db: Store, user: UserRow) {
   const activityRows = isAdmin ? newestFirst(db.activity).slice(0, 30) : [];
 
   const mine = isClipper ? db.members.filter((m) => m.userId === user.id) : [];
+  // Comptes sociaux : les siens pour un clipper, ceux de chaque clipper pour l'admin ; dans l'ordre des plateformes.
+  const socialOf = (id: string) => db.social.filter((a) => a.userId === id).sort((a, b) => PLATFORMS.indexOf(a.platform) - PLATFORMS.indexOf(b.platform)).map(socialView);
   const since = Date.now() - 30 * 86_400_000;
 
   // Séries des graphiques.
@@ -89,9 +98,13 @@ export function stateFor(db: Store, user: UserRow) {
     me: {
       ...fullUser(user), hasPassword: user.passwordHash !== "", providers: OAUTH_PROVIDERS.filter((p) => linked.has(p)),
       favorites: mine.filter((m) => m.favorite).map((m) => m.campaignId), joinedCampaigns: mine.filter((m) => m.joined).map((m) => m.campaignId), ...(balanceOf.get(user.id) ?? {}),
+      ...(isClipper ? { socialAccounts: socialOf(user.id) } : {}),
     },
     settings: { maintenance: settings.maintenance, signupsOpen: settings.signupsOpen, announcement: settings.announcement, minWithdraw: settings.minWithdraw, commissionRate: settings.commissionRate, minBudget: settings.minBudget, holdDays: settings.holdDays, earningDays: settings.earningDays, instantFeePercent: settings.instantFeePercent, instantMinFee: settings.instantMinFee },
-    users: userRows.map((u) => ({ ...(isAdmin ? fullUser(u) : u.id === user.id ? fullUser(u) : publicUser(u)), ...(balanceOf.get(u.id) ?? {}) })),
+    users: userRows.map((u) => ({
+      ...(isAdmin ? fullUser(u) : u.id === user.id ? fullUser(u) : publicUser(u)), ...(balanceOf.get(u.id) ?? {}),
+      ...(u.role === "clipper" && (isAdmin || u.id === user.id) ? { socialAccounts: socialOf(u.id) } : {}),
+    })),
     campaigns: campaignRows.map((c) => ({
       id: c.id, ownerId: c.ownerId, title: c.title, brand: c.brand, category: c.category, rate: c.rate, budget: c.budget, spent: c.spent,
       minPayout: c.minPayout, maxPayout: c.maxPayout, commissionRate: c.commissionRate, reserved: c.reserved, status: c.status, top: c.top,

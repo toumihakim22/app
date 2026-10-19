@@ -1,12 +1,12 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
-import { getDb, schema } from "../db";
+import { getDb, isUniqueViolation, schema } from "../db";
 import { PLATFORM_HOSTS } from "../gradients";
 import type { User } from "../auth";
 import { logActivity, notify } from "../events";
 import { badRequest, notFound } from "../http";
 import { newId, newRef } from "../ids";
 import { link } from "../links";
-import { belowMin, payoutDelta, sentence, viewsFor } from "../rules";
+import { belowMin, payoutDelta, sentence, socialLinkError, viewsFor } from "../rules";
 import { getSettings } from "../settings";
 
 const fmt = (n: number) => `${n.toLocaleString("fr-FR").replace(/ | /g, " ")} DA`;
@@ -14,7 +14,8 @@ const fmt = (n: number) => `${n.toLocaleString("fr-FR").replace(/ | /g, " ")}
 /**
  * Un clip publié sur une ou plusieurs plateformes de la campagne : une publication par lien, toutes du même lot (`batch`).
  * Tous les liens sont contrôlés avant le moindre enregistrement : plateforme acceptée par la campagne,
- * lien https vers cette plateforme (PLATFORM_HOSTS), lien jamais soumis.
+ * lien https vers cette plateforme (PLATFORM_HOSTS), publié depuis le compte vérifié du clipper sur cette plateforme
+ * (socialLinkError : compte vérifié, et même compte quand le lien le nomme), lien jamais soumis.
  */
 export async function submitClip(user: User, input: { campaignId: string; title: string; links: { platform: string; url: string }[] }) {
   const db = await getDb();
@@ -24,6 +25,9 @@ export async function submitClip(user: User, input: { campaignId: string; title:
   const [member] = await db.select().from(schema.campaignMembers)
     .where(and(eq(schema.campaignMembers.campaignId, c.id), eq(schema.campaignMembers.userId, user.id), eq(schema.campaignMembers.joined, true)));
   if (!member) throw badRequest("Rejoignez la campagne avant de soumettre un clip");
+  // Comptes sociaux vérifiés du clipper (Profil → Comptes sociaux), par plateforme.
+  const S = schema.socialAccounts;
+  const verified = new Map((await db.select({ platform: S.platform, handle: S.handle }).from(S).where(and(eq(S.userId, user.id), eq(S.status, "verified")))).map((a) => [a.platform, a.handle]));
   const links = input.links.map(({ platform, url: raw }) => {
     if (!c.platforms.includes(platform)) throw badRequest(`Cette campagne n'accepte pas ${platform}`);
     let url: URL | null = null;
@@ -33,6 +37,8 @@ export async function submitClip(user: User, input: { campaignId: string; title:
       // Lien illisible : même message qu'un lien vers un autre site.
     }
     if (!url || url.protocol !== "https:" || !PLATFORM_HOSTS[platform]?.test(url.hostname)) throw badRequest(`Le lien doit être un lien ${platform} (https://…)`);
+    const accountError = socialLinkError(platform, url.toString(), verified.get(platform));
+    if (accountError) throw badRequest(accountError);
     return { platform, url: url.toString() };
   });
   const urls = links.map((l) => l.url);
@@ -55,11 +61,6 @@ export async function submitClip(user: User, input: { campaignId: string; title:
   }
   return { id: ids[0], ids };
 }
-
-const isUniqueViolation = (err: unknown): boolean => {
-  const e = err as { code?: string; cause?: unknown } | null;
-  return !!e && (e.code === "23505" || (e.cause !== undefined && e.cause !== err && isUniqueViolation(e.cause)));
-};
 
 /**
  * Une campagne ne paie que tant qu'elle est financée : active ou en pause. Terminée, son budget non consommé

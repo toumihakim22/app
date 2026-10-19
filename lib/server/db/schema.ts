@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import { boolean, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 
 const id = () => text("id").primaryKey();
@@ -45,6 +46,32 @@ export const oauthAccounts = pgTable("oauth_accounts", {
   email: text("email"),
   createdAt: createdAt(),
 }, (t) => [primaryKey({ columns: [t.provider, t.subject] }), index("oauth_accounts_user_idx").on(t.userId)]);
+
+export type SocialStatus = "pending" | "verified";
+
+/**
+ * Comptes sociaux des clippers (un par plateforme) : le clipper colle le code « CB-XXXX » dans la bio du compte, puis
+ * la vérification le lit par l'API de la plateforme. Seuls les clips publiés depuis un compte vérifié sont acceptés.
+ * Un même compte (plateforme + identifiant) n'est vérifié que par un seul clipper (index unique partiel).
+ */
+export const socialAccounts = pgTable("social_accounts", {
+  id: id(),
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  /** « TikTok », « Instagram », « YouTube » ou « Facebook » (PLATFORMS). */
+  platform: text("platform").notNull(),
+  /** Identifiant normalisé : sans « @ », en minuscules (normalizeHandle, lib/server/rules.ts). */
+  handle: text("handle").notNull(),
+  code: text("code").notNull(),
+  status: text("status").$type<SocialStatus>().notNull().default("pending"),
+  verifiedAt: timestamp("verified_at", { withTimezone: true }),
+  /** Dernière tentative de vérification (réussie ou non). */
+  checkedAt: timestamp("checked_at", { withTimezone: true }),
+  createdAt: createdAt(),
+}, (t) => [
+  uniqueIndex("social_accounts_user_platform_idx").on(t.userId, t.platform),
+  uniqueIndex("social_accounts_code_idx").on(t.code),
+  uniqueIndex("social_accounts_verified_handle_idx").on(t.platform, t.handle).where(sql`${t.status} = 'verified'`),
+]);
 
 /** Images envoyées (photos de profil, couvertures, photos de campagne), servies par GET /api/media/<id>. */
 export const media = pgTable("media", {

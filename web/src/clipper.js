@@ -1,5 +1,6 @@
 // Espace Clipper : accueil (activité et statistiques), découvrir (toutes les campagnes), agences et page d'une agence,
-// publications, portefeuille, profil, paramètres. Modales : fiche d'une campagne, soumission d'un clip, retrait.
+// publications, portefeuille, profil (et comptes sociaux), paramètres. Modales : fiche d'une campagne, soumission d'un
+// clip, retrait, retrait d'un compte social vérifié.
 // Recettes et helpers : docs/design-system.md §4 et §6.2 (web/src/ui.js). Helpers locaux préfixés « cl ».
 // Textes : t("source française") au moment du rendu (web/src/i18n.js) ; traductions dans web/src/i18n/{en,ar}/clipper.js.
 // Les valeurs échangées avec le serveur ou comparées (statuts, catégories, moyens de retrait, data-value) restent en
@@ -88,6 +89,25 @@ const clSection = (title, right = "") =>
 const clJoinedOpen = () => activeCampaigns().filter((c) => me().joinedCampaigns.has(c.id));
 // Erreur sous un champ : effacée dès la saisie suivante (clearInvalid, main.js) grâce à data-field-error.
 const clErr = (msg) => `<span data-field-error class="flex items-center gap-1 text-xs font-medium text-danger-fg" role="alert">${icon("alert", "size-3.5 shrink-0")}${msg}</span>`;
+
+// ---------- Comptes sociaux (Profil → Comptes sociaux) ----------
+// Un compte par plateforme : identifiant normalisé (sans « @ », en minuscules), code « CB-XXXX » à coller dans sa bio,
+// statut « pending » puis « verified » (lib/server/services/social.ts). Seuls les clips d'un compte vérifié sont acceptés.
+const clSocial = () => me().socialAccounts || [];
+// Plateforme → identifiant du compte vérifié.
+const clVerifiedMap = () => new Map(clSocial().filter((a) => a.status === "verified").map((a) => [a.platform, a.handle]));
+// Carte des comptes dans le Profil : #/clipper/profil/comptes y fait défiler la page et la met en évidence (flashRow).
+const CL_SOCIAL_HREF = "#/clipper/profil/comptes";
+// Lien vers cette carte ; inModal : la modale se ferme aussi.
+const clSocialLink = (text, inModal = false) => `<a href="${CL_SOCIAL_HREF}"${inModal ? ' data-action="close-modal"' : ""} class="${btn("link")}">${text}</a>`;
+// Compte nommé par un lien TikTok ou YouTube (« /@compte/… »), sans « @ », en minuscules ; null sinon
+// (même règle que handleInUrl, lib/server/rules.ts).
+const clUrlHandle = (p, v) => {
+  if (p !== "TikTok" && p !== "YouTube") return null;
+  try { const first = decodeURIComponent(new URL(String(v || "").trim()).pathname.split("/")[1] || ""); return first.startsWith("@") ? first.replace(/^@+/, "").toLowerCase() : null; } catch (e) { return null; }
+};
+// Le lien nomme un autre compte que le compte vérifié `handle` de la plateforme.
+const clUrlForeign = (p, v, handle) => { const h = clUrlHandle(p, v); return !!h && h !== handle; };
 
 // ---------- Organisateurs : agences et marques partenaires ----------
 // L'organisateur d'une campagne est l'agence qui la finance (profil public dans db.agencies : photo, couverture, badge) ;
@@ -367,8 +387,9 @@ function publicationsTable(list, { showUser = false, actions = false, amountLabe
 
 // ---------- Vues ----------
 
-// Accueil : l'activité (portefeuille, opérations, seuil le plus proche), les statistiques sur 7 ou 30 jours (chiffres
-// clés, gains par jour ou cumulés, vues par plateforme, gains par campagne), les clips et une sélection à découvrir.
+// Accueil : l'activité (portefeuille, opérations, seuil le plus proche, rappel des comptes sociaux à vérifier), les
+// statistiques sur 7 ou 30 jours (chiffres clés, gains par jour ou cumulés, vues par plateforme, gains par campagne),
+// les clips et une sélection à découvrir.
 function cAccueil() {
   const u = me(), pubs = myPubs(), series = dailySeries();
   const count = (s) => pubs.filter((p) => p.status === s).length, validated = count("Validée"), waiting = count("En attente");
@@ -396,6 +417,10 @@ function cAccueil() {
               `<li class="flex items-center gap-2.5 text-small text-fg-muted"><span class="grid size-6 shrink-0 place-items-center rounded-full bg-brand text-xs font-semibold text-on-brand">${i + 1}</span>${s}</li>`).join("")}</ol></div>
           <a href="#/clipper/decouvrir" class="${btn("primary")}">${icon("compass")}${t("Découvrir les campagnes")}</a></div></section>`
     : "";
+
+  // Aucun compte social vérifié : une alerte discrète, les clips n'étant acceptés que depuis un compte vérifié.
+  const socialAlert = clVerifiedMap().size ? ""
+    : `<div class="mt-6">${alertBox("info", `${t("Vérifiez au moins un compte social : seuls les clips publiés depuis un compte vérifié sont acceptés.")} ${clSocialLink(t("Vérifier mes comptes"))}`)}</div>`;
 
   const ops = myTx().slice(0, 4);
   const opsCard = card(`${cardHeader(t("Dernières opérations"), "", ops.length ? clLink("#/clipper/portefeuille", t("Tout voir")) : "")}
@@ -452,6 +477,7 @@ function cAccueil() {
 
   return `${pageHeader(t("Bonjour {name}", { name: clFirst(u) }), t("Voici votre activité au {date}", { date: date(clToday()) }), submitBtn)}
     ${onboarding}
+    ${socialAlert}
     <div class="mt-6 grid gap-4 lg:grid-cols-[1.35fr_1fr] lg:gap-5">${clWalletCard({ curve: true })}${opsCard}</div>
     ${near ? `<div class="mt-4">${alertBox("info", t("Plus que {views} sur « {title} » pour être payé.", { views: `<strong class="font-semibold">${plural(near.left, "vue", "vues")}</strong>`, title: esc(near.c.title) }))}</div>` : ""}
     ${stats}
@@ -647,26 +673,61 @@ function cPortefeuille() {
     </div>`;
 }
 
-// Profil : photo de profil, informations publiques et comptes de publication. Le compte (email, mot de passe), la langue
-// et le thème sont dans Paramètres.
+// Comptes sociaux du Profil : un compte par plateforme, prouvé par le code « CB-XXXX » collé dans sa bio. En attente :
+// le code (copié d'un clic), le mode d'emploi et « Vérifier » ; vérifié : sa date. Retirer un compte vérifié demande
+// confirmation (modale cl-social-remove). Ajout : une plateforme encore libre et l'identifiant (ou le lien du profil).
+function clSocialCard() {
+  const list = clSocial(), free = PLATFORMS.filter((p) => !list.some((a) => a.platform === p));
+  const low = (s) => s.charAt(0).toLowerCase() + s.slice(1);
+  const row = (a) => {
+    const ok = a.status === "verified";
+    const meta = ok ? t("Vérifié le {date}", { date: date(a.verifiedAt) }) : a.checkedAt ? t("Dernier essai : {when}", { when: low(ago(a.checkedAt)) }) : t("En attente de vérification");
+    const remove = t("Retirer le compte {platform}", { platform: a.platform });
+    return `<li class="rounded-tile border border-line p-3">
+      <div class="flex items-center gap-3">
+        <span class="grid size-10 shrink-0 place-items-center rounded-tile bg-muted text-fg">${icon(PLATFORM_ICON[a.platform] || "film", "size-[18px]")}</span>
+        <div class="min-w-0 flex-1">
+          <p class="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1"><span class="min-w-0 truncate text-sm font-medium text-fg" dir="ltr">@${esc(a.handle)}</span>${ok ? badge(t("Vérifié"), "success", { ic: "check" }) : badge(t("En attente"), "warning", { dot: true })}</p>
+          <p class="mt-0.5 text-xs text-fg-subtle">${esc(a.platform)} · ${meta}</p>
+        </div>
+        <button type="button" data-action="cl-social-remove" data-id="${a.id}" class="${iconBtn("sm")}" aria-label="${esc(remove)}" title="${esc(remove)}">${icon("trash")}</button>
+      </div>
+      ${ok ? "" : `<div class="mt-3 flex flex-col gap-3 rounded-tile bg-subtle p-3 sm:flex-row sm:items-center">
+        <button type="button" data-action="cl-social-copy" data-value="${esc(a.code)}" class="inline-flex h-9 shrink-0 items-center gap-2 self-start rounded-full border border-line-strong bg-surface px-3.5 font-mono text-sm font-semibold tracking-wider text-fg shadow-control transition-colors duration-150 hover:border-line-control sm:self-auto ${FOCUS}" aria-label="${esc(t("Copier le code {code}", { code: a.code }))}" title="${esc(t("Copier le code"))}"><span dir="ltr">${esc(a.code)}</span>${icon("copy", "size-4 text-fg-subtle")}</button>
+        <p class="min-w-0 flex-1 text-xs leading-5 text-fg-muted">${t("Collez ce code dans la bio de votre compte, puis cliquez sur Vérifier. Vous pourrez le retirer ensuite.")}</p>
+        <button type="button" data-action="cl-social-verify" data-id="${a.id}" class="${btn("primary", "sm", "self-start sm:self-auto")}">${icon("shield")}${t("Vérifier")}</button>
+      </div>`}
+    </li>`;
+  };
+  const add = free.length
+    ? `<form data-form="social" novalidate class="mt-5 border-t border-line pt-5">
+        <h3 class="text-sm font-semibold text-fg">${t("Ajouter un compte")}</h3>
+        <div class="mt-3 grid items-start gap-3 sm:grid-cols-[minmax(0,10rem)_minmax(0,1fr)_auto]">
+          ${field(t("Plateforme"), `<span class="relative block"><select name="platform" class="${selectCls}">${free.map((p) => `<option value="${p}">${p}</option>`).join("")}</select>${CHEVRON}</span>`)}
+          ${field(t("Identifiant"), `<span class="relative block" dir="ltr"><span class="pointer-events-none absolute inset-y-0 start-3 flex items-center text-sm text-fg-subtle" aria-hidden="true">@</span><input name="handle" maxlength="200" placeholder="${esc(t("votrecompte"))}" autocomplete="off" autocapitalize="off" spellcheck="false" class="${inputCls} ps-8"/></span>`, t("Votre nom d'utilisateur, ou le lien de votre profil."))}
+          <button class="${btn("secondary", "md", "sm:mt-[26px]")}">${icon("plus")}${t("Ajouter")}</button>
+        </div>
+      </form>`
+    : `<p class="mt-5 border-t border-line pt-5 text-small text-fg-subtle">${t("Un compte par plateforme : retirez-en un pour le remplacer.")}</p>`;
+  return `<div data-row="comptes" class="rounded-card">${card(`${cardHeader(t("Comptes sociaux"), t("Seuls les clips publiés depuis un compte vérifié sont acceptés."))}
+    ${list.length ? `<ul class="mt-4 grid gap-3">${list.map(row).join("")}</ul>`
+      : emptyState("shield", t("Aucun compte ajouté"), t("Ajoutez le compte depuis lequel vous publiez vos clips, puis vérifiez-le avec son code."), "", { inCard: true })}
+    ${add}`)}</div>`;
+}
+
+// Profil : photo de profil, informations publiques et comptes sociaux (vérifiés par un code dans leur bio). Le compte
+// (email, mot de passe), la langue et le thème sont dans Paramètres.
 function cProfil() {
-  const u = me(), h = u.handles || {};
-  const at = (v) => esc(String(v || "").replace(/^@+/, ""));
-  // Identifiants : saisis de gauche à droite (dir="ltr"), « @ » en préfixe.
-  const handleInput = (name, label, placeholder) => field(label, `<span class="relative block" dir="ltr"><span class="pointer-events-none absolute inset-y-0 start-3 flex items-center text-sm text-fg-subtle" aria-hidden="true">@</span><input name="${name}" maxlength="60" value="${at(h[name])}" placeholder="${esc(placeholder)}" autocomplete="off" spellcheck="false" class="${inputCls} ps-8"/></span>`);
+  const u = me();
   // Sans photo : les initiales sur la teinte de l'avatar, à la taille du cadre de l'aperçu.
   const initialsFallback = avatar({ ...u, avatar: null }, "size-full text-2xl");
-  const form = card(`<form data-form="profile" class="@container">
+  const form = card(`<form data-form="profile">
       <h2 class="text-section text-fg">${t("Informations publiques")}</h2><p class="mt-0.5 text-small text-fg-muted">${t("Visibles par les marques qui consultent vos clips.")}</p>
       <div class="mt-5">${imageField({ name: "avatar", value: u.avatar || "", shape: "avatar", label: t("Photo de profil"), hint: t("JPEG, PNG ou WebP. Elle est recadrée en carré et s'affiche en rond."), fallback: initialsFallback })}</div>
       <div class="mt-5 grid gap-4 sm:grid-cols-2">
         ${field(t("Nom complet"), `<input name="name" required maxlength="80" value="${esc(u.name)}" autocomplete="name" class="${inputCls}"/>`)}
         ${field(t("Pays"), countrySelect("country", u.country))}
         <div class="sm:col-span-2">${field(`${t("Bio")} ${clOptional()}`, `<textarea name="bio" rows="3" maxlength="300" placeholder="${t("Présentez votre style de clips aux marques…")}" class="${textareaCls}">${esc(u.bio || "")}</textarea>`, t("300 caractères maximum."))}</div>
-      </div>
-      <div class="mt-5 border-t border-line pt-5">
-        <h2 class="text-section text-fg">${t("Vos comptes")}</h2><p class="mt-0.5 text-small text-fg-muted">${t("Les comptes depuis lesquels vous publiez vos clips.")}</p>
-        <div class="mt-5 grid gap-4 @xl:grid-cols-3">${handleInput("tiktok", "TikTok", t("votrecompte"))}${handleInput("instagram", "Instagram", t("votrecompte"))}${handleInput("youtube", "YouTube", t("votrechaine"))}</div>
       </div>
       <div class="mt-6 flex justify-end"><button class="${btn("primary")}">${t("Enregistrer")}</button></div>
     </form>`);
@@ -677,9 +738,9 @@ function cProfil() {
       ${u.bio ? `<p class="mt-4 text-sm text-fg-muted">${esc(u.bio)}</p>` : ""}
       <p class="mt-4 text-xs text-fg-subtle">${t("Membre depuis le {date}", { date: date(u.joined) })}</p>
       <div class="mt-4 border-t border-line pt-4 self-stretch">${clLink("#/clipper/parametres", t("Compte, langue et thème"))}</div></div>`);
-  return `${pageHeader(t("Profil"), t("Vos informations publiques et votre photo."))}
+  return `${pageHeader(t("Profil"), t("Vos informations publiques, votre photo et vos comptes sociaux."))}
     <div class="mt-6 grid items-start gap-4 lg:gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
-      ${form}
+      <div class="grid min-w-0 content-start gap-4 lg:gap-5">${form}${clSocialCard()}</div>
       ${identity}
     </div>`;
 }
@@ -737,7 +798,8 @@ LIVE.withdraw = (d) => {
   };
 };
 // Soumission d'un clip : coche verte dans chaque champ de lien dès que le lien pointe vers sa plateforme (https).
-LIVE.clip = (d) => Object.fromEntries(PLATFORMS.map((p) => [`ok-${p}`, clUrlOk(p, d[`url-${p}`]) ? icon("checkCircle", "size-4") : ""]));
+// Un lien qui nomme un autre compte que le compte vérifié de la plateforme n'a pas de coche.
+LIVE.clip = (d) => { const v = clVerifiedMap(); return Object.fromEntries(PLATFORMS.map((p) => [`ok-${p}`, clUrlGood(p, d[`url-${p}`], v.get(p)) ? icon("checkCircle", "size-4") : ""])); };
 
 // ---------- Modales ----------
 
@@ -780,19 +842,25 @@ function clCampaignSheet(c, u) {
   });
 }
 
-// Champ de lien d'une plateforme : pictogramme et nom, lien en LTR, coche en direct (LIVE.clip), erreur sous le champ.
-function clUrlField(p, value, error) {
+// Lien accepté pour la coche verte : bon domaine (https) et, s'il nomme un compte, le compte vérifié `handle`.
+const clUrlGood = (p, v, handle) => clUrlOk(p, v) && !clUrlForeign(p, v, handle);
+// Champ de lien d'une plateforme : pictogramme et nom, compte vérifié d'où vient le clip (« @compte »), lien en LTR,
+// coche en direct (LIVE.clip), erreur sous le champ.
+function clUrlField(p, value, error, handle) {
+  const placeholder = p === "TikTok" && handle ? `https://www.tiktok.com/@${handle}/video/…` : PLATFORM_PLACEHOLDER[p] || "https://…";
   return `<div class="grid gap-1.5" data-field>
-    <label class="contents"><span class="flex items-center gap-1.5 text-small font-medium text-fg">${icon(PLATFORM_ICON[p] || "film", "size-4 shrink-0 text-fg-muted")}${t("Lien {platform}", { platform: esc(p) })}</span>
-      <span class="relative block" dir="ltr">${icon("link", "pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2 text-fg-subtle")}<input name="url-${p}" type="url" inputmode="url" required value="${esc(value || "")}" placeholder="${esc(PLATFORM_PLACEHOLDER[p] || "https://…")}" autocomplete="off" autocapitalize="off" spellcheck="false" class="${inputCls} ps-9 pe-10"${error ? ' aria-invalid="true"' : ""}/>
-        <span data-live-out="ok-${p}" class="pointer-events-none absolute inset-y-0 end-3 flex items-center text-income" aria-hidden="true">${clUrlOk(p, value) ? icon("checkCircle", "size-4") : ""}</span></span></label>
+    <label class="contents"><span class="flex items-center gap-1.5 text-small font-medium text-fg">${icon(PLATFORM_ICON[p] || "film", "size-4 shrink-0 text-fg-muted")}${t("Lien {platform}", { platform: esc(p) })}${handle ? `<span class="ms-auto inline-flex min-w-0 items-center gap-1 text-xs font-normal text-fg-subtle">${icon("shield", "size-3.5 shrink-0 text-success-fg")}<span class="truncate" dir="ltr">@${esc(handle)}</span></span>` : ""}</span>
+      <span class="relative block" dir="ltr">${icon("link", "pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2 text-fg-subtle")}<input name="url-${p}" type="url" inputmode="url" required value="${esc(value || "")}" placeholder="${esc(placeholder)}" autocomplete="off" autocapitalize="off" spellcheck="false" class="${inputCls} ps-9 pe-10"${error ? ' aria-invalid="true"' : ""}/>
+        <span data-live-out="ok-${p}" class="pointer-events-none absolute inset-y-0 end-3 flex items-center text-income" aria-hidden="true">${clUrlGood(p, value, handle) ? icon("checkCircle", "size-4") : ""}</span></span></label>
     ${error ? clErr(esc(error)) : ""}</div>`;
 }
 
 // Soumission d'un clip : campagne, titre, « Où avez-vous publié ce clip ? » (toutes les plateformes de la campagne ou
 // une seule, puis laquelle), et un champ de lien par plateforme retenue. Les choix (data-rerender) sont relus dans
 // state.modal.draft (main.js garde les saisies à chaque rendu) ; une erreur ne s'affiche que tant que la valeur fautive
-// n'a pas changé (m.errorValues : la saisie au moment de l'envoi).
+// n'a pas changé (m.errorValues : la saisie au moment de l'envoi). Seules les plateformes où le clipper a un compte
+// vérifié se choisissent (les autres sont désactivées, avec un lien vers Profil → Comptes sociaux) ; sans aucune,
+// la modale l'explique et l'envoi est désactivé.
 function clSubmitModal(m) {
   const joined = clJoinedOpen();
   if (!joined.length) {
@@ -806,35 +874,41 @@ function clSubmitModal(m) {
   const same = (k) => String(d[k] ?? "") === String(ev[k] ?? "");
   const c = joined.find((x) => x.id === d.campaign) || joined.find((x) => x.id === m.id) || joined[0];
   const plats = PLATFORMS.filter((p) => c.platforms.includes(p)), single = plats.length === 1;
-  const mode = single ? "one" : d.mode === "all" || d.mode === "one" ? d.mode : "";
-  const platform = single ? plats[0] : plats.includes(d.platform) ? d.platform : "";
+  const verified = clVerifiedMap(), usable = plats.filter((p) => verified.has(p)), missing = plats.filter((p) => !verified.has(p));
+  const blocked = !usable.length;
+  const mode = single ? "one" : (d.mode === "all" && !missing.length) || d.mode === "one" ? d.mode : "";
+  const platform = single ? plats[0] : usable.includes(d.platform) ? d.platform : "";
   const targets = mode === "all" ? plats : platform ? [platform] : [];
   const errOf = (k) => (e[k] && same(k) ? e[k] : "");
   const modeErr = e.mode && !mode ? e.mode : "", platformErr = e.platform && mode === "one" && !platform ? e.platform : "";
   const titleErr = errOf("title"), campaignErr = errOf("campaign");
   const LEGEND = "mb-1.5 text-small font-medium text-fg";
-  const choice = (value, title, text) => `<label class="${CHOICE} has-[[aria-invalid=true]]:border-danger-solid"><input type="radio" name="mode" value="${value}" data-rerender class="${RADIO}" ${mode === value ? "checked" : ""}${modeErr ? ' aria-invalid="true"' : ""}/>
+  const choice = (value, title, text, off = false) => `<label class="${CHOICE} has-[[aria-invalid=true]]:border-danger-solid has-disabled:cursor-not-allowed has-disabled:opacity-50"><input type="radio" name="mode" value="${value}" data-rerender class="${RADIO}" ${mode === value ? "checked" : ""}${off ? " disabled" : ""}${modeErr ? ' aria-invalid="true"' : ""}/>
       <span class="min-w-0 flex-1"><span class="block text-sm font-medium text-fg">${title}</span>${text}</span></label>`;
+  // Plateformes de la campagne sans compte vérifié : lien vers la carte des comptes du Profil.
+  const missingHint = missing.length && !blocked
+    ? `<p class="text-xs text-fg-subtle">${t("Pas encore de compte vérifié sur {platforms}.", { platforms: esc(clList(missing)) })} ${clSocialLink(t("Vérifier mes comptes"), true)}</p>`
+    : "";
 
   // Campagne à une seule plateforme : une phrase (la pastille de la plateforme s'insère à sa place dans chaque langue).
   const where = single ? `<div class="flex items-start gap-2 rounded-tile bg-subtle p-3 text-small leading-6 text-fg-muted in-[[aria-modal=true]]:bg-muted">${icon("info", "mt-1 size-4 shrink-0 text-fg-subtle")}<span class="min-w-0 [&>span]:align-middle">${t("Cette campagne se publie uniquement sur {platform}", { platform: platformTag(plats[0]) })}</span></div>`
     : `<fieldset class="grid gap-2" data-field><legend class="${LEGEND}">${t("Où avez-vous publié ce clip ?")}</legend>
         <div class="grid gap-2 sm:grid-cols-2">
-          ${choice("all", t("Sur toutes les plateformes de la campagne"), `<span class="mt-2 flex flex-wrap gap-1.5">${plats.map(platformTag).join("")}</span>`)}
+          ${choice("all", t("Sur toutes les plateformes de la campagne"), `<span class="mt-2 flex flex-wrap gap-1.5">${plats.map(platformTag).join("")}</span>`, missing.length > 0)}
           ${choice("one", t("Sur une seule plateforme"), `<span class="mt-0.5 block text-xs text-fg-subtle">${t("Vous choisissez laquelle juste après.")}</span>`)}
         </div>
-        ${modeErr ? clErr(esc(modeErr)) : ""}</fieldset>`;
+        ${modeErr ? clErr(esc(modeErr)) : mode === "one" ? "" : missingHint}</fieldset>`;
 
   const which = !single && mode === "one"
     ? `<fieldset class="grid gap-2" data-field><legend class="${LEGEND}">${t("Sur quelle plateforme ?")}</legend>
-        <div class="grid grid-cols-2 gap-2 ${CL_COLS[plats.length] || ""}">${plats.map((p) => `<label class="block min-w-0"><input type="radio" name="platform" value="${p}" data-rerender class="peer sr-only" ${p === platform ? "checked" : ""}${platformErr ? ' aria-invalid="true"' : ""}/><span class="${SEG_CHOICE} h-11 peer-aria-[invalid=true]:border-danger-solid">${icon(PLATFORM_ICON[p] || "film")}<span class="truncate">${p}</span></span></label>`).join("")}</div>
-        ${platformErr ? clErr(esc(platformErr)) : ""}</fieldset>`
+        <div class="grid grid-cols-2 gap-2 ${CL_COLS[plats.length] || ""}">${plats.map((p) => `<label class="block min-w-0"><input type="radio" name="platform" value="${p}" data-rerender class="peer sr-only" ${p === platform ? "checked" : ""}${verified.has(p) ? "" : " disabled"}${platformErr ? ' aria-invalid="true"' : ""}/><span class="${SEG_CHOICE} h-11 peer-disabled:cursor-not-allowed peer-disabled:opacity-50 peer-aria-[invalid=true]:border-danger-solid">${icon(PLATFORM_ICON[p] || "film")}<span class="truncate">${p}</span></span></label>`).join("")}</div>
+        ${platformErr ? clErr(esc(platformErr)) : missingHint}</fieldset>`
     : "";
 
   const links = targets.length
     ? `<div class="grid gap-4">
         ${targets.length > 1 ? `<p class="text-xs text-fg-subtle">${t("Un lien par plateforme : chaque publication est vérifiée, puis payée selon ses propres vues.")}</p>` : ""}
-        ${targets.map((p) => clUrlField(p, d[`url-${p}`], errOf(`url-${p}`))).join("")}</div>`
+        ${targets.map((p) => clUrlField(p, d[`url-${p}`], errOf(`url-${p}`), verified.get(p))).join("")}</div>`
     : `<div class="flex items-center gap-2.5 rounded-tile border border-dashed border-line-strong px-3.5 py-3 text-small text-fg-subtle">${icon("link", "size-4 shrink-0")}<span>${mode === "one" ? t("Choisissez la plateforme pour coller le lien de votre clip.") : t("Les champs de lien s'affichent selon votre choix.")}</span></div>`;
 
   return modalShell({
@@ -842,11 +916,14 @@ function clSubmitModal(m) {
     body: `<div class="grid gap-5">
       ${field(t("Campagne"), `<span class="relative block"><select name="campaign" data-rerender class="${selectCls}"${campaignErr ? ' aria-invalid="true"' : ""}>${joined.map((x) => `<option value="${x.id}" ${x.id === c.id ? "selected" : ""}>${esc(x.title)} · ${rateShort(x.rate)}</option>`).join("")}</select>${CHEVRON}</span>`, "", campaignErr ? esc(campaignErr) : "")}
       <div class="grid gap-1.5" data-field><label class="contents"><span class="text-small font-medium text-fg">${t("Titre du clip")}</span><input name="title" required maxlength="100" value="${esc(d.title || "")}" placeholder="${t("Ex. Le but de l'année")}" autocomplete="off" autofocus class="${inputCls}"${titleErr ? ' aria-invalid="true"' : ""}/></label>${titleErr ? clErr(esc(titleErr)) : ""}</div>
-      ${where}
+      ${blocked ? alertBox("warning", `${single
+        ? t("Vérifiez d'abord votre compte {platform} : seuls les clips publiés depuis un compte vérifié sont acceptés.", { platform: esc(plats[0]) })
+        : t("Vérifiez d'abord l'un de vos comptes {platforms} : seuls les clips publiés depuis un compte vérifié sont acceptés.", { platforms: esc(clList(plats)) })} ${clSocialLink(t("Vérifier mes comptes"), true)}`)
+        : `${where}
       ${which}
-      ${links}
+      ${links}`}
     </div>`,
-    footer: `<button type="button" data-action="close-modal" class="${btn("ghost")}">${t("Annuler")}</button><button class="${btn("primary")}">${icon("send", "rtl:-scale-x-100")}${t("Envoyer pour validation")}</button>`,
+    footer: `<button type="button" data-action="close-modal" class="${btn("ghost")}">${t("Annuler")}</button><button class="${btn("primary")}"${blocked ? " disabled" : ""}>${icon("send", "rtl:-scale-x-100")}${t("Envoyer pour validation")}</button>`,
   });
 }
 
@@ -859,6 +936,16 @@ function clipperModal() {
     return c ? clCampaignSheet(c, u) : "";
   }
   if (m.type === "submit") return clSubmitModal(m);
+  if (m.type === "cl-social-remove") {
+    const a = clSocial().find((x) => x.id === m.id);
+    if (!a) return "";
+    const handle = `<span class="font-medium text-fg" dir="ltr">@${esc(a.handle)}</span>`;
+    return modalShell({
+      title: t("Retirer votre compte {platform} ?", { platform: esc(a.platform) }),
+      body: `<p class="text-sm text-fg-muted">${t("Le compte {handle} ne sera plus vérifié : vos clips déjà envoyés ne changent pas, mais vous ne pourrez plus soumettre de clip {platform} avant d'avoir vérifié un compte, avec un nouveau code.", { handle, platform: esc(a.platform) })}</p>`,
+      footer: `<button type="button" data-action="close-modal" class="${btn("ghost")}">${t("Annuler")}</button><button type="button" data-action="cl-social-remove-confirm" data-id="${a.id}" class="${btn("danger")}">${icon("trash")}${t("Retirer le compte")}</button>`,
+    });
+  }
   if (m.type === "withdraw") {
     const set = db.settings, min = set.minWithdraw, bal = Math.floor(balance());
     const blocked = !u.payoutMethod
@@ -922,6 +1009,27 @@ function handleClipperAction(action, el) {
     case "period": state.period = parseInt(value, 10); return render();
     case "cl-chart": state.clChart = value; return render();
     case "cl-clips": state.clClips = value; return render();
+    // Comptes sociaux (Profil) : code copié, vérification (« simulated » : plateforme sans identifiants sur le serveur,
+    // bio non lue), retrait (direct pour un compte en attente, après confirmation pour un compte vérifié).
+    case "cl-social-copy": return copy(value, t("Code {code} copié", { code: value }));
+    case "cl-social-verify": {
+      const a = clSocial().find((x) => x.id === id);
+      if (!a) return;
+      return act("POST", `/api/social/${encodeURIComponent(id)}/verify`, null, (res) => (res && res.simulated
+        ? t("Compte {platform} vérifié (mode simulé : la bio n'a pas été lue)", { platform: a.platform })
+        : t("Compte {platform} vérifié", { platform: a.platform })));
+    }
+    case "cl-social-remove": {
+      const a = clSocial().find((x) => x.id === id);
+      if (!a) return;
+      if (a.status === "verified") { state.modal = { type: "cl-social-remove", id }; return render(); }
+      return act("DELETE", `/api/social/${encodeURIComponent(id)}`, null, t("Compte {platform} retiré", { platform: a.platform }));
+    }
+    case "cl-social-remove-confirm": {
+      const a = clSocial().find((x) => x.id === id);
+      if (!a) { state.modal = null; return render(); }
+      return act("DELETE", `/api/social/${encodeURIComponent(id)}`, null, t("Compte {platform} retiré", { platform: a.platform }), () => { state.modal = null; });
+    }
   }
   return false;
 }
@@ -943,8 +1051,9 @@ function handleClipperSubmit(form, data) {
     if (!c) errors.campaign = t("Cette campagne n'accepte plus de clips : choisissez-en une autre.");
     if (!title) errors.title = t("Donnez un titre à votre clip.");
     const plats = c ? PLATFORMS.filter((p) => c.platforms.includes(p)) : [], single = plats.length === 1;
-    const mode = single ? "one" : data.mode, platform = single ? plats[0] : data.platform;
-    if (c && mode !== "all" && mode !== "one") errors.mode = t("Indiquez où vous avez publié ce clip.");
+    const mode = single ? "one" : data.mode, platform = single ? plats[0] : data.platform, verified = clVerifiedMap();
+    if (c && !plats.some((p) => verified.has(p))) errors.campaign = t("Vérifiez d'abord l'un des comptes de cette campagne (Profil → Comptes sociaux).");
+    else if (c && mode !== "all" && mode !== "one") errors.mode = t("Indiquez où vous avez publié ce clip.");
     else if (c && mode === "one" && !plats.includes(platform)) errors.platform = t("Choisissez la plateforme sur laquelle vous avez publié ce clip.");
     const targets = mode === "all" ? plats : plats.includes(platform) ? [platform] : [];
     const submitted = new Set(myPubs().map((p) => clUrlKey(p.url))), seen = new Set();
@@ -952,6 +1061,8 @@ function handleClipperSubmit(form, data) {
       const k = `url-${p}`, url = String(data[k] || "").trim(), key = clUrlKey(url);
       if (!url) errors[k] = t("Collez le lien {platform} de votre clip.", { platform: p });
       else if (!clUrlOk(p, url)) errors[k] = t("Le lien doit être un lien {platform} (https://…).", { platform: p });
+      else if (!verified.has(p)) errors[k] = t("Vérifiez d'abord votre compte {platform} (Profil → Comptes sociaux).", { platform: p });
+      else if (clUrlForeign(p, url, verified.get(p))) errors[k] = t("Ce lien ne vient pas de votre compte {platform} vérifié (@{handle}).", { platform: p, handle: verified.get(p) });
       else if (submitted.has(key)) errors[k] = t("Vous avez déjà soumis ce lien.");
       else if (seen.has(key)) errors[k] = t("Le même lien est indiqué deux fois.");
       seen.add(key);
@@ -972,9 +1083,14 @@ function handleClipperSubmit(form, data) {
     return act("POST", "/api/withdrawals", { amount, instant: data.speed === "instant" }, t("Demande de retrait de {amount} envoyée", { amount: da(amount) }), () => { state.modal = null; });
   }
   if (form === "profile") {
-    const at = (v) => { const s = String(v || "").trim().replace(/^@+/, ""); return s ? `@${s}` : ""; };
     // avatar : data URL (nouvelle photo), adresse actuelle (inchangée) ou "" (retirée), voir imageField (ui.js).
-    return act("PATCH", "/api/me", { name: data.name, country: data.country, bio: data.bio, avatar: data.avatar, handles: { tiktok: at(data.tiktok), instagram: at(data.instagram), youtube: at(data.youtube) } }, t("Profil mis à jour"));
+    // Les « @compte » du profil suivent les comptes sociaux vérifiés (formulaire « social ») : ils ne sont plus envoyés ici.
+    return act("PATCH", "/api/me", { name: data.name, country: data.country, bio: data.bio, avatar: data.avatar }, t("Profil mis à jour"));
+  }
+  if (form === "social") {
+    const formEl = root.querySelector('form[data-form="social"]'), handle = String(data.handle || "").trim();
+    if (!handle) return markInvalid(formEl, "handle", t("Indiquez l'identifiant du compte."));
+    return act("POST", "/api/social", { platform: data.platform, handle }, t("Compte {platform} ajouté : collez maintenant son code dans sa bio", { platform: data.platform }));
   }
   if (form === "payout") {
     return act("PATCH", "/api/me", { payoutMethod: data.payoutMethod, payoutAccount: data.payoutAccount }, t("Moyen de retrait enregistré"));

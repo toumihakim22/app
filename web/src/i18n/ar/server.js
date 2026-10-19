@@ -119,6 +119,16 @@ Object.assign(I18N.ar, {
   "Le nombre de vues ne peut pas diminuer": "لا يمكن أن ينخفض عدد المشاهدات",
   "Ce clip a déjà été traité": "سبقت مراجعة هذا المقطع",
 
+  // ---------- Comptes sociaux des clippers (lib/server/services/social.ts, validation.ts) ----------
+  "Identifiant manquant": "اسم المستخدم مفقود",
+  "Identifiant obligatoire": "اسم المستخدم مطلوب",
+  "Identifiant trop long": "اسم المستخدم طويل جدًا",
+  "Identifiant invalide : lettres, chiffres, points, tirets ou tirets bas (60 signes au plus)": "اسم مستخدم غير صالح: حروف وأرقام ونقاط وشرطات أو شرطات سفلية (60 رمزًا على الأكثر)",
+  "Ce compte est déjà vérifié par un autre clipper": "هذا الحساب موثّق بالفعل لدى صانع مقاطع آخر",
+  "Ce compte a été modifié entre-temps : réessayez": "تغيّر هذا الحساب في الأثناء: أعد المحاولة",
+  "Ce compte est déjà vérifié": "هذا الحساب موثّق بالفعل",
+  "Compte introuvable": "الحساب غير موجود",
+
   // ---------- Portefeuille, crédit, transactions ----------
   "Ajoutez d'abord un moyen de retrait (BaridiMob, CCP ou RIB) dans votre profil": "أضف أولًا وسيلة سحب (BaridiMob أو CCP أو RIB) في ملفك الشخصي",
   "Transaction introuvable": "العملية غير موجودة",
@@ -166,6 +176,13 @@ I18N_RX.ar.push(
   [/^Le lien doit être un lien (.+) \(https:\/\/…\)\.$/, "يجب أن يكون الرابط رابط $1 (https://…)."],
   [/^Le lien doit être un lien (.+) \(https:\/\/…\)$/, "يجب أن يكون الرابط رابط $1 (https://…)"],
   [/^Ce lien a déjà été soumis : (.+)$/, "سبق إرسال هذا الرابط: $1"],
+  // « @compte » isolé (U+2066…U+2069) : l'arobase reste devant l'identifiant dans une phrase en arabe.
+  [/^Vérifiez d'abord votre compte (.+) \(Profil → Comptes sociaux\)$/, "وثّق أولًا حسابك على $1 (الملف الشخصي ← حسابات التواصل الاجتماعي)"],
+  [/^Ce lien ne vient pas de votre compte (.+) vérifié \(@(.+)\)$/, "هذا الرابط ليس من حسابك الموثّق على $1 (⁦@$2⁩)"],
+  [/^Vous avez déjà un compte (.+) vérifié : retirez-le d'abord pour en changer$/, "لديك بالفعل حساب موثّق على $1: أزِله أولًا لتغييره"],
+  [/^Compte (.+) @(.+) introuvable : vérifiez l'identifiant$/, "لم يُعثر على حساب $1 ⁦@$2⁩: تحقّق من اسم المستخدم"],
+  [/^Code (.+) absent de la bio de @(.+) : collez-le, enregistrez, puis réessayez$/, "الرمز ⁦$1⁩ غير موجود في نبذة ⁦@$2⁩: الصقه واحفظ ثم أعد المحاولة"],
+  [/^Vérification (.+) indisponible pour le moment, réessayez plus tard$/, "التوثيق عبر $1 غير متاح حاليًا، أعد المحاولة لاحقًا"],
   [/^Cette campagne n'accepte pas (.+)$/, "هذه الحملة لا تقبل $1"],
   [/^Seuil non atteint : ([\d\s]+) vues minimum$/, "لم يُبلغ الحد الأدنى: $1 مشاهدة على الأقل"],
   [/^Le retrait minimum est de ([+-]?[\d\s]+ DA)$/, "الحد الأدنى للسحب هو $1"],
@@ -236,6 +253,8 @@ I18N_RX.ar.push(
   [/^Votre demande de badge de vérification a été refusée : (.+)$/, "رُفض طلبك للحصول على شارة التوثيق: $1"],
   [/^Le badge de vérification de votre agence a été retiré : (.+)$/, "سُحبت شارة التوثيق من وكالتك: $1"],
   [/^Réglages modifiés par (.+) : (.+)\.$/, "تم تعديل الإعدادات بواسطة $1: $2."],
+  [/^(.+) a vérifié son compte (TikTok|Instagram|YouTube|Facebook) @(.+)\.$/, "وثّق $1 حسابه على $2 ⁦@$3⁩."],
+  [/^(.+) a retiré son compte (TikTok|Instagram|YouTube|Facebook) @(.+)\.$/, "أزال $1 حسابه على $2 ⁦@$3⁩."],
 
   // ---------- Libellés des opérations (transactions[].label) ----------
   [/^Retrait instantané vers RIB bancaire$/, "سحب فوري إلى حساب بنكي (RIB)"],

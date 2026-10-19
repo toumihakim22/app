@@ -138,13 +138,29 @@ assert.equal((await clip([{ platform: "TikTok", url: "https://www.tiktok.com/@r/
 ok(await clipper("POST", `/api/campaigns/${campaignId}/membership`, { joined: true }), "rejoindre");
 assert.equal((await clip([{ platform: "TikTok", url: "https://evil.example/video" }])).status, 400);
 r = await clip([{ platform: "Facebook", url: `https://www.facebook.com/reel/${stamp}` }]); assert.equal(r.status, 400); assert.match(r.data.error, /n'accepte pas Facebook/);
+// Comptes sociaux : aucun clip sans compte vérifié ; code « CB-XXXX » à coller dans la bio, vérification (simulée tant
+// que les clés des API ne sont pas dans .env), un compte par plateforme, un compte vérifié par un seul clipper.
+const tiktokUrl = `https://www.tiktok.com/@rayan${stamp}/video/${stamp}`;
+r = await clip([{ platform: "TikTok", url: tiktokUrl }]); assert.equal(r.status, 400); assert.match(r.data.error, /^Vérifiez d'abord votre compte TikTok/);
+r = await clipper("POST", "/api/social", { platform: "TikTok", handle: `@Rayan${stamp}` }); assert.equal(r.status, 201); assert.match(r.data.code, /^CB-[A-HJ-NP-Z2-9]{4}$/);
+const tiktokAccount = r.data.id;
+r = await clipper("POST", "/api/social", { platform: "Instagram", handle: `https://www.instagram.com/rayan${stamp}/` }); assert.equal(r.status, 201);
+const instagramAccount = r.data.id;
+ok(await clipper("POST", `/api/social/${tiktokAccount}/verify`), "vérification TikTok");
+ok(await clipper("POST", `/api/social/${instagramAccount}/verify`), "vérification Instagram");
+r = await clipper("POST", "/api/social", { platform: "TikTok", handle: "autre.compte" }); assert.equal(r.status, 400); assert.match(r.data.error, /retirez-le d'abord/);
+r = await clipper("POST", "/api/social", { platform: "YouTube", handle: "@yacineclips" }); assert.equal(r.status, 400); assert.match(r.data.error, /déjà vérifié par un autre clipper/);
+st = await clipper("GET", "/api/state");
+assert.deepEqual(st.data.me.socialAccounts.map((a: { platform: string; status: string }) => `${a.platform}:${a.status}`), ["TikTok:verified", "Instagram:verified"]);
+assert.equal(st.data.me.handles.tiktok, `@rayan${stamp}`);
+r = await clip([{ platform: "TikTok", url: `https://www.tiktok.com/@r/video/${stamp}` }]); assert.equal(r.status, 400); assert.match(r.data.error, /ne vient pas de votre compte TikTok vérifié/);
 // Le même clip sur TikTok et Instagram : un envoi, deux publications du même lot.
-r = await clip([{ platform: "TikTok", url: `https://www.tiktok.com/@r/video/${stamp}` }, { platform: "Instagram", url: `https://www.instagram.com/reel/${stamp}` }]); ok(r, "soumission");
+r = await clip([{ platform: "TikTok", url: tiktokUrl }, { platform: "Instagram", url: `https://www.instagram.com/reel/${stamp}` }]); ok(r, "soumission");
 const clipId = r.data.id, siblingId = r.data.ids[1]; assert.equal(r.data.ids.length, 2); assert.equal(r.data.ids[0], clipId);
-r = await clip([{ platform: "TikTok", url: `https://www.tiktok.com/@r/video/${stamp}` }]); assert.equal(r.status, 400); assert.match(r.data.error, /déjà été soumis/);
+r = await clip([{ platform: "TikTok", url: tiktokUrl }]); assert.equal(r.status, 400); assert.match(r.data.error, /déjà été soumis/);
 const mine = (await clipper("GET", "/api/state")).data.publications as { id: string; platform: string; batch: string | null }[];
 assert.equal(mine.length, 2); assert.ok(mine[0].batch && mine[0].batch === mine[1].batch);
-step("clipper inscrit, campagne rejointe, clip soumis sur deux plateformes (liens contrôlés)");
+step("clipper inscrit, campagne rejointe, comptes TikTok et Instagram vérifiés, clip soumis sur deux plateformes (liens contrôlés)");
 
 // 4 bis. Le clipper voit l'agence de la campagne : profil public seulement (aucun email, contact ni crédit).
 r = await clipper("GET", "/api/state");
@@ -222,7 +238,7 @@ step("campagne terminée, 92 000 DA rendus à l'agence, plus aucun clip validé"
 const yacine = client();
 ok(await yacine("POST", "/api/auth/login", { email: "yacine@clipboost.dz", password: "Clipboost2026" }), "connexion yacine");
 const derby = (await yacine("GET", "/api/state")).data.campaigns.find((c: { title: string; status: string }) => c.title === "Derby Algérois" && c.status === "Active");
-r = await yacine("POST", "/api/clips", { campaignId: derby.id, title: "Hors sujet", links: [{ platform: "TikTok", url: `https://www.tiktok.com/@y/video/${stamp}` }] }); ok(r, "soumission yacine");
+r = await yacine("POST", "/api/clips", { campaignId: derby.id, title: "Hors sujet", links: [{ platform: "TikTok", url: `https://www.tiktok.com/@yacine.clips/video/${stamp}` }] }); ok(r, "soumission yacine");
 const refusedId = r.data.id;
 ok(await admin("POST", `/api/clips/${refusedId}/review`, { approve: false, reason: "Hors sujet" }), "refus");
 r = await yacine("GET", "/api/state");

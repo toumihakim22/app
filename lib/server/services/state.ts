@@ -6,6 +6,8 @@ import { balances } from "./money";
 import { inferLink, type LinkContext } from "../links";
 import { configuredProviders } from "../oauth";
 import { OAUTH_PROVIDERS } from "../validation";
+import { PLATFORMS } from "../gradients";
+import { socialView } from "./social";
 
 const day = (d: Date) => d.toISOString().slice(0, 10);
 const time = (d: Date) => d.toISOString().slice(11, 16);
@@ -77,6 +79,10 @@ export async function stateFor(user: User) {
   const activityRows = isAdmin ? await db.select().from(schema.activity).orderBy(desc(schema.activity.createdAt)).limit(30) : [];
 
   const mine = isClipper ? await db.select().from(M).where(eq(M.userId, user.id)) : [];
+  // Comptes sociaux : les siens pour un clipper, ceux de chaque clipper pour l'admin ; dans l'ordre des plateformes.
+  const SA = schema.socialAccounts;
+  const socialRows = isAdmin ? await db.select().from(SA) : isClipper ? await db.select().from(SA).where(eq(SA.userId, user.id)) : [];
+  const socialOf = (id: string) => socialRows.filter((a) => a.userId === id).sort((a, b) => PLATFORMS.indexOf(a.platform) - PLATFORMS.indexOf(b.platform)).map(socialView);
   // Comptes Google, Apple ou Discord reliés (Paramètres), dans l'ordre des boutons ; hasPassword : faux pour un compte créé par l'un d'eux sans mot de passe.
   const providers = (await db.select({ provider: schema.oauthAccounts.provider }).from(schema.oauthAccounts).where(eq(schema.oauthAccounts.userId, user.id))).map((r) => r.provider);
   const since = new Date(Date.now() - 30 * 86_400_000);
@@ -105,9 +111,13 @@ export async function stateFor(user: User) {
     me: {
       ...fullUser(user), favorites: mine.filter((m) => m.favorite).map((m) => m.campaignId), joinedCampaigns: mine.filter((m) => m.joined).map((m) => m.campaignId),
       ...(balanceOf.get(user.id) ?? {}), hasPassword: user.passwordHash !== "", providers: OAUTH_PROVIDERS.filter((p) => providers.includes(p)),
+      ...(isClipper ? { socialAccounts: socialOf(user.id) } : {}),
     },
     settings: { maintenance: settings.maintenance, signupsOpen: settings.signupsOpen, announcement: settings.announcement, minWithdraw: settings.minWithdraw, commissionRate: settings.commissionRate, minBudget: settings.minBudget, holdDays: settings.holdDays, earningDays: settings.earningDays, instantFeePercent: settings.instantFeePercent, instantMinFee: settings.instantMinFee },
-    users: userRows.map((u) => ({ ...(isAdmin ? fullUser(u) : u.id === user.id ? fullUser(u) : publicUser(u)), ...(balanceOf.get(u.id) ?? {}) })),
+    users: userRows.map((u) => ({
+      ...(isAdmin ? fullUser(u) : u.id === user.id ? fullUser(u) : publicUser(u)), ...(balanceOf.get(u.id) ?? {}),
+      ...(u.role === "clipper" && (isAdmin || u.id === user.id) ? { socialAccounts: socialOf(u.id) } : {}),
+    })),
     campaigns: campaignRows.map((c) => ({ ...c, createdAt: day(c.createdAt), updatedAt: c.updatedAt.toISOString(), clippers: clippersOf.get(c.id) ?? 0 })),
     agencies: agencyRows.map(publicAgency).sort((a, b) => a.name.localeCompare(b.name, "fr") || a.id.localeCompare(b.id)),
     publications: pubRows.map((p) => ({ id: p.id, userId: p.userId, campaign: p.campaignId, title: p.title, platform: p.platform, url: p.url, batch: p.batch, views: p.views, status: p.status, reason: p.reason, paid: p.paid, date: day(p.createdAt) })),

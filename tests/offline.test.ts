@@ -102,7 +102,9 @@ test("inscription avec code, campagne financée, clip payé et retrait instantan
 
   await login("yacine@clipboost.dz");
   await call("POST", `/api/campaigns/${campaignId}/membership`, { joined: true });
-  const { data: { id: clipId } } = await call("POST", "/api/clips", { campaignId, title: "Course dans les dunes", links: [{ platform: "TikTok", url: "https://www.tiktok.com/@x/video/1" }] });
+  // Un lien TikTok qui nomme un autre compte que le compte vérifié du clipper est refusé.
+  assert.deepEqual(await call("POST", "/api/clips", { campaignId, title: "Course dans les dunes", links: [{ platform: "TikTok", url: "https://www.tiktok.com/@x/video/1" }] }), { status: 400, data: { error: "Ce lien ne vient pas de votre compte TikTok vérifié (@yacine.clips)" } });
+  const { data: { id: clipId } } = await call("POST", "/api/clips", { campaignId, title: "Course dans les dunes", links: [{ platform: "TikTok", url: "https://www.tiktok.com/@yacine.clips/video/1" }] });
   assert.equal((await call("POST", "/api/withdrawals", { amount: 2000, instant: true })).status, 201);
 
   await login("admin@clipboost.dz", "AdminClip2026");
@@ -129,13 +131,13 @@ test("inscription avec code, campagne financée, clip payé et retrait instantan
   assert.equal(linkOf(notes, /^Yacine Benali demande un retrait/), `#/admin/retraits/${withdrawal.id}`);
   // Clip refusé, compte réactivé, fin de campagne (budget rendu).
   await login("yacine@clipboost.dz");
-  const { data: { id: refusedId } } = await call("POST", "/api/clips", { campaignId, title: "Hors sujet", links: [{ platform: "TikTok", url: "https://www.tiktok.com/@x/video/2" }] });
+  const { data: { id: refusedId } } = await call("POST", "/api/clips", { campaignId, title: "Hors sujet", links: [{ platform: "TikTok", url: "https://www.tiktok.com/@yacine.clips/video/2" }] });
   await login("admin@clipboost.dz", "AdminClip2026");
   await call("POST", `/api/clips/${refusedId}/review`, { approve: false, reason: "Hors sujet" });
   const yacine = (await call("GET", "/api/state")).data.users.find((u: { email: string }) => u.email === "yacine@clipboost.dz");
   assert.equal((await call("PATCH", `/api/admin/users/${yacine.id}`, { status: "Actif" })).status, 200);
   await login("yacine@clipboost.dz");
-  const { data: { id: lateId } } = await call("POST", "/api/clips", { campaignId, title: "Dernier clip", links: [{ platform: "TikTok", url: "https://www.tiktok.com/@x/video/3" }] });
+  const { data: { id: lateId } } = await call("POST", "/api/clips", { campaignId, title: "Dernier clip", links: [{ platform: "TikTok", url: "https://www.tiktok.com/@yacine.clips/video/3" }] });
   await login("admin@clipboost.dz", "AdminClip2026");
   assert.equal((await call("PATCH", `/api/campaigns/${campaignId}`, { status: "Terminée" })).status, 200);
   // Campagne terminée : budget restant rendu à l'agence, plus aucun clip ne peut être validé ni payé.
@@ -243,6 +245,11 @@ test("clip publié sur plusieurs plateformes : un lien par plateforme, un seul l
   await call("POST", `/api/campaigns/${festival.id}/membership`, { joined: true });
   assert.deepEqual(await call("POST", "/api/clips", { campaignId: festival.id, title: "Le court", links: [{ platform: "TikTok", url: "https://www.tiktok.com/@x/video/9" }] }), { status: 400, data: { error: "Cette campagne n'accepte pas TikTok" } });
   assert.deepEqual(await call("POST", "/api/clips", { campaignId: festival.id, title: "Le court", links: [{ platform: "Facebook", url: "https://www.instagram.com/reel/9" }] }), { status: 400, data: { error: "Le lien doit être un lien Facebook (https://…)" } });
+  // Yacine n'a pas de compte Facebook vérifié : il l'ajoute, puis le vérifie (code dans la bio, vérification simulée hors ligne).
+  assert.deepEqual(await call("POST", "/api/clips", { campaignId: festival.id, title: "Le court de clôture", links }), { status: 400, data: { error: "Vérifiez d'abord votre compte Facebook (Profil → Comptes sociaux)" } });
+  const fb = await call("POST", "/api/social", { platform: "Facebook", handle: "@Yacine.Clips" });
+  assert.equal(fb.status, 201);
+  assert.equal((await call("POST", `/api/social/${fb.data.id}/verify`)).status, 200);
   const res = await call("POST", "/api/clips", { campaignId: festival.id, title: "Le court de clôture", links });
   assert.equal(res.status, 201);
   assert.equal(res.data.ids.length, 2);
@@ -325,6 +332,7 @@ test("ancienne copie du navigateur : colonnes ajoutées complétées ; stockage 
   // Copie enregistrée par la version précédente du fichier : sans les nouvelles colonnes ni la table oauth.
   const store = JSON.parse(storage.get(STORAGE_KEY)!);
   delete store.oauth;
+  delete store.social;
   for (const u of store.users) for (const k of ["avatar", "cover", "verification", "verificationNote", "locale"]) delete u[k];
   for (const c of store.campaigns) for (const k of ["image", "reviewNote", "updatedAt"]) delete c[k];
   for (const p of store.publications) delete p.batch;
@@ -332,6 +340,9 @@ test("ancienne copie du navigateur : colonnes ajoutées complétées ; stockage 
   await login("agence@clipboost.dz");
   const s = await state();
   assert.deepEqual([s.me.avatar, s.me.verification, s.me.locale, s.me.providers], [null, "none", "fr", []]);
+  await login("yacine@clipboost.dz");
+  assert.deepEqual((await state()).me.socialAccounts, []);
+  await login("agence@clipboost.dz");
   assert.ok(s.campaigns.every((c: { updatedAt: string; createdAt: string }) => c.updatedAt.startsWith(c.createdAt)));
 
   const saved = storage.get(STORAGE_KEY)!;
@@ -341,6 +352,79 @@ test("ancienne copie du navigateur : colonnes ajoutées complétées ; stockage 
   assert.equal(storage.get(STORAGE_KEY), saved);
   quota = Infinity;
   assert.equal((await state()).me.avatar, null);
+});
+
+test("comptes sociaux : code dans la bio, vérification, un compte par clipper ; clips seulement depuis un compte vérifié", async () => {
+  type Social = { id: string; platform: string; handle: string; code: string; status: string; verifiedAt: string | null };
+  await offlineApi.reset();
+  // Données d'exemple : comptes vérifiés sur les plateformes des clips ; Amira a un compte TikTok en attente.
+  await login("amira@clipboost.dz");
+  let s = await state();
+  assert.deepEqual(s.me.socialAccounts.map((a: Social) => [a.platform, a.handle, a.status]), [["TikTok", "amira.style", "pending"], ["Instagram", "amira.style", "verified"]]);
+  const pending: Social = s.me.socialAccounts[0];
+  assert.match(pending.code, /^CB-[A-HJ-NP-Z2-9]{4}$/);
+  assert.deepEqual(s.me.handles, { instagram: "@amira.style" });
+  const derby = s.campaigns.find((c: { title: string }) => c.title === "Derby Algérois");
+  const clip = (url: string) => call("POST", "/api/clips", { campaignId: derby.id, title: "Tribunes en folie", links: [{ platform: "TikTok", url }] });
+  assert.deepEqual(await clip("https://www.tiktok.com/@amira.style/video/77"), { status: 400, data: { error: "Vérifiez d'abord votre compte TikTok (Profil → Comptes sociaux)" } });
+
+  // Ajout : identifiant ou adresse du profil ; un compte en attente change d'identifiant et garde son code.
+  assert.deepEqual(await call("POST", "/api/social", { platform: "TikTok", handle: "amira style" }), { status: 400, data: { error: "Identifiant invalide : lettres, chiffres, points, tirets ou tirets bas (60 signes au plus)" } });
+  assert.deepEqual(await call("POST", "/api/social", { platform: "Snapchat", handle: "amira" }), { status: 400, data: { error: "Plateforme inconnue" } });
+  assert.deepEqual(await call("POST", "/api/social", { platform: "TikTok", handle: " " }), { status: 400, data: { error: "Identifiant obligatoire" } });
+  assert.deepEqual(await call("POST", "/api/social", { platform: "TikTok", handle: "https://www.tiktok.com/@Amira.Oran" }), { status: 201, data: { ok: true, id: pending.id, code: pending.code } });
+  assert.deepEqual(await call("POST", "/api/social", { platform: "Instagram", handle: "amira2" }), { status: 400, data: { error: "Vous avez déjà un compte Instagram vérifié : retirez-le d'abord pour en changer" } });
+
+  // Vérification (simulée hors ligne) : compte vérifié, « @compte » dans le profil, ligne d'activité pour l'équipe.
+  assert.deepEqual(await call("POST", `/api/social/${pending.id}/verify`), { status: 200, data: { ok: true, simulated: true } });
+  assert.deepEqual(await call("POST", `/api/social/${pending.id}/verify`), { status: 400, data: { error: "Ce compte est déjà vérifié" } });
+  s = await state();
+  assert.deepEqual([s.me.socialAccounts[0].handle, s.me.socialAccounts[0].status, s.me.handles], ["amira.oran", "verified", { instagram: "@amira.style", tiktok: "@amira.oran" }]);
+  assert.match(s.me.socialAccounts[0].verifiedAt, /^\d{4}-\d{2}-\d{2}T/);
+  // Le lien TikTok nomme le compte : celui d'un autre est refusé, le sien accepté (casse indifférente).
+  assert.deepEqual(await clip("https://www.tiktok.com/@amira.style/video/77"), { status: 400, data: { error: "Ce lien ne vient pas de votre compte TikTok vérifié (@amira.oran)" } });
+  assert.equal((await clip("https://www.tiktok.com/@Amira.Oran/video/77")).status, 201);
+
+  // Un compte vérifié par un clipper ne peut pas l'être par un autre (à l'ajout comme à la vérification).
+  await login("lina@clipboost.dz");
+  assert.deepEqual(await call("POST", "/api/social", { platform: "Instagram", handle: "@amira.style" }), { status: 400, data: { error: "Ce compte est déjà vérifié par un autre clipper" } });
+  const linaFb = await call("POST", "/api/social", { platform: "Facebook", handle: "facebook.com/DzSketchs" });
+  assert.equal(linaFb.status, 201);
+  assert.notEqual(linaFb.data.code, pending.code);
+  await login("amira@clipboost.dz");
+  const amiraFb = await call("POST", "/api/social", { platform: "Facebook", handle: "dzsketchs" });
+  assert.equal((await call("POST", `/api/social/${amiraFb.data.id}/verify`)).status, 200);
+  await login("lina@clipboost.dz");
+  assert.deepEqual(await call("POST", `/api/social/${linaFb.data.id}/verify`), { status: 400, data: { error: "Ce compte est déjà vérifié par un autre clipper" } });
+  // Le compte d'un autre clipper reste introuvable (vérification, retrait).
+  assert.deepEqual(await call("POST", `/api/social/${amiraFb.data.id}/verify`), { status: 404, data: { error: "Compte introuvable" } });
+  assert.deepEqual(await call("DELETE", `/api/social/${amiraFb.data.id}`), { status: 404, data: { error: "Compte introuvable" } });
+
+  // Retrait : un compte en attente disparaît ; un compte vérifié aussi, avec son « @compte », et ses clips sont refusés.
+  assert.equal((await call("DELETE", `/api/social/${linaFb.data.id}`)).status, 200);
+  await login("amira@clipboost.dz");
+  assert.equal((await call("DELETE", `/api/social/${pending.id}`)).status, 200);
+  s = await state();
+  assert.deepEqual([s.me.socialAccounts.map((a: Social) => a.platform), s.me.handles], [["Instagram", "Facebook"], { instagram: "@amira.style", facebook: "@dzsketchs" }]);
+  assert.deepEqual(await clip("https://www.tiktok.com/@amira.oran/video/78"), { status: 400, data: { error: "Vérifiez d'abord votre compte TikTok (Profil → Comptes sociaux)" } });
+  // Le profil ne modifie plus les comptes (ils suivent les comptes vérifiés).
+  assert.equal((await call("PATCH", "/api/me", { handles: { tiktok: "@nimporte" } })).status, 200);
+  assert.deepEqual((await state()).me.handles, { instagram: "@amira.style", facebook: "@dzsketchs" });
+
+  // L'admin voit les comptes de chaque clipper et l'activité ; une agence ne peut pas en ajouter.
+  await login("admin@clipboost.dz", "AdminClip2026");
+  s = await state();
+  const amira = s.users.find((u: { email: string }) => u.email === "amira@clipboost.dz");
+  assert.deepEqual(amira.socialAccounts.map((a: Social) => `${a.platform} @${a.handle} ${a.status}`), ["Instagram @amira.style verified", "Facebook @dzsketchs verified"]);
+  assert.ok(s.users.filter((u: { role: string }) => u.role !== "clipper").every((u: { socialAccounts?: unknown }) => u.socialAccounts === undefined));
+  assert.deepEqual(s.activity.slice(0, 3).map((a: { text: string }) => a.text), [
+    "Amira Khelifi a retiré son compte TikTok @amira.oran.", "Amira Khelifi a vérifié son compte Facebook @dzsketchs.", "Amira Khelifi a soumis le clip « Tribunes en folie » (Derby Algérois).",
+  ]);
+  assert.equal((await call("POST", "/api/social", { platform: "TikTok", handle: "equipe" })).status, 403);
+  await login("agence@clipboost.dz");
+  assert.equal((await call("POST", "/api/social", { platform: "TikTok", handle: "tassili" })).status, 403);
+  // Une agence ne reçoit pas les comptes sociaux (ni les codes) des auteurs de ses clips.
+  assert.ok(!JSON.stringify(await state()).includes("socialAccounts"));
 });
 
 test("réinitialisation : retour aux données d'exemple", async () => {
