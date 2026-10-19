@@ -377,9 +377,10 @@ function gPaiement() {
     [t("Référence"), `<span class="inline-flex items-center gap-1 text-fg">${agRef(x.ref)}${agCopyBtn(x.ref)}</span>`],
     [t("Date"), `<span class="tabular-nums">${date(x.date)}</span>`],
   ];
+  // Payée : sa facture PDF à côté du retour au budget.
   const actions = !open
     ? `<div class="grid gap-3">${alertBox(x.status === "Validé" ? "success" : "danger", x.status === "Validé" ? t("Paiement reçu : le montant a été ajouté à votre crédit.") : t("Paiement annulé ou refusé : la recharge n'a pas été créditée."))}
-        <a href="#/agence/budget" class="${btn("secondary", "md", "w-full")}">${t("Retour au budget")}</a></div>`
+        <div class="grid gap-2 ${x.document ? "sm:grid-cols-2" : ""}">${txDocBtn(x, { size: "md", variant: "primary", extra: "w-full" })}<a href="#/agence/budget" class="${btn("secondary", "md", "w-full")}">${t("Retour au budget")}</a></div></div>`
     : simulated
       ? `<div class="flex flex-col-reverse gap-2 sm:grid sm:grid-cols-[auto_minmax(0,1fr)]"><button type="button" data-action="ag-pay-sim" data-id="${x.id}" data-value="cancel" class="${btn("secondary", "lg", "w-full")}">${t("Annuler")}</button>
           <button type="button" data-action="ag-pay-sim" data-id="${x.id}" data-value="pay" class="${btn("primary", "lg", "w-full")}">${icon("lock")}${t("Payer {amount}", { amount: da(x.amount) })}</button></div>`
@@ -443,19 +444,20 @@ function gBudget() {
 
   const history = `<div class="${TBL.wrap}">
       <table class="${TBL.table}">
-        <thead><tr class="${TBL.headRow}"><th scope="col" class="${TBL.th}">${t("Date")}</th><th scope="col" class="${TBL.th}">${t("Moyen")}</th><th scope="col" class="${TBL.th}">${t("Référence")}</th><th scope="col" class="${TBL.th}">${t("Statut")}</th><th scope="col" class="${TBL.th} ${TBL.thNum}">${t("Montant")}</th></tr></thead>
+        <thead><tr class="${TBL.headRow}"><th scope="col" class="${TBL.th}">${t("Date")}</th><th scope="col" class="${TBL.th}">${t("Moyen")}</th><th scope="col" class="${TBL.th}">${t("Référence")}</th><th scope="col" class="${TBL.th}">${t("Statut")}</th><th scope="col" class="${TBL.th} ${TBL.thNum}">${t("Montant")}</th><th scope="col" class="${TBL.th} ${TBL.thNum}">${t("Facture")}</th></tr></thead>
         <tbody>${recharges.map((x) => `<tr data-row="${x.id}" class="${TBL.tr}">
           <td class="${TBL.td} whitespace-nowrap tabular-nums">${date(x.date)}<span class="${TBL.tdSub}" dir="ltr">${esc(x.time || "")}</span></td>
           <td class="${TBL.td}">${agMethod(x)}${agOnline(x) ? `<span class="${TBL.tdSub}">${t("Paiement en ligne")}</span>` : ""}</td>
           <td class="${TBL.td}"><span class="inline-flex items-center gap-1 text-fg">${agRef(x.ref)}${agCopyBtn(x.ref)}</span></td>
           <td class="${TBL.td}">${agRechargeStatus(x)}</td>
-          <td class="${TBL.td} ${TBL.tdNum}">${agRechargeAmount(x)}</td></tr>`).join("")}</tbody>
+          <td class="${TBL.td} ${TBL.tdNum}">${agRechargeAmount(x)}</td>
+          <td class="${TBL.td} ${TBL.tdActions}">${txDocBtn(x) || `<span class="text-fg-subtle">—</span>`}</td></tr>`).join("")}</tbody>
       </table>
       <ul class="${TBL.list}">${recharges.map((x) => `<li data-row="${x.id}" class="flex items-center gap-3 px-4 py-3">
         <span class="grid size-8 shrink-0 place-items-center rounded-full ${x.status === "Validé" ? "bg-income-soft text-income" : "bg-muted text-fg-muted"}" aria-hidden="true">${icon(x.method === AG_CARD || agOnline(x) ? "card" : "arrowDownLeft", "size-4")}</span>
         <div class="min-w-0 flex-1"><p class="truncate text-sm font-medium text-fg">${agMethod(x)}</p><p class="flex items-center gap-1 truncate text-xs text-fg-subtle">${date(x.date)} · ${agRef(x.ref)}</p></div>
         <div class="shrink-0 text-end"><p class="text-sm font-medium">${agRechargeAmount(x)}</p>${x.status === "Validé" ? "" : `<div class="mt-1 flex justify-end">${agRechargeStatus(x, true)}</div>`}</div>
-        ${agCopyBtn(x.ref)}
+        ${txDocBtn(x, { compact: true })}${agCopyBtn(x.ref)}
       </li>`).join("")}</ul>
     </div>`;
 

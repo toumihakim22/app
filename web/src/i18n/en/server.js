@@ -153,6 +153,13 @@ Object.assign(I18N.en, {
   // ---------- Portefeuille, crédit, transactions ----------
   "Ajoutez d'abord un moyen de retrait (BaridiMob, CCP ou RIB) dans votre profil": "First add a payout method (BaridiMob, CCP or RIB) to your profile",
   "Transaction introuvable": "Transaction not found",
+  // Factures et reçus PDF, export CSV (lib/server/services/documents.ts, validation.ts : exportSchema)
+  "Aucun document pour cette transaction": "No document for this transaction",
+  "Type de transaction invalide": "Invalid transaction type",
+  "Statut invalide": "Invalid status",
+  "Date de début invalide (AAAA-MM-JJ)": "Invalid start date (YYYY-MM-DD)",
+  "Date de fin invalide (AAAA-MM-JJ)": "Invalid end date (YYYY-MM-DD)",
+  "La date de début doit précéder la date de fin": "The start date must come before the end date",
   "Cette transaction a déjà été traitée": "This transaction has already been processed",
 
   // ---------- Comptes, profil, badge de vérification ----------

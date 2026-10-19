@@ -591,4 +591,16 @@ Object.assign(I18N.ar, {
   "Copier l'identifiant": "نسخ المعرّف",
   "Identifiant copié": "تم نسخ المعرّف",
   "Montant payé en ligne": "المبلغ المدفوع إلكترونيًا",
+
+  // Export CSV des transactions (Paiements)
+  "Exporter en CSV": "تصدير بصيغة CSV",
+  "Exporter les transactions": "تصدير العمليات",
+  "Fichier CSV pour Excel ou un tableur : une ligne par transaction, avec son document.": "ملف CSV لبرنامج Excel أو أي جدول بيانات: سطر لكل عملية، مع مستندها.",
+  "Type": "النوع",
+  "Toutes les transactions": "كل العمليات",
+  "Du": "من",
+  "Au": "إلى",
+  "Colonnes : référence, date et heure (UTC), type, utilisateur, email, rôle, libellé, montant, frais, statut, moyen et numéro de facture ou de reçu.": "الأعمدة: المرجع، التاريخ والوقت (UTC)، النوع، المستخدم، البريد الإلكتروني، الدور، الوصف، المبلغ، الرسوم، الحالة، الوسيلة ورقم الفاتورة أو الإيصال.",
+  "La date de fin doit suivre la date de début.": "يجب أن يكون تاريخ النهاية بعد تاريخ البداية.",
+  "Export CSV téléchargé": "تم تنزيل ملف CSV",
 });

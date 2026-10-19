@@ -5,8 +5,10 @@ import { z, ZodError, type ZodType } from "zod";
 import {
   amountSchema, appealSchema, approveSchema, campaignSchema, campaignStatusSchema, changePasswordSchema, checkoutSchema, clipSchema, creditSchema, forgotSchema,
   loginSchema, membershipSchema, oauthDemoSchema, profileSchema, resetSchema, reviewAppealSchema, reviewClipSchema, settingsSchema, signupSchema, simulatePaymentSchema,
-  socialAccountSchema, userStatusSchema, verificationRequestSchema, verificationReviewSchema, verifySchema, viewsSchema, withdrawSchema,
+  socialAccountSchema, userStatusSchema, verificationRequestSchema, verificationReviewSchema, verifySchema, viewsSchema, withdrawSchema, exportSchema,
 } from "../../lib/server/validation";
+import { csvFilename } from "../../lib/server/documents";
+import { exportTransactions, transactionDocument } from "./documents";
 import { ApiError, badRequest, clear, forbidden, load, logActivity, save } from "./db";
 import * as svc from "./services";
 import { reviewAppeal, submitAppeal } from "./appeals";
@@ -15,8 +17,9 @@ import { publicState, stateFor } from "./state";
 import { runDueJobs, trackViews } from "./tracking";
 import { viewsTrackedText } from "../../lib/server/rules";
 
-type Req = svc.Ctx & { body: string | undefined; params: Record<string, string> };
-type Res = { status?: number; data: unknown };
+type Req = svc.Ctx & { body: string | undefined; params: Record<string, string>; query: URLSearchParams };
+/** Réponse JSON (data), ou fichier (body : octets d'un PDF, texte d'un CSV) avec ses en-têtes. */
+type Res = { status?: number; data: unknown } | { status?: number; body: Uint8Array<ArrayBuffer> | string; headers: Record<string, string> };
 type Handler = (req: Req) => Res | Promise<Res>;
 
 function body<T>(req: Req, schema: ZodType<T>): T {
@@ -295,6 +298,22 @@ const routes: Record<string, Record<string, Handler>> = {
       return ok();
     },
   },
+  // Facture (recharge) ou reçu (retrait) en PDF, et export CSV des transactions : mêmes en-têtes que le serveur.
+  "/api/transactions/:id/document": {
+    GET: (req) => {
+      const user = svc.requireUser(req.db);
+      const { bytes, filename } = transactionDocument(req.db, user, req.params.id);
+      return { body: bytes, headers: { "Content-Type": "application/pdf", "Content-Disposition": `attachment; filename="${filename}"`, "Content-Length": String(bytes.byteLength) } };
+    },
+  },
+  "/api/admin/transactions/export": {
+    GET: (req) => {
+      svc.requireUser(req.db, "admin");
+      const q = req.query;
+      const filters = exportSchema.parse({ type: q.get("type"), status: q.get("status"), from: q.get("from"), to: q.get("to") });
+      return { body: exportTransactions(req.db, filters), headers: { "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": `attachment; filename="${csvFilename()}"` } };
+    },
+  },
   "/api/admin/users/:id": {
     PATCH: (req) => {
       const admin = svc.requireUser(req.db, "admin");
@@ -336,15 +355,17 @@ const json = (data: unknown, status = 200) => new Response(JSON.stringify(data),
 
 async function handle(path: string, init: { method?: string; body?: BodyInit | null } = {}): Promise<Response> {
   const method = (init.method ?? "GET").toUpperCase();
-  const route = match(new URL(path, "http://clipboost.local").pathname);
+  const url = new URL(path, "http://clipboost.local");
+  const route = match(url.pathname);
   if (!route) return json({}, 404);
   const handler = route.methods[method];
   if (!handler) return json({}, 405);
   const db = await load();
   const commit = () => save(db);
   try {
-    const res = await handler({ db, commit, body: typeof init.body === "string" ? init.body : undefined, params: route.params });
+    const res = await handler({ db, commit, body: typeof init.body === "string" ? init.body : undefined, params: route.params, query: url.searchParams });
     if (method !== "GET") commit();
+    if ("body" in res) return new Response(res.body, { status: res.status ?? 200, headers: res.headers });
     return json(res.data, res.status);
   } catch (err) {
     if (err instanceof ApiError) return json({ error: err.message }, err.status);

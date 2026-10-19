@@ -144,6 +144,19 @@ export const checkoutSchema = z.object({
 /** Mode simulé : issue du paiement choisie sur la page de paiement simulée (payé ou annulé). */
 export const simulatePaymentSchema = z.object({ paid: z.boolean() });
 export const approveSchema = z.object({ approve: z.boolean() });
+/**
+ * Filtres de l'export CSV des transactions (paramètres de GET /api/admin/transactions/export) : type, statut, période
+ * (jours « AAAA-MM-JJ », inclus). Un paramètre vide compte comme absent.
+ */
+const exportDay = (label: string) => z.preprocess((v) => (v === "" || v === null ? undefined : v),
+  z.string().regex(/^\d{4}-\d{2}-\d{2}$/, `${label} invalide (AAAA-MM-JJ)`).refine((s) => !Number.isNaN(Date.parse(`${s}T00:00:00Z`)), `${label} invalide (AAAA-MM-JJ)`).optional());
+const exportOptional = <T extends z.ZodTypeAny>(schema: T) => z.preprocess((v) => (v === "" || v === null ? undefined : v), schema.optional());
+export const exportSchema = z.object({
+  type: exportOptional(z.enum(["gain", "retrait", "recharge"], { error: "Type de transaction invalide" })),
+  status: exportOptional(z.enum(["Validé", "En cours", "Refusé"], { error: "Statut invalide" })),
+  from: exportDay("Date de début"),
+  to: exportDay("Date de fin"),
+}).refine((f) => !f.from || !f.to || f.from <= f.to, { message: "La date de début doit précéder la date de fin" });
 export const userStatusSchema = z.object({ status: z.enum(["Actif", "Suspendu"]) });
 /** Badge de vérification : demande d'une agence (message facultatif pour l'équipe), puis décision de l'admin. */
 export const verificationRequestSchema = z.object({ message: z.string().trim().max(300, "Message trop long (300 caractères maximum)").optional() });

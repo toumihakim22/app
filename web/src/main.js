@@ -661,6 +661,12 @@ function shellAction(action, el) {
       } else location.hash = n.link;
       return true;
     }
+    // Facture ou reçu PDF d'une transaction validée (bouton txDocBtn, dans chaque espace).
+    case "tx-document": {
+      const x = db.transactions.find((y) => y.id === el.dataset.id);
+      if (x && x.document) downloadDocument(x);
+      return true;
+    }
     case "close-modal": dismissModal(); break;
     case "logout": state.menuOpen = false; state.notifOpen = false; state.drawer = false; logout(); return true;
     case "toast": toast(el.dataset.msg); return true;

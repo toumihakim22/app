@@ -204,15 +204,18 @@ function clWalletCard({ curve = false } = {}) {
 }
 
 // Ligne d'historique d'argent (§4.6), du point de vue du clipper. Flèches entrée / sortie miroir en arabe ;
-// la référence (code) reste de gauche à droite.
+// la référence (code) reste de gauche à droite. Retrait versé : son reçu PDF (« Reçu PDF », icône seule sur mobile).
 function txRow(x) {
   const credit = x.amount > 0, final = x.status === "Validé" && !clOnHold(x);
+  const receipt = x.type === "retrait" && x.document
+    ? `<div class="shrink-0"><span class="hidden sm:block">${txDocBtn(x, { variant: "secondary" })}</span><span class="sm:hidden">${txDocBtn(x, { compact: true })}</span></div>` : "";
   return `<li data-row="${x.id}" class="flex items-center gap-3 py-3">
     <span class="grid size-8 shrink-0 place-items-center rounded-full ${credit ? "bg-income-soft text-income" : "bg-muted text-fg-muted"}" aria-hidden="true">${icon(credit ? "arrowDownLeft" : "arrowUpRight", "size-4 rtl:-scale-x-100")}</span>
     <div class="min-w-0 flex-1"><p class="truncate text-sm font-medium text-fg">${esc(clTxLabel(x))}</p>
       <p class="truncate text-xs text-fg-subtle">${date(x.date)} · <span dir="ltr">${code(x.ref)}</span>${x.fee ? ` · ${t("frais {amount}", { amount: da(x.fee) })}` : ""}</p>
       ${final ? "" : `<div class="mt-1.5 sm:hidden">${clTxBadge(x)}</div>`}</div>
     <div class="shrink-0 text-end"><p class="text-sm font-medium">${money(x.amount, { signed: true, pending: !final })}</p><div class="mt-1 hidden justify-end sm:flex">${clTxBadge(x)}</div></div>
+    ${receipt}
   </li>`;
 }
 

@@ -2,6 +2,7 @@
 // données d'exemple que `scripts/seed.mts --demo`, datées par rapport au premier lancement.
 import type { CampaignStatus, PublicationStatus } from "../../lib/server/db/schema";
 import { DEMO_APPEAL_MESSAGE, DEMO_PROOF_DATA_URL } from "../../lib/server/demo-appeal";
+import { numberDocuments } from "../../lib/server/documents";
 import { clipRisk, payoutFor, sentence, simulatedHistory } from "../../lib/server/rules";
 import { link } from "../../lib/server/links";
 import { DEFAULT_SETTINGS } from "../../lib/server/settings";
@@ -147,6 +148,20 @@ export async function seed(): Promise<Store> {
   notes.push([tassili, 11, "✅", `Votre recharge de ${fmt(300000)} a été validée.`, link.agencyBudget(onlineId)],
     [admin, 11, "💳", `${tassili.name} a payé en ligne une recharge de ${fmt(300000)} par carte Edahabia (réf. ${onlineRef}).`, link.adminPayment(onlineId)]);
   acts.push([11, "💳", `Recharge de ${fmt(300000)} payée en ligne par ${tassili.name} (carte Edahabia, Chargily).`]);
+  // Recharge par virement de Djurdjura confirmée par l'équipe, et retrait de Yacine versé : avec la recharge Edahabia,
+  // chacun a son document (factures FAC-…, reçu REC-…), numérotés dans l'ordre des dates comme par la migration 0007.
+  const transferId = newId(), payoutId = newId();
+  insertTransaction(db, { id: transferId, ref: newRef(), userId: djurdjura.id, type: "recharge", label: "Recharge par virement bancaire", amount: 500000, status: "Validé", method: "virement bancaire", createdAt: daysAgo(8.2) });
+  insertTransaction(db, { id: payoutId, ref: newRef(), userId: yacine.id, type: "retrait", label: "Retrait vers CCP", amount: -4000, status: "Validé", method: "CCP", createdAt: daysAgo(4.2) });
+  const docs = [
+    { kind: "facture" as const, transactionId: onlineId, userId: tassili.id, amount: 300000, createdAt: daysAgo(11) },
+    { kind: "facture" as const, transactionId: transferId, userId: djurdjura.id, amount: 500000, createdAt: daysAgo(8) },
+    { kind: "recu" as const, transactionId: payoutId, userId: yacine.id, amount: 4000, createdAt: daysAgo(4) },
+  ];
+  const numbers = numberDocuments(docs.map((d) => ({ kind: d.kind, at: d.createdAt })));
+  for (const [k, d] of docs.entries()) db.documents.push({ id: newId(), number: numbers[k], ...d });
+  notes.push([djurdjura, 8, "✅", `Votre recharge de ${fmt(500000)} a été validée.`, link.agencyBudget(transferId)], [yacine, 4, "✅", `Votre retrait de ${fmt(4000)} a été validé.`, link.clipperTx(payoutId)]);
+  acts.push([8, "✅", `Recharge de ${fmt(500000)} validée par Équipe ClipBoost.`], [4.2, "💸", `${yacine.name} a demandé un retrait de ${fmt(4000)}.`], [4, "✅", `Retrait de ${fmt(4000)} validé par Équipe ClipBoost.`]);
   acts.push([1, "💸", `${amira.name} a demandé un retrait de ${fmt(2000)}.`]);
   notes.push([admin, 2, "🏢", `${hoggar.name} a soumis la campagne « ${soirees.title} ».`, link.adminCampaign(soirees.id)], [admin, 1, "💸", `${amira.name} demande un retrait de ${fmt(2000)}.`, link.adminPayment(withdrawalId)],
     [admin, 0.9, "🏦", `${hoggar.name} annonce une recharge de ${fmt(600000)} par virement bancaire (réf. ${rechargeRef}).`, link.adminPayment(rechargeId)],

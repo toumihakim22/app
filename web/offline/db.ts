@@ -2,6 +2,7 @@
 // dans un objet JSON enregistré dans le localStorage du navigateur. Sans table media : une image
 // (photo de profil, couverture, photo de campagne) est gardée en data URL dans sa propre colonne.
 import type * as schema from "../../lib/server/db/schema";
+import { documentKindOf, numberDocuments } from "../../lib/server/documents";
 import { socialCode } from "../../lib/server/rules";
 import { DEFAULT_SETTINGS, type Settings } from "../../lib/server/settings";
 import { seed } from "./seed";
@@ -26,6 +27,8 @@ export type SnapshotRow = Row<typeof schema.viewSnapshots.$inferSelect, "recorde
 export type JobRunRow = Row<typeof schema.jobRuns.$inferSelect, "lastRunAt">;
 /** Recours d'un clipper contre le refus d'un clip ; la preuve (capture d'écran) est gardée en data URL. */
 export type AppealRow = Row<typeof schema.appeals.$inferSelect, "createdAt" | "decidedAt">;
+/** Facture (recharge validée) ou reçu (retrait validé) : son numéro ; le PDF est composé au téléchargement (documents.ts). */
+export type DocumentRow = Row<typeof schema.documents.$inferSelect, "createdAt">;
 
 export type Store = {
   version: number;
@@ -42,6 +45,7 @@ export type Store = {
   snapshots: SnapshotRow[];
   jobRuns: JobRunRow[];
   appeals: AppealRow[];
+  documents: DocumentRow[];
   settings: Partial<Settings>;
   /** Session du navigateur (l'équivalent du cookie cb_session). */
   session: { userId: string; expiresAt: number } | null;
@@ -54,7 +58,7 @@ export const STORAGE_KEY = `clipboost-offline-v${VERSION}`;
 
 export const emptyStore = (): Store => ({
   version: VERSION, users: [], emailCodes: [], campaigns: [], members: [], publications: [], transactions: [],
-  notifications: [], activity: [], oauth: [], social: [], snapshots: [], jobRuns: [], appeals: [], settings: {}, session: null,
+  notifications: [], activity: [], oauth: [], social: [], snapshots: [], jobRuns: [], appeals: [], documents: [], settings: {}, session: null,
 });
 
 // ---------- Persistance ----------
@@ -85,6 +89,12 @@ function upgrade(s: Store): Store {
   s.snapshots ??= [];
   s.jobRuns ??= [];
   s.appeals ??= [];
+  // Base d'avant les factures et reçus : un document pour chaque recharge ou retrait déjà validé (comme la migration 0007).
+  if (!s.documents) {
+    const done = s.transactions.filter((t) => t.status === "Validé" && documentKindOf(t.type));
+    const numbers = numberDocuments(done.map((t) => ({ kind: documentKindOf(t.type)!, at: t.createdAt })));
+    s.documents = done.map((t, i) => ({ id: newId(), number: numbers[i], kind: documentKindOf(t.type)!, transactionId: t.id, userId: t.userId, amount: Math.abs(t.amount), createdAt: t.createdAt }));
+  }
   for (const u of s.users) {
     u.avatar ??= null;
     u.cover ??= null;

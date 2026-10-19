@@ -237,6 +237,24 @@ export const transactions = pgTable("transactions", {
   createdAt: createdAt(),
 }, (t) => [index("transactions_user_idx").on(t.userId), uniqueIndex("transactions_ref_idx").on(t.ref), uniqueIndex("transactions_provider_ref_idx").on(t.providerRef)]);
 
+export type DocumentKind = "facture" | "recu";
+
+/**
+ * Factures (recharges validées des agences) et reçus (retraits validés des clippers) : un document par transaction,
+ * créé dans la même transaction SQL que la validation (services/documents.ts). Numéro « FAC-2026-00001 » ou
+ * « REC-2026-00001 » : une suite par type et par année (année de l'émission, UTC). Le PDF est recomposé à chaque
+ * téléchargement à partir de la transaction ; amount : montant de la recharge, ou montant demandé du retrait (frais compris).
+ */
+export const documents = pgTable("documents", {
+  id: id(),
+  number: text("number").notNull(),
+  kind: text("kind").$type<DocumentKind>().notNull(),
+  transactionId: text("transaction_id").notNull().references(() => transactions.id, { onDelete: "cascade" }),
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  amount: integer("amount").notNull(),
+  createdAt: createdAt(),
+}, (t) => [uniqueIndex("documents_number_idx").on(t.number), uniqueIndex("documents_transaction_idx").on(t.transactionId), index("documents_user_idx").on(t.userId)]);
+
 export const notifications = pgTable("notifications", {
   id: id(),
   userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),

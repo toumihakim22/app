@@ -409,4 +409,7 @@ Object.assign(I18N.en, {
   "Aucune carte n'est débitée. Choisissez « Payer » pour simuler un paiement accepté (le crédit est ajouté), ou « Annuler » pour un paiement abandonné.": "No card is charged. Choose “Pay” to simulate an accepted payment (the credit is added), or “Cancel” for an abandoned payment.",
   "Sans clé Chargily, cette page remplace la page de paiement sécurisée de Chargily Pay.": "Without a Chargily key, this page stands in for Chargily Pay's secure payment page.",
   "Le paiement se fait sur la page sécurisée de Chargily Pay.": "Payment takes place on Chargily Pay's secure page.",
+
+  // Facture PDF des recharges validées (Budget)
+  "Facture": "Invoice",
 });

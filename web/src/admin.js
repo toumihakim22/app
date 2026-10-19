@@ -374,6 +374,7 @@ function admTxList(list) {
         <p class="truncate text-xs tabular-nums text-fg-subtle">${admWhen(tx)}${how ? ` · ${how}` : ""}${admOnlinePay(tx) ? " · Chargily" : ""} · ${code(tx.ref)}${tx.fee ? ` · ${t("frais {amount}", { amount: da(tx.fee) })}` : ""}</p></div>
       <div class="flex shrink-0 flex-col items-end gap-1"><span class="text-sm font-medium">${money(Math.abs(tx.amount))}</span>
         ${tx.status === "En cours" ? (admOnlinePay(tx) ? admOnlineWaiting() : `<a href="#/admin/retraits/${encodeURIComponent(tx.id)}" class="${btn("link", "", "text-xs")}">${t("À traiter")}</a>`) : statusBadge(tx.status)}</div>
+      ${txDocBtn(tx, { compact: true })}
     </li>`;
   }).join("")}</ul>`;
 }
@@ -725,6 +726,8 @@ const admOnlineWaiting = () => `<span title="${esc(t("Paiement en ligne : confir
 const admPayActions = (tx, size, approveLabel) => (tx.status === "En cours" && !admOnlinePay(tx)
   ? `<button type="button" data-action="adm-tx-reject" data-id="${tx.id}" class="${btn("dangerSoft", size)}">${t("Rejeter")}</button><button type="button" data-action="adm-tx-approve" data-id="${tx.id}" class="${btn("primary", size)}">${approveLabel}</button>`
   : "");
+// Carte d'un paiement validé : son document PDF (reçu d'un retrait, facture d'une recharge) sur toute la largeur.
+const admDocAction = (tx) => txDocBtn(tx, { size: "md", variant: "secondary", extra: "col-span-2 w-full" });
 // Ligne mono + Copier (compte, référence) des cartes : valeur de gauche à droite, y compris en arabe.
 const admMonoLine = (label, html, value, copyLabel, msg) =>
   `<div class="grid gap-0.5"><dt class="text-xs text-fg-subtle">${label}</dt><dd class="flex min-w-0 items-center justify-between gap-2"><span class="min-w-0 truncate font-mono text-sm text-fg" dir="ltr">${html}</span>${value ? admCopyBtn(value, copyLabel, msg) : ""}</dd></div>`;
@@ -760,13 +763,13 @@ function admWithdrawals(list) {
         <td class="${TBL.td} ${TBL.tdNum}">${money(-tx.amount)}</td>
         <td class="${TBL.td} ${TBL.tdNum}">${fee}</td>
         <td class="${TBL.td} ${TBL.tdNum}">${money(admNet(tx), { cls: "font-semibold" })}</td>
-        <td class="${TBL.td} ${TBL.tdActions}"><div class="flex items-center justify-end gap-2">${admPayActions(tx, "sm", t("Virement effectué")) || statusBadge(tx.status)}</div></td>
+        <td class="${TBL.td} ${TBL.tdActions}"><div class="flex items-center justify-end gap-2">${admPayActions(tx, "sm", t("Virement effectué")) || `${statusBadge(tx.status)}${txDocBtn(tx, { compact: true })}`}</div></td>
       </tr>`,
       li: admPayItem(u, t("Demandé le {date}", { date: admWhen(tx) }), pending ? badge(t("À virer"), "info", { dot: true }) : statusBadge(tx.status),
         admMonoLine(method ? t("Compte {method}", { method: esc(t(method)) }) : t("Compte"), acc ? admAccount(acc) : `<span class="font-sans text-small text-fg-subtle" dir="auto">${noAccount}</span>`, acc, t("Copier le numéro"), t("Numéro copié"))
         + admMonoLine(t("Référence"), esc(tx.ref), tx.ref, t("Copier la référence"), t("Référence copiée")),
         admMoneyRows([[t("Montant demandé"), money(-tx.amount)], [t("Frais"), fee], [t("Net à virer"), money(admNet(tx)), true]]),
-        admPayActions(tx, "md", t("Virement effectué")), tx.id),
+        admPayActions(tx, "md", t("Virement effectué")) || admDocAction(tx), tx.id),
     };
   });
   return admTable("wide", `<th scope="col" class="${TBL.th}">${t("Bénéficiaire")}</th><th scope="col" class="${TBL.th}">${t("Moyen et compte")}</th><th scope="col" class="${TBL.th}">${t("Référence")}</th><th scope="col" class="${TBL.th} ${TBL.thNum}">${t("Montant")}</th><th scope="col" class="${TBL.th} ${TBL.thNum}">${t("Frais")}</th><th scope="col" class="${TBL.th} ${TBL.thNum}">${t("Net à virer")}</th>${admThActions()}`,
@@ -784,7 +787,7 @@ function admRecharges(list) {
         <td class="${TBL.td}">${admRechargeMethod(tx)}</td>
         <td class="${TBL.td}"><span class="flex items-center gap-0.5"><span class="whitespace-nowrap text-small text-fg">${code(tx.ref)}</span>${admCopyBtn(tx.ref, t("Copier la référence"), t("Référence copiée"))}</span></td>
         <td class="${TBL.td} ${TBL.tdNum}">${money(tx.amount, { cls: "font-semibold" })}</td>
-        <td class="${TBL.td} ${TBL.tdActions}"><div class="flex items-center justify-end gap-2">${admPayActions(tx, "sm", t("Paiement reçu")) || (pending && online ? admOnlineWaiting() : statusBadge(tx.status))}</div></td>
+        <td class="${TBL.td} ${TBL.tdActions}"><div class="flex items-center justify-end gap-2">${admPayActions(tx, "sm", t("Paiement reçu")) || (pending && online ? admOnlineWaiting() : `${statusBadge(tx.status)}${txDocBtn(tx, { compact: true })}`)}</div></td>
       </tr>`,
       li: admPayItem(u, `${how || t("Recharge")} · ${admWhen(tx)}`, pending ? (online ? admOnlineWaiting() : badge(t("À confirmer"), "info", { dot: true })) : statusBadge(tx.status),
         (card_ ? `<div class="grid gap-0.5"><dt class="text-xs text-fg-subtle">${t("Carte")}</dt><dd class="flex items-center gap-1.5">${badge(card_.brand, "idle", { ic: "card" })}${admCardNumber(card_)}</dd></div>` : "")
@@ -792,7 +795,7 @@ function admRecharges(list) {
         + admMonoLine(t("Référence du paiement"), esc(tx.ref), tx.ref, t("Copier la référence"), t("Référence copiée"))
         + (online && tx.providerRef ? admMonoLine(t("Identifiant Chargily"), esc(tx.providerRef), tx.providerRef, t("Copier l'identifiant"), t("Identifiant copié")) : ""),
         admMoneyRows([[online ? t("Montant payé en ligne") : t("Montant annoncé"), money(tx.amount), true]]),
-        admPayActions(tx, "md", t("Paiement reçu")), tx.id),
+        admPayActions(tx, "md", t("Paiement reçu")) || admDocAction(tx), tx.id),
     };
   });
   return admTable("xl", `<th scope="col" class="${TBL.th}">${t("Agence")}</th><th scope="col" class="${TBL.th}">${t("Moyen")}</th><th scope="col" class="${TBL.th}">${t("Référence")}</th><th scope="col" class="${TBL.th} ${TBL.thNum}">${t("Montant")}</th>${admThActions()}`,
@@ -816,12 +819,32 @@ function aRetraits() {
     : tab === "retraits"
       ? emptyState("wallet", t("Aucune demande de retrait"), t("Les demandes des clippers apparaîtront ici."))
       : emptyState("bank", t("Aucune recharge"), t("Les recharges annoncées par les agences apparaîtront ici."));
-  return `${pageHeader(t("Paiements"), t("Retraits des clippers (minimum {amount}) et recharges de crédit des agences.", { amount: da(db.settings.minWithdraw) }))}
+  const exportBtn = `<button type="button" data-action="adm-export" class="${btn("secondary")}">${icon("download")}${t("Exporter en CSV")}</button>`;
+  return `${pageHeader(t("Paiements"), t("Retraits des clippers (minimum {amount}) et recharges de crédit des agences.", { amount: da(db.settings.minWithdraw) }), exportBtn)}
     <div class="mt-6">${tablist}</div>
     <div id="adm-pay-panel" role="tabpanel" aria-labelledby="adm-tab-${tab}">
       <div class="mt-4 flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between sm:gap-4"><p class="text-small text-fg-muted">${intro[0]}</p>${intro[1] ? `<p class="shrink-0 text-small font-medium tabular-nums text-fg">${intro[1]}</p>` : ""}</div>
       <div class="mt-4">${body}</div>
     </div>`;
+}
+
+// Export CSV des transactions (Excel en français : « ; », UTF-8) : type (gains compris), statut et période facultatifs.
+function admExportModal(m) {
+  const sel = (name, value, options) => `<span class="relative block"><select name="${name}" class="${selectCls}">${options.map(([v, l]) => `<option value="${esc(v)}"${v === value ? " selected" : ""}>${esc(l)}</option>`).join("")}</select>${CHEVRON}</span>`;
+  const day = (name) => `<input type="date" name="${name}" class="${inputCls} tabular-nums" dir="ltr" max="9999-12-31"/>`;
+  return modalShell({
+    title: t("Exporter les transactions"), description: t("Fichier CSV pour Excel ou un tableur : une ligne par transaction, avec son document."), form: "adm-export",
+    body: `<div class="grid gap-4">
+        <div class="grid gap-4 sm:grid-cols-2">
+          ${field(t("Type"), sel("type", m.kind || "", [["", t("Toutes les transactions")], ["gain", t("Gains")], ["retrait", t("Retraits")], ["recharge", t("Recharges")]]))}
+          ${field(t("Statut"), sel("status", "", [["", t("Tous les statuts")], ["Validé", t("Validé")], ["En cours", t("En cours")], ["Refusé", t("Refusé")]]))}
+          ${field(`${t("Du")} ${OPTIONAL}`, day("from"))}
+          ${field(`${t("Au")} ${OPTIONAL}`, day("to"))}
+        </div>
+        ${alertBox("info", t("Colonnes : référence, date et heure (UTC), type, utilisateur, email, rôle, libellé, montant, frais, statut, moyen et numéro de facture ou de reçu."))}
+      </div>`,
+    footer: `<button type="button" data-action="close-modal" class="${btn("ghost")}">${t("Annuler")}</button><button type="submit" class="${btn("primary")}">${icon("download")}${t("Exporter en CSV")}</button>`,
+  });
 }
 
 // ---------- Réglages ----------
@@ -1255,6 +1278,7 @@ function adminModal() {
   const cancel = (label = t("Annuler")) => `<button type="button" data-action="close-modal" class="${btn("ghost")}">${label}</button>`;
 
   if (m.type === "adm-camp") return admCampSheet(m);
+  if (m.type === "adm-export") return admExportModal(m);
   if (m.type === "adm-clip") return admClipSheet(m);
   if (m.type === "adm-appeal") return admAppealSheet(m);
   // Preuve d'un recours en grand (image entière, proportions gardées).
@@ -1396,6 +1420,8 @@ function handleAdminAction(action, el) {
       ? t("Relevé terminé : {clips} sur {total} mis à jour, {failed} en erreur.", { clips: plural(r.updated, "clip", "clips"), total: fmt(r.total), failed: fmt(r.failed) })
       : t("Relevé terminé : {clips} sur {total} mis à jour.", { clips: plural(r.updated, "clip", "clips"), total: fmt(r.total) })));
     case "adm-pay-tab": state.adm.payTab = v; return render();
+    // Export CSV : la modale propose le type de l'onglet ouvert, modifiable, avec statut et période.
+    case "adm-export": state.modal = { type: "adm-export", kind: state.adm.payTab === "recharges" ? "recharge" : "retrait" }; return render();
     case "adm-period": state.period = Number(v) === 7 ? 7 : 30; return render();
     // Carte « À traiter », lien vers Paiements : le lien ouvre la page (changement d'adresse), on y présélectionne la file.
     case "adm-focus":
@@ -1506,6 +1532,20 @@ function admLimitError(label, min, max, decimal) {
 
 function handleAdminSubmit(form, data) {
   const m = state.modal;
+  // Export CSV : téléchargement (navigateur ou fichier HTML autonome), modale refermée une fois le fichier enregistré.
+  if (form === "adm-export") {
+    const from = String(data.from || ""), to = String(data.to || "");
+    if (from && to && from > to) return admInvalid(form, "to", t("La date de fin doit suivre la date de début."));
+    const q = new URLSearchParams();
+    for (const [k, v] of Object.entries({ type: data.type, status: data.status, from, to })) if (v) q.set(k, v);
+    const query = q.toString();
+    return downloadFile(`/api/admin/transactions/export${query ? `?${query}` : ""}`, "clipboost-transactions.csv").then((ok) => {
+      if (!ok) return;
+      state.modal = null;
+      render();
+      toast(t("Export CSV téléchargé"));
+    });
+  }
   if (form === "adm-reject") {
     return act("POST", `/api/clips/${m.id}/review`, { approve: false, reason: data.reason }, t("Clip refusé, le clipper est notifié"), () => admPop(["reject", "adm-clip"], m.id));
   }

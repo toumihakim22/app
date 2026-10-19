@@ -329,4 +329,10 @@ Object.assign(I18N.ar, {
   // Paiement en ligne des recharges (Chargily Pay) : espaces Agence et Admin
   "Paiement en ligne": "دفع إلكتروني",
   "Paiement en ligne en attente": "دفع إلكتروني قيد الانتظار",
+
+  // Factures et reçus PDF des transactions validées (bouton commun, ui.js)
+  "Facture PDF": "فاتورة PDF",
+  "Reçu PDF": "إيصال PDF",
+  "Télécharger la facture {number}": "تنزيل الفاتورة {number}",
+  "Télécharger le reçu {number}": "تنزيل الإيصال {number}",
 });

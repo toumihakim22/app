@@ -157,6 +157,13 @@ Object.assign(I18N.ar, {
   // ---------- Portefeuille, crédit, transactions ----------
   "Ajoutez d'abord un moyen de retrait (BaridiMob, CCP ou RIB) dans votre profil": "أضف أولًا وسيلة سحب (BaridiMob أو CCP أو RIB) في ملفك الشخصي",
   "Transaction introuvable": "العملية غير موجودة",
+  // Factures et reçus PDF, export CSV (lib/server/services/documents.ts, validation.ts : exportSchema)
+  "Aucun document pour cette transaction": "لا يوجد مستند لهذه العملية",
+  "Type de transaction invalide": "نوع العملية غير صالح",
+  "Statut invalide": "حالة غير صالحة",
+  "Date de début invalide (AAAA-MM-JJ)": "تاريخ البداية غير صالح (YYYY-MM-DD)",
+  "Date de fin invalide (AAAA-MM-JJ)": "تاريخ النهاية غير صالح (YYYY-MM-DD)",
+  "La date de début doit précéder la date de fin": "يجب أن يسبق تاريخ البداية تاريخ النهاية",
   "Cette transaction a déjà été traitée": "سبقت معالجة هذه العملية",
 
   // ---------- Comptes, profil, badge de vérification ----------

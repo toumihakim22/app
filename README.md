@@ -26,12 +26,12 @@ Ouvrir http://localhost:3000 (accueil) et http://localhost:3000/espace (applicat
 
 | Compte | Rôle | Ce qu'il montre |
 |---|---|---|
-| `yacine@clipboost.dz` | Clipper | Gains, retraits, un clip publié sur TikTok et Instagram en un seul envoi, comptes TikTok, Instagram et YouTube vérifiés |
+| `yacine@clipboost.dz` | Clipper | Gains, un retrait versé avec son reçu PDF, un clip publié sur TikTok et Instagram en un seul envoi, comptes TikTok, Instagram et YouTube vérifiés |
 | `amira@clipboost.dz`, `lina@clipboost.dz` | Clipper | Clips en attente, validés ou refusés ; Amira a aussi un compte TikTok en attente de vérification (code à coller dans sa bio) ; Lina conteste le refus de « Sketch du marché » (recours en cours, avec sa capture d'écran) |
 | `admin@clipboost.dz` | Administration | Modération avec le score de risque de chaque clip : « Quand ta mère trouve ton bulletin » (Lina) a un pic de vues soudain et très peu de likes (risque élevé), l'Instagram du but de la 89e peu de likes (risque moyen) ; historique des vues sur 14 jours dans la fiche d'un clip, dernier relevé automatique il y a 2 heures ; onglet « Recours » avec le recours de Lina à accepter ou refuser |
-| `agence@clipboost.dz` | Agence (Tassili Sport) | Campagnes actives et en pause, une campagne refusée avec son motif (à modifier et relancer, ou à supprimer), une recharge payée en ligne par carte Edahabia (Chargily) ; « Recharger le crédit » par Edahabia ou CIB ouvre la page de paiement simulée |
+| `agence@clipboost.dz` | Agence (Tassili Sport) | Campagnes actives et en pause, une campagne refusée avec son motif (à modifier et relancer, ou à supprimer), une recharge payée en ligne par carte Edahabia (Chargily), avec sa facture PDF ; « Recharger le crédit » par Edahabia ou CIB ouvre la page de paiement simulée |
 | `hoggar@clipboost.dz` | Agence (Hoggar Boissons) | Campagne en attente de vérification, recharge à confirmer, badge de vérification demandé |
-| `djurdjura@clipboost.dz` | Agence (Djurdjura Médias) | Agence vérifiée (badge bleu), campagne active sur YouTube, Facebook et Instagram |
+| `djurdjura@clipboost.dz` | Agence (Djurdjura Médias) | Agence vérifiée (badge bleu), campagne active sur YouTube, Facebook et Instagram, recharge par virement confirmée par l'équipe (facture PDF) |
 
 Pour une vraie installation, utilisez `npm run db:seed`, qui crée seulement l'administrateur.
 
@@ -59,6 +59,7 @@ En local, le relevé automatique des vues se lance à la main (`npm run cron:vie
 | `FACEBOOK_ACCESS_TOKEN` | Vérification des pages Facebook et relevé des vues des vidéos : jeton d'accès de la Graph API de Meta. |
 | `TIKTOK_CLIENT_KEY`, `TIKTOK_CLIENT_SECRET` | Vérification des comptes TikTok et relevé des vues : clé et secret d'une application TikTok qui a accès à l'API Research. |
 | `CHARGILY_SECRET_KEY` | Paiement en ligne des recharges par carte Edahabia ou CIB via [Chargily Pay](https://chargily.com) : clé secrète `test_sk_…` (mode test de Chargily) ou `live_sk_…`. Elle signe aussi les webhooks. Sans elle, le paiement en ligne est simulé en développement et refusé en production (voir « Paiement en ligne des recharges »). |
+| `COMPANY_NAME`, `COMPANY_ADDRESS`, `COMPANY_TAX_ID` | Mentions légales de l'émetteur sur les factures et reçus PDF (facultatives) : raison sociale, adresse (`\n` pour aller à la ligne), identifiant fiscal (NIF). Vides, elles sont omises (« ClipBoost » seul). |
 | `CRON_SECRET` | Secret de la tâche planifiée du relevé des vues : `GET /api/cron/views` exige l'en-tête `Authorization: Bearer <CRON_SECRET>` (Vercel Cron l'envoie de lui-même). **Obligatoire en production** pour ce relevé (sans lui, la route est refusée) ; facultatif en développement. |
 
 Un bouton « Continuer avec … » n'apparaît que si les variables de son fournisseur sont toutes définies. Une plateforme sans toutes ses variables est vérifiée, et ses vues relevées, en **mode simulé** (voir ci-dessous).
@@ -136,6 +137,14 @@ Une agence recharge son crédit par carte Edahabia ou CIB en ligne, via Chargily
 
 Les recharges payées en ligne apparaissent dans Paiements (onglet Recharges) avec la pastille « Chargily » ; l'équipe ne peut ni les confirmer ni les refuser à la main (« Paiement en ligne : confirmé automatiquement par Chargily »), ce qui évite de créditer deux fois le même paiement. Le virement bancaire et la carte Visa / Mastercard restent confirmés par l'équipe à réception du paiement ; `POST /api/credit` refuse désormais Edahabia et CIB (paiement en ligne).
 
+## Factures, reçus et export CSV
+
+Chaque recharge validée d'une agence a sa **facture** (`FAC-2026-00001`) et chaque retrait validé d'un clipper son **reçu** (`REC-2026-00001`) : une suite de numéros par type et par année (année d'émission, UTC), sans trou. Le document est créé dans la même transaction SQL que la validation : `validateRecharge` (confirmation par l'équipe ou paiement en ligne Chargily) et `reviewTransaction` pour un retrait (`issueDocument`, `lib/server/services/documents.ts`). Deux validations simultanées ne prennent pas le même numéro (verrou de transaction PostgreSQL par suite, index unique en dernier recours). La table `documents` garde le numéro, le type, la transaction (un document au plus par transaction), le titulaire, le montant (montant de la recharge, ou montant demandé du retrait) et la date d'émission ; la migration 0007 crée ceux des recharges et retraits déjà validés, numérotés dans l'ordre de leurs dates.
+
+Le PDF est composé à chaque téléchargement (`GET /api/transactions/<id>/document`, titulaire ou équipe) par un petit générateur sans dépendance (`lib/server/pdf.ts`, aussi utilisé par la version autonome) et le gabarit de `lib/server/documents.ts` : bandeau ClipBoost, numéro, dates, émetteur (mentions `COMPANY_*` si elles sont définies), client (agence : nom, contact, email ; clipper : nom, email), lignes (recharge ; retrait et frais du retrait instantané), totaux, moyen de paiement, référence de la transaction. Il est dans la langue du titulaire en français ou en anglais ; un compte en arabe reçoit la version française, car les polices standard des PDF (Helvetica) n'ont pas de glyphes arabes (un nom écrit en arabe y apparaîtrait en « ? »).
+
+Boutons : « Reçu PDF » sur les retraits versés du Portefeuille (clipper), « Facture PDF » sur les recharges validées de Budget et sur la page d'un paiement en ligne réglé (agence), document de chaque paiement validé dans Paiements et sur la fiche d'un utilisateur (admin). Dans Paiements, « Exporter en CSV » télécharge les transactions (gains compris) avec un type (celui de l'onglet ouvert, modifiable), un statut et une période facultatifs : `GET /api/admin/transactions/export?type=&status=&from=AAAA-MM-JJ&to=AAAA-MM-JJ`. Le fichier `clipboost-transactions-AAAA-MM-JJ.csv` est fait pour Excel en français (UTF-8 avec BOM, séparateur `;`) : Référence, Date, Heure (UTC), Type, Utilisateur, Email, Rôle, Libellé, Montant (DA), Frais (DA), Statut, Moyen, Document ; un texte qui commence par `=`, `+`, `-` ou `@` est précédé d'une apostrophe (aucune formule exécutée par le tableur).
+
 ## Mettre en ligne
 
 1. Créer une base PostgreSQL (Neon, Supabase ou un serveur PostgreSQL).
@@ -160,7 +169,7 @@ npm run build:offline        # next build, puis web/dist/clipboost-site.html
 
 Produit un seul fichier HTML (accueil, connexion, espaces Clipper, Agence et Admin) qui s'ouvre directement depuis le disque, sans serveur ni connexion internet : pratique pour une démonstration. L'API y est simulée dans le navigateur (`web/offline/`) avec les mêmes règles (`lib/server/rules.ts`) et les mêmes contrôles (`lib/server/validation.ts`) que le serveur ; les données sont enregistrées dans le `localStorage` du navigateur.
 
-Au premier lancement, le fichier contient les données d'exemple de `db:seed:demo` et le compte `admin@clipboost.dz` (mot de passe `AdminClip2026`). Les codes de vérification sont affichés à l'écran. Les connexions Google, Apple et Discord y sont simulées (fenêtre de consentement fictive, aucun échange avec le fournisseur), avec les mêmes règles que sur le serveur ; les images sont gardées dans la base du navigateur, et une requête qui dépasserait la place disponible est refusée sans rien perdre des données déjà enregistrées. Le relevé des vues y est simulé et lancé à l'ouverture de l'app quand le dernier a plus de 6 heures (ou avec le bouton de la modération). Le paiement en ligne des recharges (Edahabia, CIB) y passe toujours par la page de paiement simulée. « Réinitialiser la démo », dans les réglages de l'administration, efface les données du navigateur.
+Au premier lancement, le fichier contient les données d'exemple de `db:seed:demo` et le compte `admin@clipboost.dz` (mot de passe `AdminClip2026`). Les codes de vérification sont affichés à l'écran. Les connexions Google, Apple et Discord y sont simulées (fenêtre de consentement fictive, aucun échange avec le fournisseur), avec les mêmes règles que sur le serveur ; les images sont gardées dans la base du navigateur, et une requête qui dépasserait la place disponible est refusée sans rien perdre des données déjà enregistrées. Le relevé des vues y est simulé et lancé à l'ouverture de l'app quand le dernier a plus de 6 heures (ou avec le bouton de la modération). Le paiement en ligne des recharges (Edahabia, CIB) y passe toujours par la page de paiement simulée. Factures, reçus PDF et export CSV y sont produits dans le navigateur (mêmes numéros et même mise en page, sans les mentions `COMPANY_*`) et se téléchargent aussi depuis le fichier ouvert depuis le disque. « Réinitialiser la démo », dans les réglages de l'administration, efface les données du navigateur.
 
 Si l'accueil a déjà été construit (`.next/`), `node web/build.mjs --offline [fichier]` suffit.
 
@@ -178,6 +187,7 @@ Les réglages sont modifiables par l'administrateur (page « Réglages du site �
 - **Score de risque de fraude** : pic de vues soudain (45), beaucoup de vues pour peu de likes (35), compte récent (20), plafonné à 100 ; faible sous 30, moyen jusqu'à 59, élevé au-delà. Réservé à l'équipe (voir « Relevé automatique des vues et score de risque »).
 - **Gains** : 3 jours de rétention avant d'être retirables.
 - **Retraits** : minimum 2 000 DA vers BaridiMob, CCP ou RIB. Standard gratuit, ou instantané avec 2 % de frais (100 DA minimum).
+- **Factures et reçus** : une facture PDF par recharge validée, un reçu PDF par retrait validé, numérotés par type et par année (voir « Factures, reçus et export CSV »).
 - **Crédit agence** : recharge de 10 000 DA minimum. Carte Edahabia ou CIB : paiement en ligne via Chargily Pay, crédit ajouté automatiquement dès la confirmation du paiement (webhook), recharge refusée si le paiement échoue, est annulé ou expire (voir « Paiement en ligne des recharges »). Virement bancaire ou carte Visa / Mastercard : demande avec une référence, confirmée par l'administrateur à réception du paiement ; pour une carte, seuls la marque et les 4 derniers chiffres sont transmis et ajoutés au libellé.
 - **Badge de vérification** : une agence le demande (message facultatif) ; l'équipe l'accorde, le refuse avec un motif (l'agence peut redemander) ou le retire. Le badge bleu s'affiche à côté du nom de l'agence.
 - **Agences côté clipper** : « Découvrir » présente toutes les campagnes ouvertes ; la page « Agences » liste celles qui les organisent (l'agence propriétaire, ou la marque pour une campagne créée par ClipBoost), puis chaque agence a sa page (`#/clipper/agence/<clé>`) avec sa couverture, son logo, sa présentation et ses projets de clipping. Le clipper ne reçoit que leur profil public (nom, photo, couverture, pays, présentation, date d'inscription, badge de vérification).
@@ -186,7 +196,7 @@ Le code des règles est dans `lib/server/rules.ts` et `lib/server/services/`.
 
 ## API
 
-Les routes répondent en JSON (`{ ok: true, … }` ou `{ error: "message" }`), sauf les images (`/api/media/<id>`) et les redirections de la connexion Google, Apple ou Discord ; celles qui modifient des données refusent les requêtes venant d'un autre site (sauf le retour d'Apple, protégé par l'état à usage unique du cookie `cb_oauth`). Un corps de requête est limité à 8 Mo.
+Les routes répondent en JSON (`{ ok: true, … }` ou `{ error: "message" }`), sauf les images (`/api/media/<id>`), les factures et reçus PDF, l'export CSV et les redirections de la connexion Google, Apple ou Discord ; celles qui modifient des données refusent les requêtes venant d'un autre site (sauf le retour d'Apple, protégé par l'état à usage unique du cookie `cb_oauth`). Un corps de requête est limité à 8 Mo.
 
 | Route | Qui | Rôle |
 |---|---|---|
@@ -216,12 +226,14 @@ Les routes répondent en JSON (`{ ok: true, … }` ou `{ error: "message" }`), s
 | `POST /api/payments/simulate/<id>` | agence | Mode simulé seulement (sans clé Chargily) : `{ paid }`, issue du paiement choisie sur la page simulée |
 | `POST /api/verification` | agence | Demande du badge de vérification |
 | `POST /api/admin/users/<id>/verification` | admin | Badge : `{ decision: "approve" \| "reject" \| "revoke", reason? }` |
-| `PATCH /api/admin/users/<id>`, `/api/admin/settings` ; `POST /api/transactions/<id>/review` | admin | Suspension, réglages, retraits et recharges annoncées (pas les recharges payées en ligne) |
+| `PATCH /api/admin/users/<id>`, `/api/admin/settings` ; `POST /api/transactions/<id>/review` | admin | Suspension, réglages, retraits et recharges annoncées (pas les recharges payées en ligne) ; une validation crée la facture ou le reçu |
+| `GET /api/transactions/<id>/document` | titulaire, admin | Facture (recharge validée) ou reçu (retrait validé) en PDF : `application/pdf`, `Content-Disposition: attachment; filename="<numéro>.pdf"` ; 404 sans document. Le numéro est aussi dans `document` de chaque transaction de `GET /api/state` |
+| `GET /api/admin/transactions/export` | admin | Transactions en CSV (`text/csv; charset=utf-8`, BOM, `;`), filtres facultatifs `type` (`gain`, `retrait`, `recharge`), `status` (`Validé`, `En cours`, `Refusé`), `from`, `to` (`AAAA-MM-JJ`, inclus) |
 
 ## Tests
 
 ```bash
-npm test                                   # règles de calcul et score de risque, API simulée hors ligne (relevé des vues, recours et paiement en ligne compris), lecture des bios et des statistiques (API des plateformes simulées), paiement Chargily (signature et webhook sur une base PGlite temporaire, API de Chargily simulée)
+npm test                                   # règles de calcul et score de risque, PDF (structure, factures et reçus) et export CSV, numérotation des documents et migration 0007 (base PGlite temporaire), API simulée hors ligne (relevé des vues, recours et paiement en ligne compris), lecture des bios et des statistiques (API des plateformes simulées), paiement Chargily (signature et webhook sur une base PGlite temporaire, API de Chargily simulée)
 npm run dev                                # puis, dans un autre terminal :
 BASE_URL=http://localhost:3000 npx tsx tests/api-flow.mts   # parcours API complet
 ```
@@ -248,3 +260,4 @@ tests/               tests des règles et du parcours API
 - Accès de production aux API des plateformes pour la vérification des comptes sociaux et le relevé des vues (examen de l'application par Meta, accès à l'API Research de TikTok ou, à défaut, connexion du clipper avec TikTok Login Kit).
 - Relevé des vues des liens courts (`vm.tiktok.com`, `fb.watch`) : suivre la redirection pour trouver l'identifiant de la vidéo (ces clips sont aujourd'hui comptés en erreur quand la plateforme a ses clés).
 - Pages légales (CGU, confidentialité) validées par un juriste.
+- Factures : mentions fiscales (TVA, régime d'imposition) à faire valider par un comptable ; version arabe des PDF (police arabe à embarquer).

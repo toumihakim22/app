@@ -410,4 +410,7 @@ Object.assign(I18N.ar, {
   "Aucune carte n'est débitée. Choisissez « Payer » pour simuler un paiement accepté (le crédit est ajouté), ou « Annuler » pour un paiement abandonné.": "لا تُخصم أي بطاقة. اختر «ادفع» لمحاكاة دفع مقبول (يُضاف الرصيد)، أو «إلغاء» لدفع متروك.",
   "Sans clé Chargily, cette page remplace la page de paiement sécurisée de Chargily Pay.": "بدون مفتاح Chargily، تحلّ هذه الصفحة محلّ صفحة الدفع الآمنة لـ Chargily Pay.",
   "Le paiement se fait sur la page sécurisée de Chargily Pay.": "يتم الدفع على الصفحة الآمنة لـ Chargily Pay.",
+
+  // Facture PDF des recharges validées (Budget)
+  "Facture": "الفاتورة",
 });

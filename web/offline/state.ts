@@ -68,6 +68,8 @@ export function stateFor(db: Store, user: UserRow) {
   const agencyRows = db.users.filter((u) => ownerIds.has(u.id));
 
   const txRows = newestFirst(db.transactions.filter((t) => (isAdmin ? t.type !== "gain" : t.userId === user.id))).slice(0, isAdmin ? 500 : 200);
+  // Facture (recharge) ou reçu (retrait) des transactions validées : son numéro, pour le bouton de téléchargement.
+  const docOf = new Map(db.documents.map((d) => [d.transactionId, d.number]));
   const notifRows = newestFirst(db.notifications.filter((n) => n.userId === user.id)).slice(0, 30);
   const activityRows = isAdmin ? newestFirst(db.activity).slice(0, 30) : [];
 
@@ -136,7 +138,7 @@ export function stateFor(db: Store, user: UserRow) {
       decidedAt: a.decidedAt === null ? null : new Date(a.decidedAt).toISOString(), createdAt: new Date(a.createdAt).toISOString(), ...(isAdmin ? { decidedBy: a.decidedBy } : {}),
     })),
     transactions: txRows.map((t) => ({ id: t.id, ref: t.ref, userId: t.userId, type: t.type, label: t.label, amount: t.amount, fee: t.fee, status: t.status, method: t.method, date: day(t.createdAt), time: time(t.createdAt), availableAt: t.availableAt === null ? null : new Date(t.availableAt).toISOString(),
-      provider: t.provider, ...(isAdmin ? { providerRef: t.providerRef } : {}) })),
+      provider: t.provider, ...(isAdmin ? { providerRef: t.providerRef } : {}), document: docOf.get(t.id) ?? null })),
     notifications: notifRows.map((n) => ({ id: n.id, icon: n.icon, text: n.text, link: n.link ?? inferLink(user.role, n.text, linkCtx), unread: !n.read, at: new Date(n.createdAt).toISOString() })),
     activity: activityRows.map((a) => ({ icon: a.icon, text: a.text, at: new Date(a.createdAt).toISOString() })),
     series,

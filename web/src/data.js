@@ -22,27 +22,72 @@ const emptyDb = () => ({
 });
 let db = emptyDb();
 
-async function api(method, path, body) {
+// Requête vers l'API : le serveur (fetch), ou l'API simulée de la version autonome (fichier HTML unique, web/offline/server.ts).
+// Une réponse en erreur lève une Error avec le message du serveur (en français) et son statut.
+async function apiFetch(method, path, body) {
   let res;
   try {
     const init = { method, credentials: "same-origin", headers: body ? { "Content-Type": "application/json" } : {}, body: body ? JSON.stringify(body) : undefined };
-    // Version autonome (fichier HTML unique) : l'API tourne dans le navigateur, voir web/offline/server.ts.
     const offline = window.__CLIPBOOST_OFFLINE__;
     res = await (offline ? offline.fetch(path, init) : fetch(path, init));
   } catch (e) {
     // Erreur née dans le navigateur (aucune réponse) : déjà dans la langue choisie (tServer la laisse telle quelle).
     throw new Error(t("Connexion au serveur impossible. Vérifiez votre connexion internet."));
   }
-  let data = {};
-  try { data = await res.json(); } catch (e) {}
   if (!res.ok) {
+    let data = {};
+    try { data = await res.json(); } catch (e) {}
     // Message du serveur gardé en français (comparaisons, motifs de tServer) : traduit là où il s'affiche.
     const err = new Error(data.error || t("Une erreur est survenue, réessayez."));
     err.status = res.status;
     throw err;
   }
+  return res;
+}
+
+async function api(method, path, body) {
+  const res = await apiFetch(method, path, body);
+  let data = {};
+  try { data = await res.json(); } catch (e) {}
   return data;
 }
+
+/**
+ * Téléchargement d'un fichier de l'API (facture ou reçu PDF, export CSV), en ligne comme dans le fichier HTML ouvert
+ * depuis le disque : la réponse est lue en Blob puis enregistrée par un lien <a download> (adresse blob:, sans serveur).
+ * Nom du fichier : celui de l'en-tête Content-Disposition, sinon `fallback`. Une erreur est annoncée par un toast.
+ */
+let downloading = false;
+async function downloadFile(path, fallback) {
+  if (downloading) return false;
+  downloading = true;
+  try {
+    const res = await apiFetch("GET", path);
+    const blob = await res.blob();
+    const name = (/filename="([^"]+)"/.exec(res.headers.get("Content-Disposition") || "") || [])[1] || fallback;
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = name;
+    a.rel = "noopener";
+    a.style.display = "none";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    // Le navigateur a déjà lu le fichier : l'adresse blob: est libérée un peu plus tard.
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+    return true;
+  } catch (e) {
+    if (e.status === 401) { await refresh().catch(() => {}); state.modal = null; navigate("#/connexion"); }
+    toast(tServer(e.message), "danger");
+    return false;
+  } finally {
+    downloading = false;
+  }
+}
+
+/** Facture (recharge) ou reçu (retrait) PDF d'une transaction validée. */
+const downloadDocument = (x) => downloadFile(`/api/transactions/${encodeURIComponent(x.id)}/document`, `${x.document || x.ref}.pdf`);
 
 /** Recharge toutes les données visibles par l'utilisateur connecté. */
 async function refresh() {

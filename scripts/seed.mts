@@ -3,6 +3,7 @@ import { randomBytes } from "node:crypto";
 import { eq } from "drizzle-orm";
 import * as schema from "../lib/server/db/schema";
 import { DEMO_APPEAL_MESSAGE, DEMO_PROOF_JPEG_BASE64 } from "../lib/server/demo-appeal";
+import { numberDocuments } from "../lib/server/documents";
 import { newId, newRef } from "../lib/server/ids";
 import { link } from "../lib/server/links";
 import { hashPassword } from "../lib/server/password";
@@ -172,6 +173,23 @@ if (process.argv.includes("--demo")) {
     await db.insert(schema.transactions).values({ id: onlineId, ref: onlineRef, userId: tassili.id, type: "recharge", label: "Recharge par carte Edahabia", amount: 300000, status: "Validé", method: "carte Edahabia", provider: "chargily", providerRef: newId(26), createdAt: daysAgo(11) });
     notes.push([tassili, 11, "✅", `Votre recharge de ${fmt(300000)} a été validée.`, link.agencyBudget(onlineId)]);
     acts.push([11, "💳", `Recharge de ${fmt(300000)} payée en ligne par ${tassili.name} (carte Edahabia, Chargily).`]);
+    // Recharge par virement de Djurdjura confirmée par l'équipe, et retrait de Yacine versé : avec la recharge Edahabia,
+    // chacun a son document (factures FAC-…, reçu REC-…), numérotés dans l'ordre des dates comme par la migration 0007.
+    const transferId = newId(), payoutId = newId();
+    await db.insert(schema.transactions).values([
+      { id: transferId, ref: newRef(), userId: djurdjura.id, type: "recharge", label: "Recharge par virement bancaire", amount: 500000, status: "Validé", method: "virement bancaire", createdAt: daysAgo(8.2) },
+      { id: payoutId, ref: newRef(), userId: yacine.id, type: "retrait", label: "Retrait vers CCP", amount: -4000, status: "Validé", method: "CCP", createdAt: daysAgo(4.2) },
+    ]);
+    const docs = [
+      { kind: "facture" as const, transactionId: onlineId, userId: tassili.id, amount: 300000, createdAt: daysAgo(11) },
+      { kind: "facture" as const, transactionId: transferId, userId: djurdjura.id, amount: 500000, createdAt: daysAgo(8) },
+      { kind: "recu" as const, transactionId: payoutId, userId: yacine.id, amount: 4000, createdAt: daysAgo(4) },
+    ];
+    const numbers = numberDocuments(docs.map((d) => ({ kind: d.kind, at: d.createdAt.getTime() })));
+    await db.insert(schema.documents).values(docs.map((d, k) => ({ id: newId(), number: numbers[k], ...d })));
+    notes.push([djurdjura, 8, "✅", `Votre recharge de ${fmt(500000)} a été validée.`, link.agencyBudget(transferId)], [yacine, 4, "✅", `Votre retrait de ${fmt(4000)} a été validé.`, link.clipperTx(payoutId)]);
+    acts.push([8, "✅", `Recharge de ${fmt(500000)} validée par Équipe ClipBoost.`],
+      [4.2, "💸", `${yacine.name} a demandé un retrait de ${fmt(4000)}.`], [4, "✅", `Retrait de ${fmt(4000)} validé par Équipe ClipBoost.`]);
     acts.push([1, "💸", `${amira.name} a demandé un retrait de ${fmt(2000)}.`]);
     for (const admin of await db.select({ id: schema.users.id }).from(schema.users).where(eq(schema.users.role, "admin"))) {
       notes.push([admin, 11, "💳", `${tassili.name} a payé en ligne une recharge de ${fmt(300000)} par carte Edahabia (réf. ${onlineRef}).`, link.adminPayment(onlineId)]);

@@ -8,6 +8,7 @@ import { configuredProviders } from "../oauth";
 import { chargilyConfigured } from "../chargily";
 import { OAUTH_PROVIDERS } from "../validation";
 import { PLATFORMS } from "../gradients";
+import { documentNumbers } from "./documents";
 import { socialView } from "./social";
 import { dailyGains, RISK_WINDOW_DAYS, utcDay } from "../rules";
 import { simulatedPlatforms, TRACK_EVERY_HOURS, VIEWS_JOB } from "./tracking";
@@ -78,6 +79,8 @@ export async function stateFor(user: User) {
   const agencyRows = ownerIds.length ? await db.select().from(schema.users).where(inArray(schema.users.id, ownerIds)) : [];
 
   const txRows = await db.select().from(T).where(isAdmin ? ne(T.type, "gain") : eq(T.userId, user.id)).orderBy(desc(T.createdAt)).limit(isAdmin ? 500 : 200);
+  // Facture (recharge) ou reçu (retrait) des transactions validées : son numéro, pour le bouton de téléchargement.
+  const docOf = await documentNumbers(txRows.filter((t) => t.status === "Validé" && t.type !== "gain").map((t) => t.id));
   const notifRows = await db.select().from(schema.notifications).where(eq(schema.notifications.userId, user.id)).orderBy(desc(schema.notifications.createdAt)).limit(30);
   const activityRows = isAdmin ? await db.select().from(schema.activity).orderBy(desc(schema.activity.createdAt)).limit(30) : [];
 
@@ -151,7 +154,7 @@ export async function stateFor(user: User) {
     })),
     transactions: txRows.map((t) => ({ id: t.id, ref: t.ref, userId: t.userId, type: t.type, label: t.label, amount: t.amount, fee: t.fee, status: t.status, method: t.method, date: day(t.createdAt), time: time(t.createdAt), availableAt: t.availableAt?.toISOString() ?? null,
       // Paiement en ligne : passerelle (« chargily ») ; son identifiant chez Chargily pour l'équipe seulement (support).
-      provider: t.provider, ...(isAdmin ? { providerRef: t.providerRef } : {}) })),
+      provider: t.provider, ...(isAdmin ? { providerRef: t.providerRef } : {}), document: docOf.get(t.id) ?? null })),
     notifications: notifRows.map((n) => ({ id: n.id, icon: n.icon, text: n.text, link: n.link ?? inferLink(user.role, n.text, linkCtx), unread: !n.read, at: n.createdAt.toISOString() })),
     activity: activityRows.map((a) => ({ icon: a.icon, text: a.text, at: a.createdAt.toISOString() })),
     series,

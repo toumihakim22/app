@@ -172,6 +172,7 @@ const icons = {
   image: '<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M21 16l-5-5-9 9"/>',
   camera: '<path d="M4 8h3l2-3h6l2 3h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13" r="3.5"/>',
   upload: '<path d="M12 16V4M7 9l5-5 5 5M4 20h16"/>',
+  download: '<path d="M12 4v12M7 11l5 5 5-5M4 20h16"/>',
   trash: '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>',
   pencil: '<path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16v4z"/><path d="M13.5 6.5l4 4"/>',
   send: '<path d="M21 3L10 14M21 3l-7 18-4-7-7-4z"/>',
@@ -362,6 +363,16 @@ const platformTag = (p) => `<span class="inline-flex h-6 items-center gap-1.5 wh
 const roleBadge = (role) => ({ agence: `<span class="inline-flex h-5 items-center rounded-[4px] bg-info-bg px-1.5 text-micro font-semibold text-info-fg ring-1 ring-inset ring-info-border">${t("Agence")}</span>`, admin: `<span class="inline-flex h-5 items-center rounded-[4px] bg-brand-soft px-1.5 text-micro font-semibold text-brand-fg ring-1 ring-inset ring-brand-line/70">${t("Admin")}</span>` }[role] || "");
 // queue : liseré brand-line, sinon la pastille brand-soft se confond avec le fond canvas en clair.
 const COUNT = { queue: "bg-brand-soft text-brand-fg ring-1 ring-inset ring-brand-line/70", unread: "bg-brand text-on-brand", total: "bg-muted text-fg-muted" };
+// Facture (recharge) ou reçu (retrait) PDF d'une transaction validée (x.document : son numéro), sinon rien. compact : icône
+// seule (lignes étroites), le type de document en infobulle ; le nom accessible donne le numéro. Action : tx-document (main.js).
+const txDocBtn = (x, { compact = false, size = "sm", variant = "ghost", extra = "" } = {}) => {
+  if (!x || !x.document) return "";
+  const invoice = x.type === "recharge", label = invoice ? t("Facture PDF") : t("Reçu PDF");
+  const aria = esc(invoice ? t("Télécharger la facture {number}", { number: x.document }) : t("Télécharger le reçu {number}", { number: x.document }));
+  return compact
+    ? `<button type="button" data-action="tx-document" data-id="${esc(x.id)}" class="${iconBtn("sm", false, extra)}" aria-label="${aria}" title="${esc(label)}">${icon("download")}</button>`
+    : `<button type="button" data-action="tx-document" data-id="${esc(x.id)}" class="${btn(variant, size, extra)}" aria-label="${aria}" title="${esc(x.document)}">${icon("download")}${label}</button>`;
+};
 const countBadge = (n, tone = "queue") => `<span class="inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-semibold tabular-nums ${COUNT[tone]}">${fmt(n)}</span>`;
 
 // ---------- Filtres : segmented (2 à 5 choix), chips (au-delà, défilable) ----------

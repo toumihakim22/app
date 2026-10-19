@@ -9,6 +9,7 @@ import {
   ApiError, badRequest, forbidden, getSettings, insertCampaign, insertPublication, insertTransaction, insertUser, logActivity,
   newId, newRef, newSocialCode, notFound, notify, notifyRole, randomInt, type CampaignRow, type PubRow, type Store, type TxRow, type UserRow,
 } from "./db";
+import { issueDocument } from "./documents";
 import { hashPassword, sha256Hex, strongEnough, verifyPassword } from "./password";
 
 /** Contexte d'une requête : la copie de travail de la base et l'enregistrement immédiat (hors transaction). */
@@ -586,10 +587,12 @@ export function requestCredit({ db }: Ctx, user: UserRow, amount: number, method
 /**
  * Validation d'une recharge encore « En cours » : seul endroit où une recharge devient « Validé » et où le crédit de
  * l'agence augmente, confirmation de l'équipe (reviewTransaction) ou paiement en ligne (settleOnlinePayment, payments.ts).
+ * La facture de la recharge est créée ici (documents.ts).
  */
 export function validateRecharge(db: Store, t: TxRow) {
   t.status = "Validé";
   userOf(db, t.userId).credit += t.amount;
+  issueDocument(db, t);
 }
 
 /**
@@ -602,7 +605,11 @@ export function reviewTransaction({ db }: Ctx, admin: UserRow, id: string, appro
   if (t.status !== "En cours" || t.type === "gain") throw badRequest("Cette transaction a déjà été traitée");
   if (t.provider === "chargily") throw badRequest("Paiement en ligne : confirmé automatiquement par Chargily");
   if (t.type === "recharge" && approve) validateRecharge(db, t);
-  else t.status = approve ? "Validé" : "Refusé";
+  else {
+    t.status = approve ? "Validé" : "Refusé";
+    // Retrait versé : son reçu.
+    if (approve) issueDocument(db, t);
+  }
   const what = t.type === "retrait" ? `retrait de ${fmt(-t.amount)}` : `recharge de ${fmt(t.amount)}`;
   // Accord du participe : « le retrait » est validé, « la recharge » est validée.
   const done = `${approve ? "validé" : "refusé"}${t.type === "recharge" ? "e" : ""}`;

@@ -590,4 +590,16 @@ Object.assign(I18N.en, {
   "Copier l'identifiant": "Copy ID",
   "Identifiant copié": "ID copied",
   "Montant payé en ligne": "Amount paid online",
+
+  // Export CSV des transactions (Paiements)
+  "Exporter en CSV": "Export to CSV",
+  "Exporter les transactions": "Export transactions",
+  "Fichier CSV pour Excel ou un tableur : une ligne par transaction, avec son document.": "CSV file for Excel or any spreadsheet: one row per transaction, with its document.",
+  "Type": "Type",
+  "Toutes les transactions": "All transactions",
+  "Du": "From",
+  "Au": "To",
+  "Colonnes : référence, date et heure (UTC), type, utilisateur, email, rôle, libellé, montant, frais, statut, moyen et numéro de facture ou de reçu.": "Columns: reference, date and time (UTC), type, user, email, role, description, amount, fees, status, method and invoice or receipt number.",
+  "La date de fin doit suivre la date de début.": "The end date must come after the start date.",
+  "Export CSV téléchargé": "CSV export downloaded",
 });

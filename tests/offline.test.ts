@@ -36,7 +36,7 @@ test("données d'exemple, connexion et contrôle d'accès", async () => {
   assert.deepEqual(await login("yacine@clipboost.dz", "faux"), { status: 400, data: { error: "Email ou mot de passe incorrect" } });
   assert.equal((await login("yacine@clipboost.dz")).status, 200);
   const s = (await call("GET", "/api/state")).data;
-  assert.deepEqual([s.me.available, s.me.pending, s.me.earned], [7078, 7230, 14308]);
+  assert.deepEqual([s.me.available, s.me.pending, s.me.earned], [3078, 7230, 14308]);
   // Notifications d'exemple : chacune mène à un élément de l'espace Clipper qui existe.
   type Note = { text: string; link: string | null };
   const ids = new Set([...s.campaigns, ...s.publications, ...s.transactions].map((x: { id: string }) => x.id));
@@ -116,7 +116,7 @@ test("inscription avec code, campagne financée, clip payé et retrait instantan
   await login("yacine@clipboost.dz");
   const s = (await call("GET", "/api/state")).data;
   assert.equal(s.publications.find((p: { id: string }) => p.id === clipId).paid, 6750);
-  assert.deepEqual([s.me.available, s.me.pending, s.me.earned], [7078 - 2000, 7230 + 6750, 14308 + 6750]);
+  assert.deepEqual([s.me.available, s.me.pending, s.me.earned], [3078 - 2000, 7230 + 6750, 14308 + 6750]);
   assert.equal(s.notifications[0].text, "Votre retrait de 2 000 DA a été validé (1 900 DA versés après 100 DA de frais).");
 
   // Liens des notifications : chaque événement mène à l'élément concerné.
@@ -683,6 +683,72 @@ test("paiement en ligne Edahabia / CIB (simulé) : crédit ajouté au paiement, 
   await login("agence@clipboost.dz");
   s = await state();
   assert.deepEqual([s.transactions.find((t: Tx) => t.id === pending.data.id).status, s.transactions.find((t: Tx) => t.id === manual.id).status, s.me.credit], ["En cours", "Validé", credit + 120000 + 70000]);
+});
+
+test("factures et reçus PDF, export CSV des transactions", async () => {
+  type Tx = { id: string; ref: string; type: string; status: string; amount: number; document: string | null };
+  const raw = async (path: string) => {
+    const res = await offlineApi.fetch(path, { method: "GET" });
+    return { status: res.status, type: res.headers.get("Content-Type"), disposition: res.headers.get("Content-Disposition"), bytes: new Uint8Array(await res.arrayBuffer()) };
+  };
+  const latin1 = (b: Uint8Array) => Array.from(b, (x) => String.fromCharCode(x)).join("");
+  // Données d'exemple : la recharge Edahabia de Tassili a sa facture, le retrait versé de Yacine son reçu.
+  await login("agence@clipboost.dz");
+  let s = await state();
+  const online = s.transactions.find((t: Tx) => t.type === "recharge" && t.status === "Validé" && t.amount === 300000);
+  assert.match(online.document, /^FAC-\d{4}-\d{5}$/);
+  assert.ok(s.transactions.filter((t: Tx) => t.status !== "Validé").every((t: Tx) => t.document === null));
+  const pdf = await raw(`/api/transactions/${online.id}/document`);
+  assert.deepEqual([pdf.status, pdf.type, pdf.disposition], [200, "application/pdf", `attachment; filename="${online.document}.pdf"`]);
+  const text = latin1(pdf.bytes);
+  assert.ok(text.startsWith("%PDF-1.4") && text.endsWith("%%EOF\n"));
+  // Une transaction sans document (en cours), ou celle d'un autre compte : 404.
+  const pending = await call("POST", "/api/credit", { amount: 50000, method: "virement bancaire" });
+  const pendingTx = (await state()).transactions.find((t: Tx) => t.ref === pending.data.ref);
+  assert.deepEqual(await call("GET", `/api/transactions/${pendingTx.id}/document`), { status: 404, data: { error: "Aucun document pour cette transaction" } });
+  await login("yacine@clipboost.dz");
+  s = await state();
+  const payout = s.transactions.find((t: Tx) => t.type === "retrait" && t.status === "Validé");
+  assert.match(payout.document, /^REC-\d{4}-00001$/);
+  assert.equal((await raw(`/api/transactions/${payout.id}/document`)).status, 200);
+  assert.deepEqual(await call("GET", `/api/transactions/${online.id}/document`), { status: 404, data: { error: "Transaction introuvable" } });
+  assert.equal((await call("GET", "/api/admin/transactions/export")).status, 403);
+  await call("POST", "/api/auth/logout");
+  assert.equal((await call("GET", `/api/transactions/${payout.id}/document`)).status, 401);
+
+  // L'équipe : validation d'une recharge (facture) et d'un retrait (reçu), numéros suivants ; rien pour un refus.
+  await login("yacine@clipboost.dz");
+  await call("POST", "/api/withdrawals", { amount: 2000 });
+  await login("admin@clipboost.dz", "AdminClip2026");
+  s = await state();
+  const yacineId = s.users.find((u: { email: string }) => u.email === "yacine@clipboost.dz").id;
+  const wd = s.transactions.find((t: Tx & { userId: string }) => t.type === "retrait" && t.status === "En cours" && t.userId === yacineId);
+  const before = s.transactions.filter((t: Tx) => t.document?.startsWith("FAC-")).length;
+  assert.equal((await call("POST", `/api/transactions/${pendingTx.id}/review`, { approve: true })).status, 200);
+  assert.equal((await call("POST", `/api/transactions/${wd.id}/review`, { approve: true })).status, 200);
+  s = await state();
+  const year = new Date().getUTCFullYear();
+  assert.equal(s.transactions.find((t: Tx) => t.id === pendingTx.id).document, `FAC-${year}-${String(before + 1).padStart(5, "0")}`);
+  assert.equal(s.transactions.find((t: Tx) => t.id === wd.id).document, `REC-${year}-00002`);
+  // L'équipe télécharge le document de n'importe quel compte.
+  assert.equal((await raw(`/api/transactions/${wd.id}/document`)).status, 200);
+
+  // Export CSV : BOM, « ; », gains compris, filtres.
+  const csv = await offlineApi.fetch("/api/admin/transactions/export", { method: "GET" });
+  assert.equal(csv.headers.get("Content-Type"), "text/csv; charset=utf-8");
+  assert.match(csv.headers.get("Content-Disposition") ?? "", /^attachment; filename="clipboost-transactions-\d{4}-\d{2}-\d{2}\.csv"$/);
+  const body = new TextDecoder("utf-8", { ignoreBOM: true }).decode(await csv.arrayBuffer());
+  assert.ok(body.startsWith("\ufeffRéférence;Date;Heure;Type;Utilisateur;Email;Rôle;Libellé;Montant (DA);Frais (DA);Statut;Moyen;Document\r\n"));
+  const rows = body.trim().split("\r\n").slice(1).map((l) => l.split(";"));
+  assert.ok(rows.some((r) => r[3] === "Gain"));
+  assert.ok(rows.some((r) => r[0] === online.ref && r[12] === online.document && r[8] === "300000"));
+  const filtered = await offlineApi.fetch(`/api/admin/transactions/export?type=retrait&status=Valid%C3%A9&from=2000-01-01&to=${new Date().toISOString().slice(0, 10)}`, { method: "GET" });
+  const only = (await filtered.text()).trim().split("\r\n").slice(1).map((l) => l.split(";"));
+  assert.ok(only.length >= 2 && only.every((r) => r[3] === "Retrait" && r[10] === "Validé" && /^REC-/.test(r[12])));
+  assert.equal((await (await offlineApi.fetch("/api/admin/transactions/export?from=2999-01-01", { method: "GET" })).text()).trim().split("\r\n").length, 1);
+  assert.deepEqual(await call("GET", "/api/admin/transactions/export?type=bonus"), { status: 400, data: { error: "Type de transaction invalide" } });
+  assert.deepEqual(await call("GET", "/api/admin/transactions/export?from=2026-13-45"), { status: 400, data: { error: "Date de début invalide (AAAA-MM-JJ)" } });
+  assert.deepEqual(await call("GET", "/api/admin/transactions/export?from=2026-10-02&to=2026-10-01"), { status: 400, data: { error: "La date de début doit précéder la date de fin" } });
 });
 
 test("réinitialisation : retour aux données d'exemple", async () => {
