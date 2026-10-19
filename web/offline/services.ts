@@ -480,7 +480,8 @@ export function recordViews({ db }: Ctx, id: string, views: number, likes?: numb
 
 /** Score de risque d'un clip (clipRisk) : ses derniers relevés, l'inscription du clipper, la vérification de son compte social. */
 function riskOf(db: Store, p: PubRow, views: number, likes: number | null) {
-  const latest = db.snapshots.filter((x) => x.publicationId === p.id).sort((a, b) => b.day.localeCompare(a.day)).slice(0, RISK_WINDOW_DAYS + 2);
+  const latest = db.snapshots.filter((x) => x.publicationId === p.id).sort((a, b) => b.day.localeCompare(a.day)).slice(0, RISK_WINDOW_DAYS + 2)
+    .map((x) => ({ day: x.day, views: x.views, likes: x.likes, at: x.recordedAt }));
   const social = db.social.find((a) => a.userId === p.userId && a.platform === p.platform && a.status === "verified");
   return clipRisk({ createdAt: p.createdAt, views, likes }, latest, { userCreatedAt: db.users.find((u) => u.id === p.userId)?.createdAt ?? null, socialVerifiedAt: social?.verifiedAt ?? null });
 }

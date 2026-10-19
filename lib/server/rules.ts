@@ -122,8 +122,11 @@ export function socialLinkError(platform: string, url: string, handle: string | 
 
 // ---------- Relevé des vues : historique jour par jour, score de risque de fraude, mode simulé ----------
 
-/** Un relevé du jour d'un clip (table view_snapshots) : likes null s'ils sont inconnus. */
-export type ViewPoint = { day: string; views: number; likes: number | null };
+/**
+ * Un relevé du jour d'un clip (table view_snapshots) : likes null s'ils sont inconnus ; `at` : heure du relevé (ms,
+ * recorded_at), à défaut midi UTC de son jour.
+ */
+export type ViewPoint = { day: string; views: number; likes: number | null; at?: number };
 
 /** Jour UTC « AAAA-MM-JJ » d'un instant (même découpage que les séries de GET /api/state et que view_snapshots). */
 export const utcDay = (at: number | Date) => new Date(at).toISOString().slice(0, 10);
@@ -147,12 +150,41 @@ export function dailyGains(history: ViewPoint[], publishedDay?: string): (ViewPo
   });
 }
 
+/**
+ * Intervalle minimal entre deux relevés pour calculer un rythme de vues (heures) : celui du relevé automatique (deux
+ * relevés rapprochés, une saisie de l'équipe juste avant le relevé automatique, ne font pas un faux pic). Depuis la
+ * publication : une heure seulement (ce rythme ne sert que de référence pour la suite, il ne signale jamais de pic).
+ */
+export const MIN_RATE_HOURS = 6;
+const HOUR_MS = 3_600_000;
+const readingAt = (p: ViewPoint) => p.at ?? Date.parse(`${p.day}T12:00:00Z`);
+
+/**
+ * Rythme des vues (vues par 24 heures) entre relevés successifs, d'après l'heure réelle de chaque relevé : un jour à
+ * peine entamé (clip publié à 21 h, premier relevé à 22 h) n'est pas compté comme un jour entier, ce qui ferait passer
+ * la journée complète suivante pour un pic. Chaque intervalle compte au moins MIN_RATE_HOURS heures. Le premier relevé
+ * a un rythme depuis la publication si elle est connue (`publishedAt`, ms ; au moins une heure), sinon null (clip suivi
+ * après coup).
+ */
+export function viewRates(history: ViewPoint[], publishedAt?: number) {
+  const sorted = [...history].sort((a, b) => a.day.localeCompare(b.day));
+  return sorted.map((p, i) => {
+    const prev = sorted[i - 1], from = prev ? readingAt(prev) : publishedAt;
+    const hours = from === undefined ? null : Math.max(0, (readingAt(p) - from) / HOUR_MS);
+    const gained = Math.max(0, p.views - (prev ? prev.views : 0));
+    return { ...p, hours, rate: hours === null ? null : (gained / Math.max(prev ? MIN_RATE_HOURS : 1, hours)) * 24 };
+  });
+}
+
 /** Signaux du score de risque (libellés français, traduits par l'interface) et leur poids ; le score est plafonné à 100. */
 export const RISK_SPIKE = "Pic de vues soudain";
 export const RISK_LOW_LIKES = "Beaucoup de vues, peu de likes";
 export const RISK_NEW_ACCOUNT = "Compte récent";
 export const RISK_WEIGHTS: Record<string, number> = { [RISK_SPIKE]: 45, [RISK_LOW_LIKES]: 35, [RISK_NEW_ACCOUNT]: 20 };
-/** Pic : un jour gagne plus de 5 fois la moyenne des jours précédents, et plus de 5 000 vues ; ou plus de 50 000 vues le jour de la publication. */
+/**
+ * Pic : entre deux relevés, un rythme de plus de 5 000 vues par jour et plus de 5 fois le rythme moyen des intervalles
+ * précédents ; ou plus de 50 000 vues par jour au premier relevé, fait dans les 48 heures après la publication.
+ */
 export const SPIKE_FACTOR = 5, SPIKE_MIN_VIEWS = 5000, FIRST_DAY_SPIKE = 50_000;
 /** Peu de likes : moins de 0,5 % des vues, à partir de 5 000 vues (likes connus seulement). */
 export const LOW_LIKES_MIN_VIEWS = 5000, LOW_LIKES_RATIO = 0.005;
@@ -163,24 +195,25 @@ export const NEW_ACCOUNT_DAYS = 7;
  * Score de risque de fraude d'un clip (0 à 100) et ses signaux, d'après son historique jour par jour (`history`, la
  * fenêtre RISK_WINDOW_DAYS suffit), son dernier relevé (`views`, `likes`) et l'âge des comptes à l'envoi du clip
  * (`accountAgeDays` : compte ClipBoost ; `socialAgeDays` : compte social vérifié de sa plateforme, s'il existe) :
- * - « Pic de vues soudain » (45) : un jour de la fenêtre gagne plus de SPIKE_FACTOR fois la moyenne des jours
- *   précédents et plus de SPIKE_MIN_VIEWS vues, ou plus de FIRST_DAY_SPIKE vues dès le premier relevé, le jour de la
- *   publication (`publishedDay` connu) ou le lendemain ;
+ * - « Pic de vues soudain » (45) : entre deux relevés de la fenêtre, un rythme (viewRates, heures réelles des relevés)
+ *   de plus de SPIKE_MIN_VIEWS vues par jour et plus de SPIKE_FACTOR fois le rythme moyen des intervalles précédents ;
+ *   ou plus de FIRST_DAY_SPIKE vues par jour au premier relevé, fait moins de 48 heures après la publication
+ *   (`publishedAt` connu ; un premier relevé de quelques heures compte pour un jour) ;
  * - « Beaucoup de vues, peu de likes » (35) : au moins LOW_LIKES_MIN_VIEWS vues et moins de 0,5 % de likes ;
  * - « Compte récent » (20) : un des deux comptes a moins de NEW_ACCOUNT_DAYS jours.
  * Un pic reste signalé tant qu'il est dans la fenêtre : l'équipe examine un clip plusieurs jours après son envoi.
  */
-export function fraudRisk(input: { history: ViewPoint[]; views: number; likes: number | null; accountAgeDays: number; socialAgeDays?: number | null; publishedDay?: string }) {
+export function fraudRisk(input: { history: ViewPoint[]; views: number; likes: number | null; accountAgeDays: number; socialAgeDays?: number | null; publishedAt?: number }) {
   const flags: string[] = [];
-  const gains = dailyGains(input.history, input.publishedDay);
+  const rates = viewRates(input.history, input.publishedAt);
   const before: number[] = [];
   let spike = false;
-  for (const [i, { gain }] of gains.entries()) {
-    if (gain === null) continue;
-    // Premier relevé : pic seulement s'il suit de près la publication (sinon son gain n'est qu'une moyenne sur la durée).
-    if (i === 0) spike ||= gain > FIRST_DAY_SPIKE && !!input.publishedDay && daysBetween(input.publishedDay, gains[0].day) <= 1;
-    else if (before.length) spike ||= gain > SPIKE_MIN_VIEWS && gain > SPIKE_FACTOR * (before.reduce((s, g) => s + g, 0) / before.length);
-    before.push(gain);
+  for (const [i, { rate, hours, views }] of rates.entries()) {
+    if (rate === null || hours === null) continue;
+    // Premier relevé : pic seulement s'il suit de près la publication (sinon son rythme n'est qu'une moyenne sur la durée).
+    if (i === 0) spike ||= hours <= 48 && (views / Math.max(24, hours)) * 24 > FIRST_DAY_SPIKE;
+    else if (before.length) spike ||= rate > SPIKE_MIN_VIEWS && rate > SPIKE_FACTOR * (before.reduce((s, g) => s + g, 0) / before.length);
+    before.push(rate);
   }
   if (spike) flags.push(RISK_SPIKE);
   if (input.likes !== null && input.views >= LOW_LIKES_MIN_VIEWS && input.likes / input.views < LOW_LIKES_RATIO) flags.push(RISK_LOW_LIKES);
@@ -193,7 +226,7 @@ export function fraudRisk(input: { history: ViewPoint[]; views: number; likes: n
  * Risque d'un clip (fraudRisk) à partir de ses relevés les plus récents (`latest` : au moins RISK_WINDOW_DAYS + 2 s'il
  * en a autant, dans n'importe quel ordre), de la date de son envoi et de celles de ses comptes (inscription du clipper,
  * vérification de son compte social sur la plateforme du clip). Même calcul sur le serveur et hors ligne.
- * Le jour de publication ne sert au gain du premier relevé que si tout l'historique est là (sinon, ce relevé est la base).
+ * La publication ne sert au rythme du premier relevé que si tout l'historique est là (sinon, ce relevé est la base).
  */
 export function clipRisk(clip: { createdAt: number; views: number; likes: number | null }, latest: ViewPoint[], accounts: { userCreatedAt: number | null; socialVerifiedAt: number | null }) {
   const sorted = [...latest].sort((a, b) => b.day.localeCompare(a.day));
@@ -202,7 +235,7 @@ export function clipRisk(clip: { createdAt: number; views: number; likes: number
   const age = (at: number | null) => (at === null ? null : (clip.createdAt - at) / DAY_MS);
   return fraudRisk({
     history, views: clip.views, likes: clip.likes, accountAgeDays: age(accounts.userCreatedAt) ?? Infinity, socialAgeDays: age(accounts.socialVerifiedAt),
-    publishedDay: complete ? utcDay(clip.createdAt) : undefined,
+    publishedAt: complete ? clip.createdAt : undefined,
   });
 }
 
@@ -253,7 +286,7 @@ export function simulatedStats(id: string, ageHours: number, last: { views: numb
 /**
  * Historique simulé d'un clip jusqu'à un relevé connu (`views` à `endAt`, en ms) : un relevé par jour UTC (à 22 h, le
  * dernier à `endAt`) sur la courbe du mode simulé, likes au taux de son profil ou à `likeRate`. `spike` : vues faibles
- * puis un pic au dernier relevé, à la place de la courbe. Sert aux données d'exemple (serveur et version autonome).
+ * et régulières (2 % par jour) puis un pic au dernier relevé, à la place de la courbe. Sert aux données d'exemple (serveur et version autonome).
  */
 export function simulatedHistory(id: string, createdAt: number, endAt: number, views: number, opts: { likeRate?: number; spike?: boolean } = {}) {
   const { tau, likeRate } = simulatedProfile(id), rate = opts.likeRate ?? likeRate;
@@ -264,7 +297,8 @@ export function simulatedHistory(id: string, createdAt: number, endAt: number, v
   }
   const age = (at: number) => (at - createdAt) / 3_600_000;
   return times.map((at, i): ViewPoint & { at: number } => {
-    const v = i === times.length - 1 ? views : opts.spike ? Math.round(views * 0.02 * (i + 1)) : Math.round((views * reached(age(at), tau)) / reached(age(endAt), tau));
+    // Pic : 2 % des vues finales par jour (à l'heure près), puis le saut du dernier relevé.
+    const v = i === times.length - 1 ? views : opts.spike ? Math.round((views * 0.02 * age(at)) / 24) : Math.round((views * reached(age(at), tau)) / reached(age(endAt), tau));
     return { day: utcDay(at), at, views: v, likes: Math.round(v * rate) };
   });
 }

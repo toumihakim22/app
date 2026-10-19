@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
-  belowMin, bioHasCode, clipRisk, dailyGains, fraudRisk, fundingCost, handleInUrl, instantFee, normalizeHandle, payoutDelta, payoutFor, RISK_LOW_LIKES, RISK_NEW_ACCOUNT,
+  viewRates, belowMin, bioHasCode, clipRisk, dailyGains, fraudRisk, fundingCost, handleInUrl, instantFee, normalizeHandle, payoutDelta, payoutFor, RISK_LOW_LIKES, RISK_NEW_ACCOUNT,
   RISK_SPIKE, RISK_WINDOW_DAYS, riskLevel, sentence, simulatedHistory, simulatedProfile, simulatedStats, socialCode, socialLinkError, utcDay, validateCampaignNumbers, viewsFor, viewsTrackedText,
 } from "../lib/server/rules";
 
@@ -109,10 +109,18 @@ test("score de risque : pic soudain, peu de likes, compte récent, plafond et ni
   assert.deepEqual(fraudRisk({ history: [...spiky, pt("2026-03-06", 30500)], views: 30500, likes: 1500, accountAgeDays: 90 }).flags, [RISK_SPIKE]);
   // Gain plus de 5 fois la moyenne mais sous 5 000 vues : pas de pic.
   assert.deepEqual(fraudRisk({ history: [pt("2026-03-01", 100), pt("2026-03-02", 200), pt("2026-03-03", 4000)], views: 4000, likes: 200, accountAgeDays: 90 }).flags, []);
-  // Premier jour énorme (jour de publication connu).
-  assert.deepEqual(fraudRisk({ history: [pt("2026-03-01", 80000)], views: 80000, likes: 4000, accountAgeDays: 90, publishedDay: "2026-03-01" }).flags, [RISK_SPIKE]);
+  // Premier jour énorme (publication connue ; relevé à midi, 4 heures après : compté pour un jour).
+  const published = Date.parse("2026-03-01T08:00:00Z");
+  assert.deepEqual(fraudRisk({ history: [pt("2026-03-01", 80000)], views: 80000, likes: 4000, accountAgeDays: 90, publishedAt: published }).flags, [RISK_SPIKE]);
   // Premier relevé dix jours après la publication (clip suivi après coup) : 600 000 vues en dix jours, pas un pic.
-  assert.deepEqual(fraudRisk({ history: [pt("2026-03-11", 600000)], views: 600000, likes: 30000, accountAgeDays: 90, publishedDay: "2026-03-01" }).flags, []);
+  assert.deepEqual(fraudRisk({ history: [pt("2026-03-11", 600000)], views: 600000, likes: 30000, accountAgeDays: 90, publishedAt: published }).flags, []);
+  // Jour de publication à peine entamé (publié à 21 h, relevé à 22 h) puis une journée entière : rythme comparable, pas un pic.
+  const late = Date.parse("2026-03-01T21:00:00Z"), at = (iso: string) => Date.parse(iso);
+  const partial = [{ ...pt("2026-03-01", 2000), at: at("2026-03-01T22:00:00Z") }, { ...pt("2026-03-02", 15000), at: at("2026-03-02T22:00:00Z") }];
+  assert.deepEqual(fraudRisk({ history: partial, views: 15000, likes: 600, accountAgeDays: 90, publishedAt: late }).flags, []);
+  assert.deepEqual(viewRates(partial, late).map((r) => [r.hours, r.rate]), [[1, 48000], [24, 13000]]);
+  // Deux relevés rapprochés (saisie de l'équipe juste avant le relevé automatique) : intervalle compté 6 heures.
+  assert.deepEqual(viewRates([{ ...pt("2026-03-01", 1000), at: at("2026-03-01T23:55:00Z") }, { ...pt("2026-03-02", 1500), at: at("2026-03-02T00:05:00Z") }]).map((r) => r.rate), [null, 2000]);
   // Peu de likes : à partir de 5 000 vues, moins de 0,5 % ; likes inconnus : jamais signalé.
   assert.deepEqual(fraudRisk({ history: [], views: 10000, likes: 49, accountAgeDays: 90 }), { score: 35, flags: [RISK_LOW_LIKES] });
   assert.deepEqual(fraudRisk({ history: [], views: 10000, likes: 50, accountAgeDays: 90 }).flags, []);
@@ -180,4 +188,20 @@ test("historique simulé des données d'exemple : un relevé par jour jusqu'au d
   assert.equal(fraudRisk({ history: spike, views: 50000, likes: spike.at(-1)!.likes, accountAgeDays: 90 }).score, 80);
   assert.equal(viewsTrackedText("Admin", 1, 0), "Vues relevées par Admin : 1 clip mis à jour.");
   assert.equal(viewsTrackedText("Admin", 7, 2), "Vues relevées par Admin : 7 clips mis à jour, 2 en erreur.");
+});
+
+test("score des données d'exemple stable à toute heure : un clip ordinaire n'a jamais de pic, le clip suspect toujours", () => {
+  const day = 86_400_000, start = Date.parse("2026-03-10T00:00:00Z");
+  const clips = [{ views: 48200, days: 2 }, { views: 12500, days: 2 }, { views: 63400, days: 8 }, { views: 9800, days: 6 }, { views: 18800, days: 5 }, { views: 31200, days: 1 }, { views: 1600, days: 0 }];
+  // Même suivi que les seeds : dernier relevé 2 heures avant « maintenant », fenêtre de gains de 7 jours pour un clip validé.
+  for (let now = start; now < start + day; now += 10 * 60_000) {
+    for (const [k, c] of clips.entries()) {
+      const createdAt = now - (c.days + 1) * day, endAt = Math.min(now - 2 * 3_600_000, createdAt + day + 7 * day);
+      const h = simulatedHistory(`p_${k}`, createdAt, endAt, c.views);
+      const r = clipRisk({ createdAt, views: c.views, likes: h.at(-1)!.likes }, h, { userCreatedAt: createdAt - 90 * day, socialVerifiedAt: null });
+      assert.deepEqual(r.flags, [], `${new Date(now).toISOString()} clip ${k}`);
+    }
+    const createdAt = now - 2 * day, h = simulatedHistory("p_suspect", createdAt, now - 2 * 3_600_000, 52900, { spike: true, likeRate: 0.0007 });
+    assert.equal(clipRisk({ createdAt, views: 52900, likes: h.at(-1)!.likes }, h, { userCreatedAt: createdAt - 60 * day, socialVerifiedAt: null }).score, 80, new Date(now).toISOString());
+  }
 });

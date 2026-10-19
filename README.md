@@ -114,7 +114,7 @@ Trois façons de le lancer (même relevé, `lib/server/services/tracking.ts`) :
 
 | Signal | Condition | Poids |
 |---|---|---|
-| Pic de vues soudain | Un jour des 14 derniers gagne plus de 5 fois la moyenne des jours précédents et plus de 5 000 vues, ou plus de 50 000 vues par jour au premier relevé, fait le jour de la publication ou le lendemain | 45 |
+| Pic de vues soudain | Entre deux relevés des 14 derniers jours, plus de 5 000 vues par jour et plus de 5 fois le rythme moyen des relevés précédents (rythme calculé sur l'heure réelle des relevés : un jour de publication à peine entamé ne compte pas pour un jour entier), ou plus de 50 000 vues par jour au premier relevé, fait moins de 48 heures après la publication | 45 |
 | Beaucoup de vues, peu de likes | Au moins 5 000 vues et moins de 0,5 % de likes (likes connus seulement) | 35 |
 | Compte récent | Compte ClipBoost du clipper, ou son compte vérifié sur la plateforme du clip, de moins de 7 jours à l'envoi du clip | 20 |
 

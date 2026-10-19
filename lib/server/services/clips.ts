@@ -118,7 +118,8 @@ type Camp = typeof schema.campaigns.$inferSelect;
  */
 async function riskOf(tx: Tx, p: Pub, views: number, likes: number | null) {
   const V = schema.viewSnapshots, S = schema.socialAccounts;
-  const latest = await tx.select({ day: V.day, views: V.views, likes: V.likes }).from(V).where(eq(V.publicationId, p.id)).orderBy(desc(V.day)).limit(RISK_WINDOW_DAYS + 2);
+  const latest = (await tx.select({ day: V.day, views: V.views, likes: V.likes, recordedAt: V.recordedAt }).from(V).where(eq(V.publicationId, p.id)).orderBy(desc(V.day)).limit(RISK_WINDOW_DAYS + 2))
+    .map(({ recordedAt, ...x }) => ({ ...x, at: recordedAt.getTime() }));
   const [u] = await tx.select({ createdAt: schema.users.createdAt }).from(schema.users).where(eq(schema.users.id, p.userId));
   const [social] = await tx.select({ verifiedAt: S.verifiedAt }).from(S).where(and(eq(S.userId, p.userId), eq(S.platform, p.platform), eq(S.status, "verified")));
   return clipRisk({ createdAt: p.createdAt.getTime(), views, likes }, latest, { userCreatedAt: u?.createdAt.getTime() ?? null, socialVerifiedAt: social?.verifiedAt?.getTime() ?? null });
