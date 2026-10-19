@@ -27,8 +27,8 @@ Ouvrir http://localhost:3000 (accueil) et http://localhost:3000/espace (applicat
 | Compte | Rôle | Ce qu'il montre |
 |---|---|---|
 | `yacine@clipboost.dz` | Clipper | Gains, retraits, un clip publié sur TikTok et Instagram en un seul envoi, comptes TikTok, Instagram et YouTube vérifiés |
-| `amira@clipboost.dz`, `lina@clipboost.dz` | Clipper | Clips en attente, validés ou refusés ; Amira a aussi un compte TikTok en attente de vérification (code à coller dans sa bio) |
-| `admin@clipboost.dz` | Administration | Modération avec le score de risque de chaque clip : « Quand ta mère trouve ton bulletin » (Lina) a un pic de vues soudain et très peu de likes (risque élevé), l'Instagram du but de la 89e peu de likes (risque moyen) ; historique des vues sur 14 jours dans la fiche d'un clip, dernier relevé automatique il y a 2 heures |
+| `amira@clipboost.dz`, `lina@clipboost.dz` | Clipper | Clips en attente, validés ou refusés ; Amira a aussi un compte TikTok en attente de vérification (code à coller dans sa bio) ; Lina conteste le refus de « Sketch du marché » (recours en cours, avec sa capture d'écran) |
+| `admin@clipboost.dz` | Administration | Modération avec le score de risque de chaque clip : « Quand ta mère trouve ton bulletin » (Lina) a un pic de vues soudain et très peu de likes (risque élevé), l'Instagram du but de la 89e peu de likes (risque moyen) ; historique des vues sur 14 jours dans la fiche d'un clip, dernier relevé automatique il y a 2 heures ; onglet « Recours » avec le recours de Lina à accepter ou refuser |
 | `agence@clipboost.dz` | Agence (Tassili Sport) | Campagnes actives et en pause, une campagne refusée avec son motif (à modifier et relancer, ou à supprimer) |
 | `hoggar@clipboost.dz` | Agence (Hoggar Boissons) | Campagne en attente de vérification, recharge à confirmer, badge de vérification demandé |
 | `djurdjura@clipboost.dz` | Agence (Djurdjura Médias) | Agence vérifiée (badge bleu), campagne active sur YouTube, Facebook et Instagram |
@@ -134,7 +134,7 @@ Niveaux : faible sous 30, moyen de 30 à 59, élevé à partir de 60. Le score a
 
 ## Images
 
-Photos de profil (tous les comptes), photos de couverture (agences) et photos de campagne sont recadrées et compressées dans le navigateur, puis envoyées en data URL (JPEG, PNG ou WebP, 1,5 Mo au plus). Le serveur vérifie leur contenu (signature du format), les range dans la table `media` de PostgreSQL et les sert à l'adresse `/api/media/<id>`, publique et mise en cache indéfiniment (une image remplacée prend une nouvelle adresse ; l'ancienne est supprimée). Pour un très gros volume, ce stockage pourra passer sur un stockage objet (S3, R2…) sans changer les adresses enregistrées.
+Photos de profil (tous les comptes), photos de couverture (agences) et photos de campagne sont recadrées et compressées dans le navigateur ; les captures d'écran jointes à un recours sont seulement réduites (1 600 px au plus de côté), jamais recadrées. Toutes sont ensuite envoyées en data URL (JPEG, PNG ou WebP, 1,5 Mo au plus). Le serveur vérifie leur contenu (signature du format), les range dans la table `media` de PostgreSQL et les sert à l'adresse `/api/media/<id>`, publique et mise en cache indéfiniment (une image remplacée prend une nouvelle adresse ; l'ancienne est supprimée). Pour un très gros volume, ce stockage pourra passer sur un stockage objet (S3, R2…) sans changer les adresses enregistrées.
 
 ## Fichier HTML autonome
 
@@ -157,6 +157,7 @@ Les réglages sont modifiables par l'administrateur (page « Réglages du site �
 - **Catégories** : 17 catégories proposées, ou « Autre » avec la catégorie précisée par l'agence.
 - **Comptes sociaux** : un compte par plateforme et par clipper, vérifié par le code `CB-XXXX` collé dans sa bio (voir « Vérification des comptes sociaux »). Un compte en attente peut changer d'identifiant (il garde son code) ; un compte vérifié doit être retiré avant d'en relier un autre sur la même plateforme. Un même compte n'est vérifié que par un seul clipper (« Ce compte est déjà vérifié par un autre clipper »). Les `@compte` du profil montrés aux agences et à l'équipe suivent les comptes vérifiés ; l'administrateur voit les comptes de chaque clipper, vérifiés ou en attente, sur sa fiche. Vérifications limitées à 10 par quart d'heure et par clipper, ajouts à 30 par heure.
 - **Clips** : lien TikTok, Instagram, YouTube ou Facebook obligatoire, unique, publié depuis le compte vérifié du clipper sur cette plateforme (sinon « Vérifiez d'abord votre compte … ») ; quand le lien nomme son compte (TikTok `tiktok.com/@compte/video/…`, YouTube `youtube.com/@compte/…`), ce doit être le compte vérifié. Le clipper publie sur toutes les plateformes de la campagne ou sur une seule : un lien par plateforme, enregistrés ensemble (même lot) et examinés séparément. Gain = vues × tarif aux 1 000 vues, nul sous le seuil minimum et limité au plafond par clip. Après validation, le clip continue de rapporter pendant 7 jours, tant que la campagne est active ou en pause : une campagne terminée ne paie plus rien (son budget restant a été rendu à l'agence) et ses clips en attente ne peuvent plus qu'être refusés.
+- **Recours** : le clipper peut contester une seule fois le refus d'un clip (« Contester le refus » dans ses publications), avec un message de 20 à 1 000 caractères et une capture d'écran en preuve (obligatoire, envoyée entière, sans recadrage). Les admins sont prévenus ; l'équipe accepte ou refuse le recours depuis l'onglet « Recours » de la modération, avec un motif obligatoire (3 à 300 caractères) que le clipper reçoit dans sa notification. Accepter valide le clip comme une validation normale (même règle : campagne active ou en pause, seuil atteint, gain crédité) ; si c'est impossible, l'erreur s'affiche et le recours reste en attente. Un refus est définitif.
 - **Relevé des vues** : automatique toutes les 6 heures pour les clips en attente et les clips validés depuis moins de 7 jours ; l'équipe peut aussi saisir les vues (et, facultativement, les likes) d'un clip, sans jamais les faire baisser. Historique jour par jour gardé pour chaque clip.
 - **Score de risque de fraude** : pic de vues soudain (45), beaucoup de vues pour peu de likes (35), compte récent (20), plafonné à 100 ; faible sous 30, moyen jusqu'à 59, élevé au-delà. Réservé à l'équipe (voir « Relevé automatique des vues et score de risque »).
 - **Gains** : 3 jours de rétention avant d'être retirables.
@@ -188,6 +189,8 @@ Les routes répondent en JSON (`{ ok: true, … }` ou `{ error: "message" }`), s
 | `DELETE /api/social/<id>` | clipper | Retire un compte (en attente ou vérifié) |
 | `POST /api/clips` | clipper | Clip : `{ campaignId, title, links: [{ platform, url }] }`, depuis les comptes vérifiés du clipper |
 | `POST /api/clips/<id>/views`, `…/review` | admin | Vues relevées `{ views, likes? }` (likes facultatifs, gardés s'ils sont absents) ; validation ou refus |
+| `POST /api/clips/<id>/appeal` | clipper | Recours contre le refus d'un clip : `{ message, proof }` (20 à 1 000 caractères, capture d'écran en data URL) → `{ id }` ; un seul par clip |
+| `POST /api/appeals/<id>/review` | admin | Décision sur un recours : `{ approve, reason }` (motif obligatoire) ; accepté, le clip est validé et payé |
 | `POST /api/admin/track-views` | admin | Relève tout de suite les vues des clips suivis → bilan `{ by, total, updated, simulated, failed, at }` |
 | `GET /api/cron/views` | tâche planifiée | Relevé des vues toutes les 6 heures (Vercel Cron), avec `Authorization: Bearer <CRON_SECRET>` → même bilan |
 | `POST /api/credit`, `/api/withdrawals` | agence, clipper | Recharge du crédit ; demande de retrait |
@@ -198,7 +201,7 @@ Les routes répondent en JSON (`{ ok: true, … }` ou `{ error: "message" }`), s
 ## Tests
 
 ```bash
-npm test                                   # règles de calcul et score de risque, API simulée hors ligne (relevé des vues compris), lecture des bios et des statistiques (API des plateformes simulées)
+npm test                                   # règles de calcul et score de risque, API simulée hors ligne (relevé des vues et recours compris), lecture des bios et des statistiques (API des plateformes simulées)
 npm run dev                                # puis, dans un autre terminal :
 BASE_URL=http://localhost:3000 npx tsx tests/api-flow.mts   # parcours API complet
 ```

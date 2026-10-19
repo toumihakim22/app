@@ -317,4 +317,12 @@ Object.assign(I18N.ar, {
   "non lues": { zero: "غير مقروء", one: "غير مقروء", two: "غير مقروءين", few: "غير مقروءة", many: "غير مقروء", other: "غير مقروء" },
   "jours": { zero: "يوم", one: "يوم", two: "يومان", few: "أيام", many: "يومًا", other: "يوم" },
   "vues": { zero: "مشاهدة", one: "مشاهدة", two: "مشاهدتان", few: "مشاهدات", many: "مشاهدة", other: "مشاهدة" },
+
+  // Recours (badges de statut, lien des notifications ; partagés par le clipper et l'admin)
+  "Recours en cours": "اعتراض قيد المراجعة",
+  "Recours accepté": "اعتراض مقبول",
+  "Recours refusé": "اعتراض مرفوض",
+  "Voir le recours": "عرض الاعتراض",
+  "Envoyé le {date}": "أُرسل في {date}",
+  "Capture d'écran jointe au recours": "لقطة الشاشة المرفقة بالاعتراض",
 });

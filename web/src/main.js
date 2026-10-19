@@ -107,6 +107,8 @@ function applyRouteItem(area, view, id) {
     if (view === "campagnes") { if (campaignById(id)) state.modal = { type: "adm-camp", id }; return ""; }
     // Clip à examiner : sa fiche, la liste derrière filtrée sur son statut (« En attente » pour un nouveau clip).
     if (view === "moderation") {
+      // Recours (lien de la notification d'un nouveau recours) : sa fiche, la liste derrière sur l'onglet « Recours ».
+      if ((db.appeals || []).some((a) => a.id === id)) { state.adm.modStatus = "Recours"; state.modal = { type: "adm-appeal", id }; return ""; }
       const p = db.publications.find((x) => x.id === id);
       state.adm.modStatus = p && ["En attente", "Validée", "Refusée"].includes(p.status) ? p.status : "Toutes";
       if (p) state.modal = { type: "adm-clip", id };
@@ -252,7 +254,12 @@ const NOTIF_DEST = {
   "admin/campagnes": "Voir la campagne", "admin/moderation": "Voir le clip", "admin/retraits": "Voir la demande",
   "admin/utilisateur": "Voir le profil", "admin/apercu": "Ouvrir mon espace",
 };
-const notifDest = (href) => { const [area, view] = String(href || "").replace(/^#\//, "").split("/"); return t(NOTIF_DEST[`${area}/${view}`] || "Ouvrir"); };
+// Lien vers un recours (#/admin/moderation/<id du recours>) : « Voir le recours ».
+const notifDest = (href) => {
+  const [area, view, item] = String(href || "").replace(/^#\//, "").split("/");
+  if (area === "admin" && view === "moderation" && item && (db.appeals || []).some((a) => a.id === decodeURIComponent(item))) return t("Voir le recours");
+  return t(NOTIF_DEST[`${area}/${view}`] || "Ouvrir");
+};
 
 // État vide propre à chaque rôle.
 const NOTIF_EMPTY = {

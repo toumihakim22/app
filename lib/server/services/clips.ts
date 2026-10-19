@@ -140,6 +140,24 @@ async function credit(tx: Tx, p: Pub, c: Camp, amount: number, label: string, ho
   }
 }
 
+/**
+ * Validation d'un clip, verrouillé (for update) par l'appelant dans sa transaction : validation normale (reviewClip)
+ * ou recours accepté (services/appeals.ts), mêmes règles. La campagne doit encore payer et le seuil être atteint, sinon
+ * l'erreur est levée et rien n'est enregistré. Le clip est validé (début de sa fenêtre de gains) et le gain de ses vues
+ * relevées (seuil, plafond, budget restant) crédité au clipper, avec sa notification (credit). Renvoie le montant crédité.
+ */
+export async function validateClip(tx: Tx, p: Pub, holdDays: number) {
+  const [c] = await tx.select().from(schema.campaigns).where(eq(schema.campaigns.id, p.campaignId)).for("update");
+  // Campagne terminée : son budget restant a été rendu à l'agence, un gain ne serait plus couvert. Le clip peut être refusé.
+  if (!paying(c)) throw badRequest("Cette campagne est terminée : ce clip ne peut plus être validé");
+  if (belowMin(p.views, c)) throw badRequest(`Seuil non atteint : ${viewsFor(c.minPayout, c.rate).toLocaleString("fr-FR")} vues minimum`);
+  const now = new Date();
+  await tx.update(schema.publications).set({ status: "Validée", approvedAt: now }).where(eq(schema.publications.id, p.id));
+  const amount = payoutDelta(p.views, c, p.paid);
+  if (amount > 0) await credit(tx, { ...p, status: "Validée", approvedAt: now }, c, amount, c.title, holdDays);
+  return amount;
+}
+
 export async function reviewClip(admin: User, id: string, decision: { approve: true } | { approve: false; reason: string }) {
   const db = await getDb();
   const settings = await getSettings();
@@ -153,15 +171,8 @@ export async function reviewClip(admin: User, id: string, decision: { approve: t
       await logActivity(tx, "🚫", `Clip « ${p.title} » refusé par ${admin.name}.`);
       return;
     }
-    const [c] = await tx.select().from(schema.campaigns).where(eq(schema.campaigns.id, p.campaignId)).for("update");
-    // Campagne terminée : son budget restant a été rendu à l'agence, un gain ne serait plus couvert. Le clip peut être refusé.
-    if (!paying(c)) throw badRequest("Cette campagne est terminée : ce clip ne peut plus être validé");
-    if (belowMin(p.views, c)) throw badRequest(`Seuil non atteint : ${viewsFor(c.minPayout, c.rate).toLocaleString("fr-FR")} vues minimum`);
-    const now = new Date();
-    await tx.update(schema.publications).set({ status: "Validée", approvedAt: now }).where(eq(schema.publications.id, id));
-    const amount = payoutDelta(p.views, c, 0);
-    if (amount > 0) await credit(tx, { ...p, status: "Validée", approvedAt: now }, c, amount, c.title, settings.holdDays);
-    else await notify(tx, p.userId, "✅", `Votre clip « ${p.title} » a été validé.`, link.clip(p.id));
+    const amount = await validateClip(tx, p, settings.holdDays);
+    if (!amount) await notify(tx, p.userId, "✅", `Votre clip « ${p.title} » a été validé.`, link.clip(p.id));
     await logActivity(tx, "✅", `Clip « ${p.title} » validé (${fmt(amount)}).`);
   });
 }

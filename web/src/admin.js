@@ -27,8 +27,12 @@ const pendingWithdrawals = () => db.transactions.filter((tx) => tx.type === "ret
 const pendingRecharges = () => db.transactions.filter((tx) => tx.type === "recharge" && tx.status === "En cours");
 // Agences qui attendent une décision sur leur demande de badge de vérification.
 const admPendingBadges = () => db.users.filter((u) => u.role === "agence" && u.verification === "pending");
+// Recours des clippers (contestation d'un refus), du plus récent au plus ancien ; en attente : à examiner.
+const admAppeals = () => db.appeals || [];
+const admPendingAppeals = () => admAppeals().filter((a) => a.status === "En attente");
+const admAppealOf = (p) => admAppeals().find((a) => a.publicationId === p.id) || null;
 const adminBadge = (id) => ({
-  moderation: pendingPubs().length, retraits: pendingWithdrawals().length + pendingRecharges().length,
+  moderation: pendingPubs().length + admPendingAppeals().length, retraits: pendingWithdrawals().length + pendingRecharges().length,
   campagnes: db.campaigns.filter((c) => c.status === "En attente").length, utilisateurs: admPendingBadges().length,
 }[id] || 0);
 
@@ -153,7 +157,8 @@ const admQuoted = (title) => t("« {title} »", { title: esc(title) });
 function aApercu() {
   const s = db.settings, users = clippers(), pubs = pendingPubs(), wd = pendingWithdrawals(), rc = pendingRecharges();
   const campPending = db.campaigns.filter((c) => c.status === "En attente").length, badges = admPendingBadges().length;
-  const under = pubs.filter(belowMin).length, toPay = admSum(wd, admNet), queue = pubs.length + campPending + wd.length + rc.length + badges;
+  const appeals = admPendingAppeals().length;
+  const under = pubs.filter(belowMin).length, toPay = admSum(wd, admNet), queue = pubs.length + appeals + campPending + wd.length + rc.length + badges;
 
   // 1. À traiter : cartes interactives neutres (jamais de rose pour une file normale). Les demandes de badge n'ont leur
   // carte que lorsqu'il y en a. Sous sm : une liste compacte (une ligne par file, compteur en bout de ligne).
@@ -162,7 +167,10 @@ function aApercu() {
     rc.length ? t("{count} à confirmer", { count: plural(rc.length, "recharge", "recharges") }) : "",
   ].filter(Boolean).join(" · ");
   const queues = [
-    ["moderation", t("Clips à modérer"), pubs.length, pubs.length ? (under ? t("dont {n} sous le seuil", { n: fmt(under) }) : t("En attente de décision")) : t("Tout est à jour")],
+    ["moderation", t("Clips à modérer"), pubs.length + appeals, [
+      pubs.length ? (under ? t("dont {n} sous le seuil", { n: fmt(under) }) : t("En attente de décision")) : "",
+      appeals ? plural(appeals, "recours à examiner", "recours à examiner") : "",
+    ].filter(Boolean).join(" · ") || t("Tout est à jour")],
     ["campagnes", t("Campagnes à approuver"), campPending, campPending ? t("Soumises par les agences") : t("Aucune en attente")],
     ["retraits", t("Paiements à traiter"), wd.length + rc.length, paySub || t("Tout est à jour")],
     ...(badges ? [["utilisateurs", t("Badges à vérifier"), badges, t("Demandes des agences")]] : []),
@@ -641,9 +649,42 @@ function admTrackingCard() {
 
 // ---------- Modération ----------
 
+// Liste des recours (onglet « Recours » de la modération) : clip contesté (ouvre la fiche du recours), clippeur, envoi,
+// statut ; « Examiner » pour un recours en attente, « Voir » ensuite. Tableau dès xl, liste en dessous.
+function admAppealTable(list) {
+  const pubOf = (a) => db.publications.find((x) => x.id === a.publicationId);
+  const rows = list.map((a) => {
+    const p = pubOf(a), c = p && campaignById(p.campaign), u = admUser(a.userId), pending = a.status === "En attente";
+    const title = p ? p.title : t("Clip supprimé");
+    const open = (cls = "") => `<button type="button" data-action="adm-appeal" data-id="${a.id}" class="${ADM_ROW_LINK} ${cls}" title="${esc(t("Examiner le recours"))}"><span class="block truncate">${esc(title)}</span></button>`;
+    const sub = `<p class="mt-0.5 flex min-w-0 items-center gap-1 text-xs text-fg-subtle">${c ? `<span class="min-w-0 truncate">${esc(c.title)}</span><span class="shrink-0" aria-hidden="true">·</span>` : ""}<span class="shrink-0 whitespace-nowrap">${t("Envoyé le {date}", { date: date(a.createdAt) })}</span></p>`;
+    const msg = `<p class="mt-0.5 truncate text-xs text-fg-muted" dir="auto">${esc(a.message)}</p>`;
+    const action = (size) => `<button type="button" data-action="adm-appeal" data-id="${a.id}" class="${btn(pending ? "primary" : "ghost", size)}">${pending ? t("Examiner") : t("Voir")}</button>`;
+    const thumb = c ? `<span class="shrink-0">${coverThumb(c, "sm")}</span>` : "";
+    return {
+      tr: `<tr data-row="${a.id}" class="${TBL.tr}">
+        <td class="${ADM_TD_MAIN}"><div class="flex min-w-0 items-center gap-3">${thumb}<div class="min-w-0 flex-1">${open()}${sub}${msg}</div></div></td>
+        <td class="${TBL.td}"><div class="flex min-w-0 max-w-48 items-center gap-2 text-small">${avatar(u, "xs")}${admUserLink(u, "text-fg")}</div></td>
+        <td class="${TBL.td} ${TBL.tdNum}">${p ? fmt(p.views) : admDash}${p && p.platform ? `<span class="${TBL.tdSub} font-normal">${esc(p.platform)}</span>` : ""}</td>
+        <td class="${TBL.td}">${appealBadge(a.status)}</td>
+        <td class="${TBL.td} ${TBL.tdActions}"><div class="flex items-center justify-end gap-2">${action("sm")}</div></td>
+      </tr>`,
+      li: `<li data-row="${a.id}" class="${TBL.item}">
+        <div class="flex items-start gap-3">${thumb}<div class="min-w-0 flex-1">${open("text-sm")}${sub}${msg}</div>${appealBadge(a.status)}</div>
+        <div class="flex items-center justify-between gap-3 text-small"><span class="flex min-w-0 items-center gap-2">${avatar(u, "xs")}${admUserLink(u, "text-fg-muted")}</span>
+          <span class="shrink-0 text-fg-subtle">${p ? `${esc(p.platform)} · ${plural(p.views, "vue", "vues")}` : ""}</span></div>
+        <div class="grid sm:flex sm:justify-end">${action("md")}</div>
+      </li>`,
+    };
+  });
+  return admTable("xl", `<th scope="col" class="${TBL.th}">${t("Clip contesté")}</th><th scope="col" class="${TBL.th}">${t("Clippeur")}</th><th scope="col" class="${TBL.th} ${TBL.thNum}">${t("Vues")}</th><th scope="col" class="${TBL.th}">${t("Statut")}</th>${admThActions()}`,
+    rows.map((r) => r.tr).join(""), rows.map((r) => r.li).join(""));
+}
+
 function aModeration() {
   const f = state.adm, s = db.settings, all = db.publications;
   const n = (st) => all.filter((p) => p.status === st).length;
+  const appealTab = f.modStatus === "Recours", pendingAppeals = admPendingAppeals().length;
   const filtered = all.filter((p) => f.modStatus === "Toutes" || p.status === f.modStatus);
   // Tri par risque : score décroissant, l'ordre d'arrivée départage (tri stable).
   const list = f.modSort === "risk" ? [...filtered].sort((a, b) => (b.riskScore || 0) - (a.riskScore || 0)) : filtered;
@@ -652,6 +693,15 @@ function aModeration() {
       <summary class="flex cursor-pointer list-none items-center gap-1.5 font-medium [&::-webkit-details-marker]:hidden">${t("Gains crédités : seuil, plafond et rétention")}${icon("chevronDown", "size-4 shrink-0 transition-transform duration-150 group-open:rotate-180")}</summary>
       <p class="mt-1.5">${t("Les gains d'un clip validé sont crédités au clipper, seuil et plafond appliqués, et restent {hold} en rétention. Pendant {window} après la validation, chaque nouveau relevé paie les vues supplémentaires.", { hold: plural(s.holdDays, "jour", "jours"), window: plural(s.earningDays, "jour", "jours") })}</p>
     </details>`);
+  // Recours : en attente d'abord (le plus ancien en premier, comme une file), puis les décidés du plus récent au plus ancien ;
+  // tri par risque : score du clip contesté décroissant, à l'intérieur de chaque groupe.
+  const riskOf = (a) => (db.publications.find((p) => p.id === a.publicationId) || {}).riskScore || 0;
+  const done = (a) => (a.status === "En attente" ? 0 : 1);
+  const appealList = [...admAppeals()].sort((a, b) => done(a) - done(b)
+    || (f.modSort === "risk" ? riskOf(b) - riskOf(a) : 0)
+    || (done(a) ? b.createdAt.localeCompare(a.createdAt) : a.createdAt.localeCompare(b.createdAt)));
+  const appealsBody = appealList.length ? admAppealTable(appealList)
+    : emptyState("flag", t("Aucun recours"), t("Les contestations des clippers sur un clip refusé apparaîtront ici."));
   const empty = f.modStatus === "En attente"
     ? emptyState("check", t("Tout est à jour"), t("Aucun clip en attente de modération."))
     : emptyState("film", t("Aucun clip dans cette catégorie"), t("Changez de filtre pour voir les autres clips."));
@@ -659,9 +709,9 @@ function aModeration() {
   return `${pageHeader(t("Modération des clips"), t("Ouvrez chaque clip pour vérifier sa vidéo et ses vues, puis validez ceux qui respectent les règles de la campagne."))}
     <div class="mt-6">${rules}</div>
     ${db.tracking ? `<div class="mt-4">${admTrackingCard()}</div>` : ""}
-    ${admToolbar(`<div class="min-w-0">${segmented("adm-mod-status", f.modStatus, [["En attente", t("En attente"), n("En attente")], ["Validée", t("Validées"), n("Validée")], ["Refusée", t("Refusées"), n("Refusée")], ["Toutes", t("Toutes"), all.length]], t("Statut"), { scroll: true })}</div>`,
+    ${admToolbar(`<div class="min-w-0">${segmented("adm-mod-status", f.modStatus, [["En attente", t("En attente"), n("En attente")], ["Validée", t("Validées"), n("Validée")], ["Refusée", t("Refusées"), n("Refusée")], ["Recours", t("Recours"), pendingAppeals], ["Toutes", t("Toutes"), all.length]], t("Statut"), { scroll: true })}</div>`,
       `<div class="shrink-0">${segmented("adm-mod-sort", f.modSort === "risk" ? "risk" : "recent", [["recent", t("Plus récents")], ["risk", t("Risque le plus élevé")]], t("Trier les clips"))}</div>`)}
-    <div class="mt-4">${list.length ? admPubTable(publicationsTable(list, { showUser: true, actions: true, amountLabel: f.modStatus === "En attente" ? "Gain estimé" : "Gain", tag: admRiskTag })) : empty}</div>`;
+    <div class="mt-4">${appealTab ? appealsBody : list.length ? admPubTable(publicationsTable(list, { showUser: true, actions: true, amountLabel: f.modStatus === "En attente" ? "Gain estimé" : "Gain", tag: admRiskTag })) : empty}</div>`;
 }
 
 // ---------- Paiements ----------
@@ -1009,21 +1059,10 @@ function admCampSheet(m) {
   });
 }
 
-// Fiche d'examen d'un clip : lien de la vidéo (ouvrir, copier), clipper (fiche), campagne (sa fiche), vues, seuil et
-// plafond, gain estimé ou crédité, risque de fraude et historique des vues, autres plateformes du même envoi, motif d'un
-// refus ; décision (valider, refuser).
-function admClipSheet(m) {
-  const p = db.publications.find((x) => x.id === m.id), c = p && campaignById(p.campaign);
-  if (!p || !c) return admGone(t("Clip introuvable"), t("Ce clip n'existe plus."));
-  const u = userById(p.userId), o = c.ownerId ? userById(c.ownerId) : null, pending = p.status === "En attente", validated = p.status === "Validée";
-  const seuil = viewsFor(c, c.minPayout), cap = viewsFor(c, c.maxPayout);
-  // Même calcul que le serveur (lib/server/rules.ts) : gain brut arrondi, rien sous le seuil, plafond, budget restant.
-  const raw = Math.floor((p.views * c.rate) / 1000), under = raw < c.minPayout, capped = raw >= c.maxPayout;
-  const due = under ? 0 : Math.min(raw, c.maxPayout), remaining = Math.max(0, c.budget - c.spent), est = Math.min(due, remaining);
-  const siblings = p.batch ? db.publications.filter((x) => x.batch === p.batch && x.id !== p.id) : [];
+// Lien de la vidéo d'un clip (copier, ouvrir sur sa plateforme) : fiche d'examen du clip et fiche d'un recours.
+function admClipLinkBox(p) {
   const ic = PLATFORM_ICON[p.platform] || "film", platform = esc(p.platform);
-
-  const linkBox = `<div class="flex flex-col gap-3 rounded-tile border border-line p-3 sm:flex-row sm:items-center">
+  return `<div class="flex flex-col gap-3 rounded-tile border border-line p-3 sm:flex-row sm:items-center">
       <div class="flex min-w-0 flex-1 items-center gap-3">
         <span class="grid size-10 shrink-0 place-items-center rounded-tile bg-muted text-fg" aria-hidden="true">${icon(ic, "size-5")}</span>
         <div class="min-w-0 flex-1"><p class="text-xs text-fg-subtle">${t("Lien {platform}", { platform })}</p>
@@ -1031,12 +1070,11 @@ function admClipSheet(m) {
       </div>
       ${p.url ? `<a href="${esc(p.url)}" target="_blank" rel="noopener noreferrer" class="${btn("secondary", "md", "shrink-0")}">${icon("external")}${t("Ouvrir sur {platform}", { platform })}</a>` : ""}
     </div>`;
-  const status = `<div class="mt-4 flex flex-wrap items-center gap-x-2.5 gap-y-1.5">${statusBadge(p.status)}<span class="text-small text-fg-muted">${pending && under ? t("Soumis le {date} · seuil de paiement pas encore atteint", { date: date(p.date) }) : t("Soumis le {date}", { date: date(p.date) })}</span></div>`;
-  // Motif d'un refus : un des motifs proposés (français, traduit par tServer) ou un texte libre (affiché tel quel).
-  const reason = p.status === "Refusée" && p.reason ? `<div class="mt-4">${alertBox("danger", `<p class="font-medium">${t("Motif du refus")}</p><p class="mt-0.5 break-words" dir="auto">${esc(tServer(p.reason))}</p>`)}</div>` : "";
-  const ended = pending && c.status === "Terminée" ? `<div class="mt-4">${alertBox("warning", t("La campagne est terminée : son budget non consommé a été rendu à l'agence. Vérifiez avant de valider ce clip."))}</div>` : "";
-
-  const people = `<div class="mt-4 grid gap-2 sm:grid-cols-2">
+}
+// Clipper (lien vers son profil) et campagne (sa fiche, par-dessus) d'un clip : fiche du clip et fiche d'un recours.
+function admClipPeople(p, c) {
+  const u = userById(p.userId), o = c.ownerId ? userById(c.ownerId) : null;
+  return `<div class="mt-4 grid gap-2 sm:grid-cols-2">
       <div class="flex min-w-0 items-center gap-3 rounded-tile border border-line p-3">${u ? avatar(u, "md") : avatar({ id: p.userId, name: "?", role: "clipper" }, "md")}
         <div class="min-w-0 flex-1"><p class="text-xs text-fg-subtle">${t("Clipper")}</p><p class="flex min-w-0 text-sm font-medium text-fg">${admUserLink(u, "", { inModal: true })}</p>
           <p class="truncate text-xs text-fg-subtle">${u ? `${esc(t(u.level || "Clipper"))}${u.handle ? ` · <span dir="ltr">${esc(u.handle)}</span>` : ""}` : ""}</p></div></div>
@@ -1044,6 +1082,34 @@ function admClipSheet(m) {
         <span class="min-w-0 flex-1"><span class="block text-xs text-fg-subtle">${t("Campagne")}</span><span class="block truncate text-sm font-medium text-fg">${esc(c.title)}</span>
           <span class="block truncate text-xs text-fg-subtle">${esc(o ? o.name : c.brand)} · ${rateShort(c.rate)}</span></span>${icon("chevronRight", "size-4 shrink-0 text-fg-subtle rtl:-scale-x-100")}</button>
     </div>`;
+}
+
+// Fiche d'examen d'un clip : lien de la vidéo (ouvrir, copier), clipper (fiche), campagne (sa fiche), vues, seuil et
+// plafond, gain estimé ou crédité, risque de fraude et historique des vues, autres plateformes du même envoi, motif d'un
+// refus ; décision (valider, refuser).
+function admClipSheet(m) {
+  const p = db.publications.find((x) => x.id === m.id), c = p && campaignById(p.campaign);
+  if (!p || !c) return admGone(t("Clip introuvable"), t("Ce clip n'existe plus."));
+  const pending = p.status === "En attente", validated = p.status === "Validée", appeal = admAppealOf(p);
+  const seuil = viewsFor(c, c.minPayout), cap = viewsFor(c, c.maxPayout);
+  // Même calcul que le serveur (lib/server/rules.ts) : gain brut arrondi, rien sous le seuil, plafond, budget restant.
+  const raw = Math.floor((p.views * c.rate) / 1000), under = raw < c.minPayout, capped = raw >= c.maxPayout;
+  const due = under ? 0 : Math.min(raw, c.maxPayout), remaining = Math.max(0, c.budget - c.spent), est = Math.min(due, remaining);
+  const siblings = p.batch ? db.publications.filter((x) => x.batch === p.batch && x.id !== p.id) : [];
+  const platform = esc(p.platform);
+  const linkBox = admClipLinkBox(p), people = admClipPeople(p, c);
+
+  const status = `<div class="mt-4 flex flex-wrap items-center gap-x-2.5 gap-y-1.5">${statusBadge(p.status)}<span class="text-small text-fg-muted">${pending && under ? t("Soumis le {date} · seuil de paiement pas encore atteint", { date: date(p.date) }) : t("Soumis le {date}", { date: date(p.date) })}</span></div>`;
+  // Motif d'un refus : un des motifs proposés (français, traduit par tServer) ou un texte libre (affiché tel quel).
+  const reason = p.status === "Refusée" && p.reason ? `<div class="mt-4">${alertBox("danger", `<p class="font-medium">${t("Motif du refus")}</p><p class="mt-0.5 break-words" dir="auto">${esc(tServer(p.reason))}</p>`)}</div>` : "";
+  // Recours du clipper sur ce refus : statut et accès à sa fiche (décision, message, preuve).
+  const appealBox = appeal ? `<div class="mt-4 flex flex-col gap-3 rounded-tile border border-line p-3 sm:flex-row sm:items-center">
+      <div class="flex min-w-0 flex-1 items-center gap-3"><span class="grid size-10 shrink-0 place-items-center rounded-tile bg-info-bg text-info-fg" aria-hidden="true">${icon("flag", "size-5")}</span>
+        <div class="min-w-0 flex-1"><p class="text-sm font-medium text-fg">${t("Le clipper conteste ce refus")}</p><p class="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-fg-subtle">${appealBadge(appeal.status)}<span>${t("Envoyé le {date}", { date: date(appeal.createdAt) })}</span></p></div></div>
+      <button type="button" data-action="adm-appeal" data-id="${appeal.id}" class="${btn(appeal.status === "En attente" ? "primary" : "secondary", "md", "shrink-0")}">${appeal.status === "En attente" ? t("Examiner le recours") : t("Voir le recours")}</button>
+    </div>` : "";
+  const ended = pending && c.status === "Terminée" ? `<div class="mt-4">${alertBox("warning", t("La campagne est terminée : son budget non consommé a été rendu à l'agence. Vérifiez avant de valider ce clip."))}</div>` : "";
+
 
   const viewsBtn = pending || validated ? `<button type="button" data-action="adm-views" data-id="${p.id}" class="${btn("secondary", "sm")}">${icon("eye")}${t("Relever les vues")}</button>` : "";
   const threshold = under && !validated ? `<div class="mt-3">${progress(p.views, seuil, { label: false, aria: t("Progression vers le seuil") })}
@@ -1082,7 +1148,53 @@ function admClipSheet(m) {
 
   return modalShell({
     title: esc(p.title), description: `${platform} · ${esc(c.title)}`, size: "xl", footer,
-    body: `${linkBox}${status}${reason}${ended}${people}${payout}${admRiskPanel(p)}${batch}${rules}`,
+    body: `${linkBox}${status}${reason}${appealBox}${ended}${people}${payout}${admRiskPanel(p)}${batch}${rules}`,
+  });
+}
+
+// Fiche d'un recours (contestation d'un clip refusé) : le clip (lien, plateforme, vues, campagne), le motif du refus
+// d'origine, le message du clipper, sa preuve (agrandie au clic, proportions gardées) et le risque de fraude du clip ;
+// en attente : « Refuser » ou « Accepter » (motif obligatoire, modale par-dessus). Accepter valide le clip comme une
+// validation normale : impossible si la campagne ne paie plus ou si le seuil n'est pas atteint (bouton désactivé,
+// le serveur le refuse aussi). Décidé : la décision, son auteur et son motif.
+function admAppealCheck(p, c) {
+  const raw = Math.floor((p.views * c.rate) / 1000), under = raw < c.minPayout, ended = !["Active", "En pause"].includes(c.status);
+  const due = under ? 0 : Math.max(0, Math.min(raw, c.maxPayout) - (p.paid || 0)), est = Math.min(due, Math.max(0, c.budget - c.spent));
+  const blocked = ended ? t("Cette campagne est terminée : ce clip ne peut plus être validé.")
+    : under ? t("Seuil non atteint : {views} minimum", { views: plural(viewsFor(c, c.minPayout), "vue", "vues") }) : "";
+  return { under, ended, est, blocked };
+}
+function admAppealSheet(m) {
+  const a = admAppeals().find((x) => x.id === m.id), p = a && db.publications.find((x) => x.id === a.publicationId), c = p && campaignById(p.campaign);
+  if (!a || !p || !c) return admGone(t("Recours introuvable"), t("Ce recours n'existe plus."));
+  const u = admUser(a.userId), pending = a.status === "En attente", { under, est, blocked } = admAppealCheck(p, c);
+  const decider = a.decidedBy ? admUser(a.decidedBy) : null;
+  const status = `<div class="mt-4 flex flex-wrap items-center gap-x-2.5 gap-y-1.5">${appealBadge(a.status)}<span class="text-small text-fg-muted">${t("Envoyé le {date}", { date: date(a.createdAt) })}</span>
+      <button type="button" data-action="adm-clip" data-id="${p.id}" class="${btn("link", "", "ms-auto text-small")}">${t("Fiche d'examen du clip")}</button></div>`;
+  const decision = pending ? ""
+    : `<div class="mt-4">${alertBox(a.status === "Acceptée" ? "success" : "danger", `<p class="font-medium">${a.status === "Acceptée"
+        ? t("Recours accepté le {date} par {name} : le clip est validé.", { date: date(a.decidedAt), name: esc(decider ? decider.name : "ClipBoost") })
+        : t("Recours refusé le {date} par {name} : le clip reste refusé.", { date: date(a.decidedAt), name: esc(decider ? decider.name : "ClipBoost") })}</p>${a.decisionNote ? `<p class="mt-0.5 break-words" dir="auto">${t("Motif : {reason}", { reason: esc(a.decisionNote) })}</p>` : ""}`)}</div>`;
+  const tiles = `${admH3(t("Le clip"))}
+    <dl class="mt-2 grid grid-cols-3 gap-2">
+      ${admTile(t("Vues relevées"), fmt(p.views), t("seuil {views}", { views: fmt(viewsFor(c, c.minPayout)) }))}
+      ${admTile(t("Statut du clip"), statusBadge(p.status))}
+      ${admTile(pending ? t("Gain si accepté") : t("Gain"), p.status === "Validée" ? money(p.paid || 0) : under ? `<span class="font-normal text-fg-subtle">${t("— sous le seuil")}</span>` : money(est))}
+    </dl>
+    ${pending && blocked ? `<div class="mt-3">${alertBox("warning", `${esc(blocked)} ${t("Le recours ne peut pas être accepté pour le moment : refusez-le ou attendez un nouveau relevé des vues.")}`)}</div>` : ""}`;
+  const refusal = p.reason ? `<div class="mt-4">${alertBox("danger", `<p class="font-medium">${t("Motif du refus d'origine")}</p><p class="mt-0.5 break-words" dir="auto">${esc(tServer(p.reason))}</p>`)}</div>` : "";
+  const message = `${admH3(t("Message du clipper"))}
+    <div class="mt-2 ${TILE}"><p class="whitespace-pre-line break-words text-sm text-fg" dir="auto">${esc(a.message)}</p></div>`;
+  const proof = a.proof ? `${admH3(t("Preuve"))}
+    <button type="button" data-action="adm-proof" data-id="${a.id}" class="group relative mt-2 block h-56 w-full overflow-hidden rounded-tile bg-muted ${FOCUS}" aria-label="${esc(t("Agrandir la preuve"))}">
+      <img src="${esc(a.proof)}" alt="${esc(t("Capture d'écran jointe au recours"))}" class="absolute inset-0 size-full object-contain"/>
+      <span class="absolute bottom-2 end-2 inline-flex items-center gap-1 rounded-badge bg-surface/90 px-2 py-1 text-xs font-medium text-fg shadow-control">${icon("search", "size-3.5")}${t("Agrandir")}</span></button>` : "";
+  const footer = `<button type="button" data-action="close-modal" class="${btn(pending ? "ghost" : "secondary")}">${t("Fermer")}</button>${pending
+    ? `<button type="button" data-action="adm-appeal-decide" data-id="${a.id}" data-value="refuse" class="${btn("dangerSoft")}">${t("Refuser le recours")}</button>
+      <button type="button" data-action="adm-appeal-decide" data-id="${a.id}" data-value="approve" class="${btn("primary")}"${blocked ? ` disabled title="${esc(blocked)}"` : ""}>${icon("check")}${t("Accepter le recours")}</button>` : ""}`;
+  return modalShell({
+    title: t("Recours sur « {title} »", { title: `<bdi>${esc(p.title)}</bdi>` }), description: `${esc(u.name)} · ${esc(p.platform)} · ${esc(c.title)}`, size: "xl", footer,
+    body: `${admClipLinkBox(p)}${status}${decision}${admClipPeople(p, c)}${tiles}${refusal}${message}${proof}${admRiskPanel(p)}`,
   });
 }
 
@@ -1107,8 +1219,8 @@ LIVE.admViews = (d) => {
   return summary(rows);
 };
 
-// Motif d'un refus (campagne : 300 caractères, badge : 200) : compteur en direct (« 12 / 300 », de gauche à droite).
-LIVE.admReason = (d) => ({ count: `${fmt(String(d.reason || "").length)}${NB}/${NB}${state.modal && state.modal.type === "adm-refuse" ? 300 : 200}` });
+// Motif d'un refus (campagne et décision sur un recours : 300 caractères, badge : 200) : compteur en direct (« 12 / 300 », de gauche à droite).
+LIVE.admReason = (d) => ({ count: `${fmt(String(d.reason || "").length)}${NB}/${NB}${state.modal && ["adm-refuse", "adm-appeal-decide"].includes(state.modal.type) ? 300 : 200}` });
 
 // Motifs fréquents de refus d'une campagne : [puce, texte inséré dans le motif], sources françaises. Le texte est
 // inséré dans la langue affichée : le motif est un message libre de l'admin, envoyé tel qu'il le lit.
@@ -1136,6 +1248,36 @@ function adminModal() {
 
   if (m.type === "adm-camp") return admCampSheet(m);
   if (m.type === "adm-clip") return admClipSheet(m);
+  if (m.type === "adm-appeal") return admAppealSheet(m);
+  // Preuve d'un recours en grand (image entière, proportions gardées).
+  if (m.type === "adm-proof") {
+    const a = admAppeals().find((x) => x.id === m.id), p = a && db.publications.find((x) => x.id === a.publicationId);
+    if (!a || !a.proof) return admGone(t("Recours introuvable"), t("Ce recours n'existe plus."));
+    return modalShell({
+      title: t("Preuve du recours"), description: `${p ? `${admQuoted(p.title)} · ` : ""}${esc(admUser(a.userId).name)}`, size: "xl",
+      body: `<div class="grid place-items-center rounded-tile bg-muted"><img src="${esc(a.proof)}" alt="${esc(t("Capture d'écran jointe au recours"))}" class="max-h-[70dvh] w-auto max-w-full object-contain"/></div>`,
+      footer: `<button type="button" data-action="close-modal" class="${btn("secondary")}">${t("Fermer")}</button>`,
+    });
+  }
+  // Décision sur un recours : motif obligatoire (3 à 300 caractères), lu par le clipper dans sa notification.
+  if (m.type === "adm-appeal-decide") {
+    const a = admAppeals().find((x) => x.id === m.id), p = a && db.publications.find((x) => x.id === a.publicationId), c = p && campaignById(p.campaign);
+    if (!a || !p || !c) return admGone(t("Recours introuvable"), t("Ce recours n'existe plus."));
+    const approve = m.decision === "approve", { est, blocked } = admAppealCheck(p, c);
+    const note = approve
+      ? blocked ? alertBox("warning", esc(blocked))
+        : alertBox("info", est ? t("Le clip passe en « Validée » et {amount} sont crédités au clipper, comme pour une validation normale.", { amount: `<strong class="font-semibold">${da(est)}</strong>` })
+          : t("Le clip passe en « Validée », comme pour une validation normale (aucun gain à créditer : plafond ou budget atteint)."))
+      : alertBox("warning", t("Décision définitive : le clip reste refusé et le clipper ne pourra plus le contester."));
+    return modalShell({
+      title: approve ? t("Accepter le recours") : t("Refuser le recours"), description: `${admQuoted(p.title)} · ${esc(admUser(a.userId).name)}`, form: "adm-appeal-decide", live: "admReason",
+      body: `${admReasonField("adm-appeal-reason", t("Motif de la décision"), 300, true,
+          approve ? t("Ex. Licence de la musique vérifiée : le son est libre de droits.") : t("Ex. La capture ne montre pas la licence du son utilisé."),
+          t("Entre 3 et 300 caractères. Le clipper le lit dans sa notification."))}
+        <div class="mt-5">${note}</div>`,
+      footer: `${cancel()}<button type="submit" class="${btn(approve ? "primary" : "danger")}"${approve && blocked ? " disabled" : ""}>${approve ? `${icon("check")}${t("Accepter et valider le clip")}` : t("Refuser le recours")}</button>`,
+    });
+  }
   if (m.type === "adm-refuse") {
     const c = campaignById(m.id);
     if (!c) return admGone(t("Campagne introuvable"), t("Cette campagne a été annulée ou supprimée par son agence."));
@@ -1249,7 +1391,8 @@ function handleAdminAction(action, el) {
     case "adm-period": state.period = Number(v) === 7 ? 7 : 30; return render();
     // Carte « À traiter », lien vers Paiements : le lien ouvre la page (changement d'adresse), on y présélectionne la file.
     case "adm-focus":
-      if (v === "moderation") state.adm.modStatus = "En attente";
+      // Que des recours à examiner : la carte ouvre l'onglet « Recours ».
+      if (v === "moderation") state.adm.modStatus = !pendingPubs().length && admPendingAppeals().length ? "Recours" : "En attente";
       if (v === "campagnes" && db.campaigns.some((c) => c.status === "En attente")) Object.assign(state.adm, { campQ: "", campStatus: "En attente" });
       if (v === "retraits") state.adm.payTab = pendingWithdrawals().length || !pendingRecharges().length ? "retraits" : "recharges";
       if (v === "recharges") state.adm.payTab = "recharges";
@@ -1266,6 +1409,10 @@ function handleAdminAction(action, el) {
     // Fiches d'examen, ouvertes sur place.
     case "adm-camp": return admOpenSheet("adm-camp", id);
     case "adm-clip": return admOpenSheet("adm-clip", id);
+    // Recours : sa fiche, la preuve en grand et la décision (par-dessus la fiche).
+    case "adm-appeal": return admOpenSheet("adm-appeal", id);
+    case "adm-proof": return admOpen({ type: "adm-proof", id });
+    case "adm-appeal-decide": return admOpen({ type: "adm-appeal-decide", id, decision: v === "approve" ? "approve" : "refuse" });
     // Décisions sur une campagne. L'approbation débite le crédit de l'agence (budget + commission) : le serveur la refuse
     // si le crédit ne suffit pas (message traduit par data.js) ; la fiche est refermée après une décision réussie.
     case "adm-camp-approve": {
@@ -1361,6 +1508,14 @@ function handleAdminSubmit(form, data) {
     const likes = admParse(data.likes), noLikes = String(data.likes ?? "").trim() === "";
     if (!noLikes && (!Number.isInteger(likes) || likes < 0)) return admInvalid("adm-views", "likes", t("Indiquez un nombre entier de likes, ou laissez le champ vide."));
     return act("POST", `/api/clips/${m.id}/views`, noLikes ? { views } : { views, likes }, t("Vues enregistrées"), () => admPop(["views"], m.id));
+  }
+  // Décision sur un recours : motif obligatoire (3 à 300 caractères). Acceptation impossible (seuil, campagne
+  // terminée) : l'erreur du serveur s'affiche et le recours reste en attente, modales ouvertes.
+  if (form === "adm-appeal-decide") {
+    const reason = String(data.reason || "").trim(), approve = m.decision === "approve";
+    if (reason.length < 3) return admInvalid(form, "reason", t("Indiquez le motif de votre décision (3 caractères minimum)."));
+    return act("POST", `/api/appeals/${encodeURIComponent(m.id)}/review`, { approve, reason },
+      approve ? t("Recours accepté : clip validé, le clipper est prévenu") : t("Recours refusé, le clipper est prévenu"), () => admPop(["adm-appeal-decide", "adm-proof", "adm-appeal"], m.id));
   }
   // Refus d'une campagne : motif obligatoire (3 à 300 caractères), transmis à l'agence.
   if (form === "adm-refuse") {

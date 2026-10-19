@@ -119,6 +119,18 @@ Object.assign(I18N.ar, {
   "Le nombre de vues ne peut pas diminuer": "لا يمكن أن ينخفض عدد المشاهدات",
   "Relevé planifié désactivé : définissez CRON_SECRET": "الرصد المجدول معطَّل: عرِّف CRON_SECRET",
   "Ce clip a déjà été traité": "سبقت مراجعة هذا المقطع",
+  // Recours (lib/server/services/appeals.ts, validation.ts : appealSchema, reviewAppealSchema)
+  "Message manquant": "الرسالة مفقودة",
+  "Expliquez votre contestation en 20 caractères au moins": "اشرح اعتراضك في 20 حرفًا على الأقل",
+  "Message trop long (1 000 caractères maximum)": "الرسالة طويلة جدًا (1000 حرف كحد أقصى)",
+  "Ajoutez une capture d'écran comme preuve": "أضف لقطة شاشة كإثبات",
+  "Indiquez votre décision": "حدّد قرارك",
+  "Indiquez le motif de votre décision (3 caractères minimum)": "اذكر سبب قرارك (3 أحرف على الأقل)",
+  "Seul un clip refusé peut être contesté": "لا يمكن الاعتراض إلا على مقطع مرفوض",
+  "Vous avez déjà contesté ce clip": "سبق أن اعترضت على هذا المقطع",
+  "Recours introuvable": "الاعتراض غير موجود",
+  "Ce recours a déjà été traité": "سبقت معالجة هذا الاعتراض",
+  "Cette campagne est terminée : ce clip ne peut plus être validé": "انتهت هذه الحملة: لم يعد بالإمكان قبول هذا المقطع",
 
   // ---------- Comptes sociaux des clippers (lib/server/services/social.ts, validation.ts) ----------
   "Identifiant manquant": "اسم المستخدم مفقود",
@@ -225,6 +237,13 @@ I18N_RX.ar.push(
   [/^Clip « (.+) » validé \(([+-]?[\d\s]+ DA)\)\.$/, "تمت الموافقة على المقطع « $1 » ($2)."],
   [/^Clip « (.+) » refusé par (.+)\.$/, "رُفض المقطع « $1 » بواسطة $2."],
   [/^Clip « (.+) » refusé : (.+)$/, "رُفض المقطع « $1 »: $2"],
+  // Recours : notification des admins, décision envoyée au clipper, journal d'activité.
+  [/^(.+) conteste le refus du clip « (.+) »\.$/, "يعترض $1 على رفض المقطع « $2 »."],
+  [/^(.+) a contesté le refus du clip « (.+) »\.$/, "اعترض $1 على رفض المقطع « $2 »."],
+  [/^Recours accepté pour « (.+) » : le clip est validé\. (.+)$/, "قُبل الاعتراض على « $1 »: تمت الموافقة على المقطع. $2"],
+  [/^Recours refusé pour « (.+) » : (.+)$/, "رُفض الاعتراض على « $1 »: $2"],
+  [/^Recours de (.+) sur « (.+) » accepté par (.+) : clip validé \(([+-]?[\d\s]+ DA)\)\.$/, "قبل $3 اعتراض $1 على « $2 »: تمت الموافقة على المقطع ($4)."],
+  [/^Recours de (.+) sur « (.+) » refusé par (.+)\.$/, "رفض $3 اعتراض $1 على « $2 »."],
 
   // ---------- Retraits et recharges ----------
   [/^(.+) demande un retrait de ([+-]?[\d\s]+ DA) \(instantané\)\.$/, "طلب سحب فوري بقيمة $2 من $1."],

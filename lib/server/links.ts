@@ -13,6 +13,8 @@ export const link = {
   adminCampaign: (campaignId: string) => `#/admin/campagnes/${campaignId}`,
   /** Clip à examiner : sa fiche dans la modération. */
   adminClip: (publicationId: string) => `#/admin/moderation/${publicationId}`,
+  /** Recours d'un clipper sur un clip refusé : sa fiche dans la modération (onglet Recours). */
+  adminAppeal: (appealId: string) => `#/admin/moderation/${appealId}`,
   /** Profil d'un utilisateur dans l'administration (demande de badge de vérification). */
   adminUser: (userId: string) => `#/admin/utilisateur/${userId}`,
   /** Profil de l'agence (badge de vérification accordé, refusé ou retiré). */

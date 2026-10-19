@@ -313,4 +313,12 @@ Object.assign(I18N.en, {
   "non lues": { one: "unread", other: "unread" },
   "jours": { one: "day", other: "days" },
   "vues": { one: "view", other: "views" },
+
+  // Recours (badges de statut, lien des notifications ; partagés par le clipper et l'admin)
+  "Recours en cours": "Appeal pending",
+  "Recours accepté": "Appeal accepted",
+  "Recours refusé": "Appeal rejected",
+  "Voir le recours": "View appeal",
+  "Envoyé le {date}": "Sent on {date}",
+  "Capture d'écran jointe au recours": "Screenshot attached to the appeal",
 });

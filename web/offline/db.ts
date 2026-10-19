@@ -24,6 +24,8 @@ export type SocialRow = Row<typeof schema.socialAccounts.$inferSelect, "createdA
 export type SnapshotRow = Row<typeof schema.viewSnapshots.$inferSelect, "recordedAt">;
 /** Dernière exécution d'une tâche planifiée (« views » : relevé des vues, lancé à la demande toutes les 6 heures). */
 export type JobRunRow = Row<typeof schema.jobRuns.$inferSelect, "lastRunAt">;
+/** Recours d'un clipper contre le refus d'un clip ; la preuve (capture d'écran) est gardée en data URL. */
+export type AppealRow = Row<typeof schema.appeals.$inferSelect, "createdAt" | "decidedAt">;
 
 export type Store = {
   version: number;
@@ -39,6 +41,7 @@ export type Store = {
   social: SocialRow[];
   snapshots: SnapshotRow[];
   jobRuns: JobRunRow[];
+  appeals: AppealRow[];
   settings: Partial<Settings>;
   /** Session du navigateur (l'équivalent du cookie cb_session). */
   session: { userId: string; expiresAt: number } | null;
@@ -51,7 +54,7 @@ export const STORAGE_KEY = `clipboost-offline-v${VERSION}`;
 
 export const emptyStore = (): Store => ({
   version: VERSION, users: [], emailCodes: [], campaigns: [], members: [], publications: [], transactions: [],
-  notifications: [], activity: [], oauth: [], social: [], snapshots: [], jobRuns: [], settings: {}, session: null,
+  notifications: [], activity: [], oauth: [], social: [], snapshots: [], jobRuns: [], appeals: [], settings: {}, session: null,
 });
 
 // ---------- Persistance ----------
@@ -81,6 +84,7 @@ function upgrade(s: Store): Store {
   s.social ??= [];
   s.snapshots ??= [];
   s.jobRuns ??= [];
+  s.appeals ??= [];
   for (const u of s.users) {
     u.avatar ??= null;
     u.cover ??= null;

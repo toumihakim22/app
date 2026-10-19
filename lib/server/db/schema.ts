@@ -183,6 +183,28 @@ export const viewSnapshots = pgTable("view_snapshots", {
   recordedAt: timestamp("recorded_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [primaryKey({ columns: [t.publicationId, t.day] }), index("view_snapshots_day_idx").on(t.day)]);
 
+export type AppealStatus = "En attente" | "Acceptée" | "Refusée";
+
+/**
+ * Recours d'un clipper contre le refus d'un clip : un seul par clip (index unique), même après un refus du recours.
+ * Le clipper explique son désaccord (message) et joint une preuve (capture d'écran, « /api/media/<id> » comme les
+ * autres images). L'équipe l'accepte (le clip est alors validé et payé comme à une validation normale) ou le refuse,
+ * avec un motif dans les deux cas (decision_note), transmis au clipper.
+ */
+export const appeals = pgTable("appeals", {
+  id: id(),
+  publicationId: text("publication_id").notNull().references(() => publications.id, { onDelete: "cascade" }),
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  message: text("message").notNull(),
+  proof: text("proof").notNull(),
+  status: text("status").$type<AppealStatus>().notNull().default("En attente"),
+  /** Motif de la décision de l'équipe (acceptation ou refus). */
+  decisionNote: text("decision_note"),
+  decidedBy: text("decided_by").references(() => users.id, { onDelete: "set null" }),
+  decidedAt: timestamp("decided_at", { withTimezone: true }),
+  createdAt: createdAt(),
+}, (t) => [uniqueIndex("appeals_publication_idx").on(t.publicationId), index("appeals_user_idx").on(t.userId), index("appeals_status_idx").on(t.status)]);
+
 /** Dernière exécution de chaque tâche planifiée (« views » : relevé des vues), avec son bilan. */
 export const jobRuns = pgTable("job_runs", {
   name: text("name").primaryKey(),

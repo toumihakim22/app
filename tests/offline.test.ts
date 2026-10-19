@@ -171,8 +171,8 @@ test("anciennes notifications sans lien : lien déduit du texte", async () => {
   };
   const before = await linksOf();
   const store = JSON.parse(storage.get(STORAGE_KEY)!);
-  // Les demandes de badge sont postérieures aux liens : une ancienne copie n'en contient pas.
-  for (const n of store.notifications) if (!/badge de vérification/.test(n.text)) delete n.link;
+  // Les demandes de badge et les recours sont postérieurs aux liens : une ancienne copie n'en contient pas.
+  for (const n of store.notifications) if (!/badge de vérification| conteste le refus du clip /.test(n.text)) delete n.link;
   storage.set(STORAGE_KEY, JSON.stringify(store));
   const after = await linksOf();
   let exact = 0, total = 0;
@@ -338,12 +338,13 @@ test("ancienne copie du navigateur : colonnes ajoutées complétées ; stockage 
   for (const p of store.publications) for (const k of ["batch", "likes", "checkedAt", "riskScore", "riskFlags"]) delete p[k];
   delete store.snapshots;
   delete store.jobRuns;
+  delete store.appeals;
   storage.set(STORAGE_KEY, JSON.stringify(store));
   await login("agence@clipboost.dz");
   const s = await state();
   assert.deepEqual([s.me.avatar, s.me.verification, s.me.locale, s.me.providers], [null, "none", "fr", []]);
   await login("yacine@clipboost.dz");
-  assert.deepEqual((await state()).me.socialAccounts, []);
+  assert.deepEqual([(await state()).me.socialAccounts, (await state()).appeals], [[], []]);
   await login("agence@clipboost.dz");
   assert.ok(s.campaigns.every((c: { updatedAt: string; createdAt: string }) => c.updatedAt.startsWith(c.createdAt)));
   // Sans historique ni dernier relevé : le relevé des vues a été lancé au premier chargement, l'historique commence.
@@ -514,6 +515,105 @@ test("relevé des vues : bouton de l'admin, relevé dû toutes les 6 heures, his
   const cron = await call("GET", "/api/cron/views");
   assert.deepEqual([cron.status, cron.data.by, cron.data.total], [200, "cron", 7]);
   assert.equal(JSON.parse(storage.get(STORAGE_KEY)!).jobRuns[0].summary.by, "cron");
+});
+
+test("recours : un clip refusé contesté une seule fois, accepté (clip validé et payé) ou refusé avec un motif", async () => {
+  type Appeal = { id: string; publicationId: string; userId: string; message: string; proof: string; status: string; decisionNote: string | null; decidedAt: string | null; decidedBy?: string | null };
+  type Pub = { id: string; title: string; status: string; paid: number; campaign: string };
+  type Note = { text: string; link: string | null };
+  await offlineApi.reset();
+  // Données d'exemple : Lina conteste le refus de « Sketch du marché » (capture d'écran jointe), en attente de l'équipe.
+  await login("lina@clipboost.dz");
+  let s = await state();
+  const sketch: Pub = s.publications.find((p: Pub) => p.title === "Sketch du marché");
+  const rire = s.campaigns.find((c: { title: string }) => c.title === "Les Sketchs du Bled");
+  assert.equal(sketch.status, "Refusée");
+  const seeded: Appeal = s.appeals[0];
+  assert.deepEqual([s.appeals.length, seeded.publicationId, seeded.status, seeded.decisionNote, "decidedBy" in seeded], [1, sketch.id, "En attente", null, false]);
+  assert.match(seeded.proof, /^data:image\/jpeg;base64,\/9j\//);
+  assert.match(seeded.message, /^La musique de ce sketch vient de la bibliothèque audio/);
+  // Une seule contestation par clip.
+  assert.deepEqual(await call("POST", `/api/clips/${sketch.id}/appeal`, { message: "Une deuxième contestation du même clip.", proof: PNG }), { status: 400, data: { error: "Vous avez déjà contesté ce clip" } });
+
+  // L'équipe est prévenue (lien vers le recours dans la modération) ; motif obligatoire pour décider.
+  await login("admin@clipboost.dz", "AdminClip2026");
+  s = await state();
+  const adminId = s.me.id, spent = s.campaigns.find((c: { id: string }) => c.id === rire.id).spent;
+  assert.equal(s.notifications.find((n: Note) => n.text === "Lina Mansouri conteste le refus du clip « Sketch du marché ».").link, `#/admin/moderation/${seeded.id}`);
+  assert.deepEqual([s.appeals.length, s.appeals[0].decidedBy], [1, null]);
+  assert.deepEqual(await call("POST", `/api/appeals/${seeded.id}/review`, { approve: true, reason: " ok " }), { status: 400, data: { error: "Indiquez le motif de votre décision (3 caractères minimum)" } });
+  assert.deepEqual(await call("POST", `/api/appeals/${seeded.id}/review`, { approve: true }), { status: 400, data: { error: "Motif manquant" } });
+  assert.deepEqual(await call("POST", "/api/appeals/inconnu/review", { approve: true, reason: "Preuve vérifiée" }), { status: 404, data: { error: "Recours introuvable" } });
+
+  // Accepté : le clip est validé et payé comme à une validation normale (4 100 vues à 125 DA les 1 000 : 512 DA).
+  const reason = "Musique libre de droits : la licence a été vérifiée";
+  assert.deepEqual(await call("POST", `/api/appeals/${seeded.id}/review`, { approve: true, reason }), { status: 200, data: { ok: true } });
+  s = await state();
+  const validated: Pub = s.publications.find((p: Pub) => p.id === sketch.id);
+  assert.deepEqual([validated.status, validated.paid, s.campaigns.find((c: { id: string }) => c.id === rire.id).spent - spent], ["Validée", 512, 512]);
+  assert.deepEqual([s.appeals[0].status, s.appeals[0].decisionNote, s.appeals[0].decidedBy], ["Acceptée", reason, adminId]);
+  assert.match(s.appeals[0].decidedAt, /^\d{4}-\d{2}-\d{2}T/);
+  assert.equal(s.activity[0].text, "Recours de Lina Mansouri sur « Sketch du marché » accepté par Équipe ClipBoost : clip validé (512 DA).");
+  assert.deepEqual(await call("POST", `/api/appeals/${seeded.id}/review`, { approve: false, reason: "Changement d'avis" }), { status: 400, data: { error: "Ce recours a déjà été traité" } });
+  // Le clipper reçoit la décision et son motif (lien vers le clip) et le gain, retirable après la rétention.
+  await login("lina@clipboost.dz");
+  s = await state();
+  const notes = s.notifications.slice(0, 2).map((n: Note) => [n.text, n.link]);
+  assert.deepEqual(notes.find(([text]: string[]) => text.startsWith("Recours")), [`Recours accepté pour « Sketch du marché » : le clip est validé. ${reason}.`, `#/clipper/publications/${sketch.id}`]);
+  assert.ok(notes.some(([text]: string[]) => text === "+512 DA pour « Sketch du marché ». Retirable dans 3 jours."));
+  assert.deepEqual([s.transactions[0].type, s.transactions[0].amount, s.transactions[0].label], ["gain", 512, "Les Sketchs du Bled"]);
+  assert.deepEqual([s.appeals[0].status, s.appeals[0].decisionNote], ["Acceptée", reason]);
+  assert.deepEqual(await call("POST", `/api/clips/${sketch.id}/appeal`, { message: "Je conteste encore une fois ce clip.", proof: PNG }), { status: 400, data: { error: "Seul un clip refusé peut être contesté" } });
+
+  // Nouveau clip refusé : contrôles de la contestation, puis refus du recours (définitif).
+  const sent = await call("POST", "/api/clips", { campaignId: rire.id, title: "Le prof de maths", links: [{ platform: "TikTok", url: "https://www.tiktok.com/@lina.lol/video/9001" }] });
+  assert.equal(sent.status, 201);
+  const clipId: string = sent.data.id, appeal = (body: unknown) => call("POST", `/api/clips/${clipId}/appeal`, body);
+  const message = "Mes vues viennent d'un partage par une page d'humour, pas d'un achat.";
+  assert.deepEqual(await appeal({ message, proof: PNG }), { status: 400, data: { error: "Seul un clip refusé peut être contesté" } });
+  await login("admin@clipboost.dz", "AdminClip2026");
+  assert.equal((await call("POST", `/api/clips/${clipId}/review`, { approve: false, reason: "Vues suspectes ou achetées" })).status, 200);
+  await login("lina@clipboost.dz");
+  assert.deepEqual(await appeal({ message: "Pas d'accord.", proof: PNG }), { status: 400, data: { error: "Expliquez votre contestation en 20 caractères au moins" } });
+  assert.deepEqual(await appeal({ message: "x".repeat(1001), proof: PNG }), { status: 400, data: { error: "Message trop long (1 000 caractères maximum)" } });
+  assert.deepEqual(await appeal({ message }), { status: 400, data: { error: "Ajoutez une capture d'écran comme preuve" } });
+  assert.deepEqual(await appeal({ message, proof: "" }), { status: 400, data: { error: "Ajoutez une capture d'écran comme preuve" } });
+  assert.deepEqual(await appeal({ message, proof: "data:image/png;base64,AAAAAAAAAAAAAAAA" }), { status: 400, data: { error: "Image invalide (JPEG, PNG ou WebP)" } });
+  await login("yacine@clipboost.dz");
+  assert.deepEqual(await appeal({ message, proof: PNG }), { status: 404, data: { error: "Clip introuvable" } });
+  await login("agence@clipboost.dz");
+  assert.equal((await appeal({ message, proof: PNG })).status, 403);
+  await login("lina@clipboost.dz");
+  const created = await appeal({ message: `  ${message}  `, proof: PNG });
+  assert.equal(created.status, 201);
+  assert.deepEqual(await appeal({ message, proof: PNG }), { status: 400, data: { error: "Vous avez déjà contesté ce clip" } });
+  s = await state();
+  assert.deepEqual([s.appeals[0].id, s.appeals[0].message, s.appeals[0].proof, s.appeals[0].status], [created.data.id, message, PNG, "En attente"]);
+  // Seule l'équipe décide.
+  assert.equal((await call("POST", `/api/appeals/${created.data.id}/review`, { approve: true, reason: "Je valide moi-même" })).status, 403);
+  await login("admin@clipboost.dz", "AdminClip2026");
+  assert.equal((await state()).notifications[0].link, `#/admin/moderation/${created.data.id}`);
+  // Acceptation impossible (seuil non atteint : aucune vue) : l'erreur est renvoyée et le recours reste en attente.
+  const refused = await call("POST", `/api/appeals/${created.data.id}/review`, { approve: true, reason: "Partage vérifié" });
+  assert.equal(refused.status, 400);
+  assert.match(refused.data.error, /^Seuil non atteint : 2\s000 vues minimum$/);
+  assert.equal((await state()).appeals.find((a: Appeal) => a.id === created.data.id).status, "En attente");
+  const no = "Les vues achetées restent visibles sur la courbe du clip";
+  assert.deepEqual(await call("POST", `/api/appeals/${created.data.id}/review`, { approve: false, reason: no }), { status: 200, data: { ok: true } });
+  s = await state();
+  assert.deepEqual([s.publications.find((p: Pub) => p.id === clipId).status, s.appeals[0].status, s.appeals[0].decisionNote], ["Refusée", "Refusée", no]);
+  assert.equal(s.activity[0].text, "Recours de Lina Mansouri sur « Le prof de maths » refusé par Équipe ClipBoost.");
+  await login("lina@clipboost.dz");
+  s = await state();
+  assert.deepEqual([s.notifications[0].text, s.notifications[0].link], [`Recours refusé pour « Le prof de maths » : ${no}.`, `#/clipper/publications/${clipId}`]);
+  // Définitif : le clip ne peut plus être contesté.
+  assert.deepEqual(await appeal({ message, proof: PNG }), { status: 400, data: { error: "Vous avez déjà contesté ce clip" } });
+
+  // Une agence ne voit aucun recours (ni message, ni preuve) ; un autre clipper ne voit pas ceux de Lina.
+  await login("agence@clipboost.dz");
+  assert.deepEqual((await state()).appeals, []);
+  await login("yacine@clipboost.dz");
+  assert.deepEqual((await state()).appeals, []);
 });
 
 test("réinitialisation : retour aux données d'exemple", async () => {

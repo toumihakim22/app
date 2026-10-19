@@ -99,6 +99,11 @@ export async function stateFor(user: User) {
   const historyOf = (p: (typeof pubRows)[number]) => dailyGains(snapsOf.get(p.id) ?? [], p.createdAt.getTime() >= snapSince ? utcDay(p.createdAt) : undefined)
     .filter((h) => h.day >= windowStart).map(({ day, views, likes, gain }) => ({ day, views, likes, gain }));
   const [viewsRun] = isAdmin ? await db.select().from(schema.jobRuns).where(eq(schema.jobRuns.name, VIEWS_JOB)) : [];
+  // Recours contre un clip refusé : les siens pour un clipper, tous pour l'admin (avec l'auteur de la décision) ; aucun
+  // pour une agence (message et preuve restent entre le clipper et l'équipe).
+  const A = schema.appeals;
+  const appealRows = isAdmin ? await db.select().from(A).orderBy(desc(A.createdAt))
+    : isClipper ? await db.select().from(A).where(eq(A.userId, user.id)).orderBy(desc(A.createdAt)) : [];
 
   // Séries des graphiques.
   let series: { daily: number[]; label: string };
@@ -138,6 +143,10 @@ export async function stateFor(user: User) {
       id: p.id, userId: p.userId, campaign: p.campaignId, title: p.title, platform: p.platform, url: p.url, batch: p.batch, views: p.views, likes: p.likes,
       checkedAt: p.checkedAt?.toISOString() ?? null, status: p.status, reason: p.reason, paid: p.paid, date: day(p.createdAt),
       ...(isAdmin ? { riskScore: p.riskScore, riskFlags: p.riskFlags, history: historyOf(p) } : {}),
+    })),
+    appeals: appealRows.map((a) => ({
+      id: a.id, publicationId: a.publicationId, userId: a.userId, message: a.message, proof: a.proof, status: a.status, decisionNote: a.decisionNote,
+      decidedAt: a.decidedAt?.toISOString() ?? null, createdAt: a.createdAt.toISOString(), ...(isAdmin ? { decidedBy: a.decidedBy } : {}),
     })),
     transactions: txRows.map((t) => ({ id: t.id, ref: t.ref, userId: t.userId, type: t.type, label: t.label, amount: t.amount, fee: t.fee, status: t.status, method: t.method, date: day(t.createdAt), time: time(t.createdAt), availableAt: t.availableAt?.toISOString() ?? null })),
     notifications: notifRows.map((n) => ({ id: n.id, icon: n.icon, text: n.text, link: n.link ?? inferLink(user.role, n.text, linkCtx), unread: !n.read, at: n.createdAt.toISOString() })),

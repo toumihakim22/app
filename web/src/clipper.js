@@ -96,6 +96,8 @@ const clErr = (msg) => `<span data-field-error class="flex items-center gap-1 te
 const clSocial = () => me().socialAccounts || [];
 // Plateforme → identifiant du compte vérifié.
 const clVerifiedMap = () => new Map(clSocial().filter((a) => a.status === "verified").map((a) => [a.platform, a.handle]));
+// Recours (contestation d'un refus) du clipper sur un clip : un seul par clip.
+const clAppealOf = (p) => (db.appeals || []).find((a) => a.publicationId === p.id) || null;
 // Carte des comptes dans le Profil : #/clipper/profil/comptes y fait défiler la page et la met en évidence (flashRow).
 const CL_SOCIAL_HREF = "#/clipper/profil/comptes";
 // Lien vers cette carte ; inModal : la modale se ferme aussi.
@@ -284,6 +286,19 @@ function clCampaignItem(c) {
   </li>`;
 }
 
+// Recours sous un clip refusé (espace clipper) : « Contester le refus » tant qu'aucun recours n'a été envoyé, puis le
+// badge du recours (ouvre son détail) et, une fois décidé, le motif de l'équipe.
+function clAppealLine(p) {
+  const a = clAppealOf(p);
+  if (!a) {
+    return p.status === "Refusée"
+      ? `<button type="button" data-action="cl-appeal" data-id="${p.id}" class="${HIT} mt-1 inline-flex items-center gap-1 rounded-sm text-xs font-medium text-brand-fg underline-offset-4 hover:underline ${FOCUS}">${icon("flag", "size-3.5 shrink-0")}${t("Contester le refus")}</button>`
+      : "";
+  }
+  const note = a.status !== "En attente" && a.decisionNote ? `<span class="mt-0.5 block truncate text-xs text-fg-subtle">${t("Réponse : {note}", { note: esc(a.decisionNote) })}</span>` : "";
+  return `<button type="button" data-action="cl-appeal" data-id="${p.id}" class="mt-1 inline-flex rounded-badge ${FOCUS}" aria-label="${t("Voir mon recours sur « {title} »", { title: esc(p.title) })}">${appealBadge(a.status)}</button>${note}`;
+}
+
 // Tableau des clips (§4.5), partagé avec l'agence (amountLabel « Coût ») et l'admin (actions : colonne Décision, §6.4).
 // amountLabel : texte source français (traduit ici, à l'affichage). Liens selon l'espace : clipper, la campagne ouvre sa
 // fiche ; admin, le clip ouvre sa fiche d'examen (#/admin/moderation/<id>), la campagne la sienne (#/admin/campagnes/<id>)
@@ -324,6 +339,7 @@ function publicationsTable(list, { showUser = false, actions = false, amountLabe
       ? `<span class="flex min-w-0 items-center gap-1">${reviewLink("min-w-0 truncate rounded-sm text-sm font-medium text-fg")}${external}</span>`
       : `<p class="truncate text-sm font-medium text-fg">${p.url ? `<a href="${esc(p.url)}" target="_blank" rel="noopener noreferrer" class="underline-offset-2 hover:underline">${esc(p.title)}</a>` : esc(p.title)}</p>`;
     const reason = p.status === "Refusée" && p.reason ? `<span class="mt-0.5 block truncate text-xs text-danger-fg">${t("Motif : {reason}", { reason: esc(p.reason) })}</span>` : "";
+    const appeal = clipperArea ? clAppealLine(p) : "";
     const also = alsoOn(p);
     const capped = p.status === "Validée" && isCapped(p) ? `<span class="mt-0.5 flex items-center justify-end gap-1 text-xs font-medium text-warning-fg">${icon("info", "size-3.5 shrink-0")}${t("Plafond atteint")}</span>` : "";
     // Montant : réel si validé ; estimé pour la modération ; « — » sinon (jamais « 0 DA » pour un gain non calculé).
@@ -365,7 +381,7 @@ function publicationsTable(list, { showUser = false, actions = false, amountLabe
         : `<div class="flex items-center gap-2">${avatar(owner, "xs")}<span class="max-w-40 truncate text-small text-fg">${esc(owner.name)}</span></div>`;
     return {
       tr: `<tr data-row="${p.id}" class="${TBL.tr}">
-        <td class="${TBL.td} w-full max-w-0"><div class="flex min-w-0 items-center gap-3">${coverThumb(c, "sm")}<div class="min-w-0 flex-1">${title}${subCell}${also}${reason}</div></div></td>
+        <td class="${TBL.td} w-full max-w-0"><div class="flex min-w-0 items-center gap-3">${coverThumb(c, "sm")}<div class="min-w-0 flex-1">${title}${subCell}${also}${reason}${appeal}</div></div></td>
         ${showUser ? `<td class="${TBL.td}">${ownerCell}</td>` : ""}
         <td class="${TBL.td} hidden xl:table-cell">${platformTag(p.platform)}</td>
         <td class="${TBL.td} ${TBL.tdNum}">${fmt(p.views)}${actions ? `<span class="${TBL.tdSub} font-normal">${t("seuil {views}", { views: fmt(clThresholdViews(c)) })}</span>` : ""}</td>
@@ -374,7 +390,7 @@ function publicationsTable(list, { showUser = false, actions = false, amountLabe
       </tr>`,
       li: `<li data-row="${p.id}" class="${TBL.item}">
         <div class="flex items-start gap-3">${coverThumb(c, "sm")}<div class="min-w-0 flex-1">${titleMobile}
-          ${subLine}${also}${reason}${extraLine}</div>${actions && pending ? "" : statusBadge(p.status)}</div>
+          ${subLine}${also}${reason}${appeal}${extraLine}</div>${actions && pending ? "" : statusBadge(p.status)}</div>
         <div class="flex items-center justify-between gap-3 text-small"><span class="flex min-w-0 items-center gap-1.5 truncate text-fg-subtle">${icon(PLATFORM_ICON[p.platform] || "film", "size-3.5 shrink-0")}<span class="truncate">${esc(p.platform)} · ${plural(p.views, "vue", "vues")}</span></span><span class="shrink-0 font-medium">${amountMobile}</span></div>
         ${under && !actions ? thresholdBar("w-full") : ""}${decisionMobile}
       </li>`,
@@ -804,6 +820,8 @@ LIVE.withdraw = (d) => {
 // Soumission d'un clip : coche verte dans chaque champ de lien dès que le lien pointe vers sa plateforme (https).
 // Un lien qui nomme un autre compte que le compte vérifié de la plateforme n'a pas de coche.
 LIVE.clip = (d) => { const v = clVerifiedMap(); return Object.fromEntries(PLATFORMS.map((p) => [`ok-${p}`, clUrlGood(p, d[`url-${p}`], v.get(p)) ? icon("checkCircle", "size-4") : ""])); };
+// Contestation d'un refus : compteur de caractères du message.
+LIVE.clAppeal = (d) => ({ count: `${fmt(String(d.message || "").trim().length)}${NB}/${NB}${fmt(1000)}` });
 
 // ---------- Modales ----------
 
@@ -931,6 +949,54 @@ function clSubmitModal(m) {
   });
 }
 
+// Recours sur un clip refusé : formulaire de contestation (une seule par clip : message de 20 à 1 000 caractères et
+// capture d'écran en preuve, envoyée entière), puis, une fois envoyé, son suivi (statut, motif de l'équipe, message
+// et preuve envoyés).
+function clAppealModal(m) {
+  const p = db.publications.find((x) => x.id === m.id && x.userId === state.session);
+  if (!p) return "";
+  const c = campaignById(p.campaign), a = clAppealOf(p);
+  const description = [t("« {title} »", { title: `<bdi>${esc(p.title)}</bdi>` }), esc(p.platform), c ? esc(c.title) : ""].filter(Boolean).join(" · ");
+  const refusal = p.reason
+    ? `<div class="${TILE}"><p class="text-xs text-fg-subtle">${t("Motif du refus")}</p><p class="mt-0.5 break-words text-sm text-fg" dir="auto">${esc(tServer(p.reason))}</p></div>`
+    : "";
+  if (a) {
+    const decided = a.status !== "En attente", day = date(a.decidedAt || a.createdAt);
+    const decision = !decided
+      ? alertBox("info", t("L'équipe ClipBoost examine votre recours. Vous serez prévenu de sa décision par une notification."))
+      : alertBox(a.status === "Acceptée" ? "success" : "danger", `${a.status === "Acceptée" ? t("Recours accepté le {date} : votre clip est validé.", { date: day }) : t("Recours refusé le {date} : le clip reste refusé.", { date: day })}${a.decisionNote ? `<span class="mt-1 block">${t("Motif de l'équipe : {note}", { note: esc(a.decisionNote) })}</span>` : ""}`);
+    return modalShell({
+      title: t("Votre recours"), description, size: "lg",
+      body: `<div class="grid gap-4">
+        <div class="flex flex-wrap items-center gap-2">${appealBadge(a.status)}<span class="text-small text-fg-subtle">${t("Envoyé le {date}", { date: date(a.createdAt) })}</span></div>
+        ${decision}
+        ${refusal}
+        <div><p class="text-small font-medium text-fg">${t("Votre message")}</p><p class="mt-1 whitespace-pre-line break-words text-sm text-fg-muted" dir="auto">${esc(a.message)}</p></div>
+        ${a.proof ? `<div><p class="text-small font-medium text-fg">${t("Votre preuve")}</p><div class="mt-1.5 grid place-items-center overflow-hidden rounded-tile bg-muted"><img src="${esc(a.proof)}" alt="${t("Capture d'écran jointe au recours")}" class="max-h-96 w-auto max-w-full object-contain"/></div></div>` : ""}
+      </div>`,
+      footer: `<button type="button" data-action="close-modal" class="${btn("secondary")}">${t("Fermer")}</button>`,
+    });
+  }
+  if (p.status !== "Refusée") return "";
+  return modalShell({
+    title: t("Contester le refus"), description, form: "cl-appeal", live: "clAppeal", size: "lg",
+    body: `<div class="grid gap-5">
+      ${refusal}
+      ${alertBox("info", `<strong class="font-semibold">${t("Une seule contestation possible par clip.")}</strong> ${t("Expliquez pourquoi ce refus vous semble injustifié et joignez une capture d'écran qui le prouve. L'équipe ClipBoost revoit le clip et vous répond par une notification.")}`)}
+      <div class="grid gap-1.5" data-field><label class="contents"><span class="text-small font-medium text-fg">${t("Votre message")}</span>
+        <textarea name="message" rows="5" maxlength="1000" required autofocus dir="auto" placeholder="${esc(t("Ex. La musique vient de la bibliothèque audio libre de droits de la plateforme : la licence est sur la capture."))}" aria-describedby="cl-appeal-hint" class="${textareaCls}"></textarea></label>
+        <span id="cl-appeal-hint" class="flex justify-between gap-3 text-xs text-fg-subtle"><span>${t("Entre 20 et 1 000 caractères.")}</span><span data-live-out="count" dir="ltr" class="shrink-0 tabular-nums">${LIVE.clAppeal({}).count}</span></span></div>
+      ${imageField({
+        name: "proof", shape: "proof", label: t("Preuve (capture d'écran)"),
+        hint: t("JPEG, PNG ou WebP, envoyée entière, sans recadrage : statistiques de la vidéo, licence de la musique, message de la plateforme…"),
+        labels: { pick: t("Choisir une capture"), change: t("Changer la capture"), clear: t("Retirer la capture") },
+        fallback: `<span class="flex flex-col items-center gap-1.5 text-small text-fg-subtle">${icon("image", "size-6")}${t("Aucune capture choisie")}</span>`,
+      })}
+    </div>`,
+    footer: `<button type="button" data-action="close-modal" class="${btn("ghost")}">${t("Annuler")}</button><button class="${btn("primary")}">${icon("send", "rtl:-scale-x-100")}${t("Envoyer la contestation")}</button>`,
+  });
+}
+
 function clipperModal() {
   const m = state.modal;
   if (!m) return "";
@@ -940,6 +1006,7 @@ function clipperModal() {
     return c ? clCampaignSheet(c, u) : "";
   }
   if (m.type === "submit") return clSubmitModal(m);
+  if (m.type === "cl-appeal") return clAppealModal(m);
   if (m.type === "cl-social-remove") {
     const a = clSocial().find((x) => x.id === m.id);
     if (!a) return "";
@@ -997,6 +1064,7 @@ function handleClipperAction(action, el) {
     case "open-campaign": state.modal = { type: "campaign", id }; return render();
     case "submit-clip": state.modal = { type: "submit", id }; state.notifOpen = false; state.menuOpen = false; state.drawer = false; return render();
     case "withdraw": state.modal = { type: "withdraw" }; return render();
+    case "cl-appeal": state.modal = { type: "cl-appeal", id }; return render();
     case "wd-max": {
       const i = root.querySelector('[name="amount"]');
       if (i) { i.value = fmt(Math.floor(balance())); i.dispatchEvent(new Event("input", { bubbles: true })); i.focus(); }
@@ -1079,6 +1147,19 @@ function handleClipperSubmit(form, data) {
       // Les publications s'ouvrent sur le nouveau clip (mis en évidence, voir applyRouteItem dans main.js).
       navigate(res && res.id ? `#/clipper/publications/${encodeURIComponent(res.id)}` : "#/clipper/publications");
     });
+  }
+  if (form === "cl-appeal") {
+    // Mêmes contrôles que le serveur (appealSchema) : message de 20 caractères au moins, capture obligatoire.
+    const formEl = root.querySelector('form[data-form="cl-appeal"]'), id = state.modal && state.modal.id;
+    const message = String(data.message || "").trim(), proof = String(data.proof || "");
+    if (message.length < 20) return markInvalid(formEl, "message", t("Expliquez votre contestation en 20 caractères au moins."));
+    if (!proof) {
+      markInvalid(formEl, "proof", t("Ajoutez une capture d'écran comme preuve."));
+      const pick = formEl && formEl.querySelector('input[data-image-input="proof"]');
+      if (pick) pick.focus();
+      return;
+    }
+    return act("POST", `/api/clips/${encodeURIComponent(id)}/appeal`, { message, proof }, t("Contestation envoyée : l'équipe ClipBoost va revoir votre clip"), () => { state.modal = null; });
   }
   if (form === "withdraw") {
     const amount = Math.floor(Number(String(data.amount || "").replace(/\D/g, ""))) || 0, min = db.settings.minWithdraw, bal = Math.floor(balance());

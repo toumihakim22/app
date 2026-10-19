@@ -192,7 +192,7 @@ const EVENT_ICON = { "✅": ["check", "bg-success-bg text-success-fg"], "🚫": 
   "⏳": ["clock", "bg-muted text-fg-muted"], "⚙": ["gear", "bg-muted text-fg-muted"], "🎬": ["film", "bg-muted text-fg-muted"], "🎯": ["target", "bg-muted text-fg-muted"],
   "🏁": ["flag", "bg-muted text-fg-muted"], "🏢": ["building", "bg-muted text-fg-muted"], "🏦": ["bank", "bg-muted text-fg-muted"], "💰": ["wallet", "bg-muted text-fg-muted"], "💸": ["wallet", "bg-muted text-fg-muted"],
   "🛡": ["shield", "bg-info-bg text-info-fg"], "✏": ["pencil", "bg-muted text-fg-muted"], "🗑": ["trash", "bg-muted text-fg-muted"],
-  "📈": ["trend", "bg-brand-soft text-brand-fg"] };
+  "📈": ["trend", "bg-brand-soft text-brand-fg"], "⚖": ["flag", "bg-info-bg text-info-fg"] };
 const eventIcon = (emoji) => {
   const [ic, tone] = EVENT_ICON[String(emoji || "").replace(/️/g, "")] || ["bell", "bg-muted text-fg-muted"];
   return `<span class="grid size-8 shrink-0 place-items-center rounded-full ${tone}" aria-hidden="true">${icon(ic, "size-4")}</span>`;
@@ -353,6 +353,9 @@ const badge = (text, tone = "idle", { dot = false, ic = "" } = {}) =>
   `<span class="${BADGE} ${TONE[tone]}">${ic ? icon(ic, "size-3") : dot ? `<span class="size-1.5 rounded-full ${DOT[tone]}" aria-hidden="true"></span>` : ""}${text}</span>`;
 // Statut (valeur du serveur, en français) affiché dans la langue choisie.
 const statusBadge = (s) => badge(esc(t(s)), STATUS_TONE[s] || "idle", s === "En pause" ? { ic: "pause" } : { dot: true });
+// Recours d'un clipper sur un clip refusé (statut du serveur : « En attente », « Acceptée », « Refusée »), dans la langue choisie.
+const APPEAL_BADGE = { "En attente": ["Recours en cours", "warning"], "Acceptée": ["Recours accepté", "success"], "Refusée": ["Recours refusé", "danger"] };
+const appealBadge = (s) => { const [label, tone] = APPEAL_BADGE[s] || APPEAL_BADGE["En attente"]; return badge(esc(t(label)), tone, { ic: "flag" }); };
 const PLATFORM_ICON = { TikTok: "tiktok", Instagram: "instagram", YouTube: "youtube", Facebook: "facebook" };
 const platformTag = (p) => `<span class="inline-flex h-6 items-center gap-1.5 whitespace-nowrap rounded-badge bg-muted px-2 text-xs font-medium text-fg-muted">${icon(PLATFORM_ICON[p] || "film", "size-3.5")}${esc(p)}</span>`;
 // Liseré : brand-soft et info-bg se confondent avec le fond canvas en clair (même correction que countBadge).
@@ -582,26 +585,31 @@ const themeToggle = (cls = "") =>
   </button>`;
 
 // ---------- Photos : choix, recadrage et compression dans le navigateur ----------
-// imageField({ name, value, shape, label, hint, fallback }) : aperçu, bouton « Choisir une photo », « Retirer la photo », et un
-// <input type="hidden" name> qui porte la valeur envoyée à l'API : data URL (nouvelle photo), adresse actuelle
-// (inchangée) ou "" (retirée). Chaque changement déclenche un événement input sur ce champ caché (récapitulatifs, brouillons).
-// shape : "avatar" (carré 320 px, rond), "cover" (bandeau 3:1, 1 500 px), "campaign" (16:9, 1 280 px).
+// imageField({ name, value, shape, label, hint, fallback, labels }) : aperçu, bouton « Choisir une photo », « Retirer la
+// photo », et un <input type="hidden" name> qui porte la valeur envoyée à l'API : data URL (nouvelle photo), adresse
+// actuelle (inchangée) ou "" (retirée). Chaque changement déclenche un événement input sur ce champ caché (récapitulatifs, brouillons).
+// shape : "avatar" (carré 320 px, rond), "cover" (bandeau 3:1, 1 500 px), "campaign" (16:9, 1 280 px), "proof" (capture
+// d'écran : image entière, sans recadrage, réduite pour tenir dans 1 600 × 1 600 px ; aperçu sans rognage, object-contain).
 // fallback : HTML affiché sans photo (initiales, couverture en dégradé) ; il remplit le cadre de l'aperçu.
+// labels : { pick, change, clear } (textes déjà traduits) à la place de « Choisir / Changer / Retirer la photo ».
 const IMAGE_SHAPES = {
   avatar: { w: 320, h: 320, box: "size-20 rounded-full", row: true },
   cover: { w: 1500, h: 500, box: "aspect-[3/1] w-full rounded-tile", row: false },
   campaign: { w: 1280, h: 720, box: "aspect-[16/9] w-full rounded-tile", row: false },
+  proof: { w: 1600, h: 1600, box: "h-56 w-full rounded-tile", row: false, fit: true },
 };
 const IMAGE_MAX_CHARS = 2000000;
-function imageField({ name, value = "", shape = "avatar", label = t("Photo"), hint = "", fallback = "" }) {
+const imageFitCls = (shape) => ((IMAGE_SHAPES[shape] || {}).fit ? "object-contain" : "object-cover");
+function imageField({ name, value = "", shape = "avatar", label = t("Photo"), hint = "", fallback = "", labels = null }) {
   const S = IMAGE_SHAPES[shape] || IMAGE_SHAPES.avatar, id = `img-${name}`;
-  const preview = value ? `<img src="${esc(value)}" alt="" class="absolute inset-0 size-full object-cover"/>` : fallback;
+  const L = { pick: t("Choisir une photo"), change: t("Changer la photo"), clear: t("Retirer la photo"), ...(labels || {}) };
+  const preview = value ? `<img src="${esc(value)}" alt="" class="absolute inset-0 size-full ${imageFitCls(shape)}"/>` : fallback;
   const buttons = `<div class="flex flex-wrap items-center gap-2">
-      <label class="${btn("secondary", "sm")} cursor-pointer has-focus-visible:outline-2 has-focus-visible:outline-offset-2 has-focus-visible:outline-focus">${icon("camera")}<span data-image-pick-label>${value ? t("Changer la photo") : t("Choisir une photo")}</span>
+      <label class="${btn("secondary", "sm")} cursor-pointer has-focus-visible:outline-2 has-focus-visible:outline-offset-2 has-focus-visible:outline-focus">${icon("camera")}<span data-image-pick-label>${value ? L.change : L.pick}</span>
         <input id="${id}" type="file" accept="image/jpeg,image/png,image/webp" class="sr-only" data-image-input="${name}" data-image-shape="${shape}"/></label>
-      <button type="button" data-image-clear="${name}" class="${btn("ghost", "sm")}" ${value ? "" : "hidden"}>${icon("trash")}${t("Retirer la photo")}</button>
+      <button type="button" data-image-clear="${name}" class="${btn("ghost", "sm")}" ${value ? "" : "hidden"}>${icon("trash")}${L.clear}</button>
     </div>`;
-  return `<div class="grid gap-2" data-field data-image-field="${name}">
+  return `<div class="grid gap-2" data-field data-image-field="${name}" data-label-pick="${esc(L.pick)}" data-label-change="${esc(L.change)}">
     <span class="text-small font-medium text-fg">${label}</span>
     <div class="${S.row ? "flex items-center gap-4" : "grid gap-3"}">
       <div class="relative grid shrink-0 place-items-center overflow-hidden bg-muted ${S.box}" data-image-preview>${preview}</div>
@@ -614,15 +622,21 @@ function imageField({ name, value = "", shape = "avatar", label = t("Photo"), hi
 }
 
 // Recadrage au centre au format demandé, sans agrandir une petite image, puis JPEG (fond blanc pour la transparence).
+// Forme « fit » (capture d'écran) : l'image entière, proportions gardées, réduite pour tenir dans S.w × S.h.
 async function readImage(file, shape) {
   const S = IMAGE_SHAPES[shape] || IMAGE_SHAPES.avatar, ratio = S.w / S.h;
   const url = URL.createObjectURL(file);
   try {
     const img = await new Promise((resolve, reject) => { const i = new Image(); i.onload = () => resolve(i); i.onerror = reject; i.src = url; });
     const iw = img.naturalWidth, ih = img.naturalHeight;
-    let sw = iw, sh = iw / ratio;
-    if (sh > ih) { sh = ih; sw = ih * ratio; }
-    const ow = Math.max(1, Math.round(Math.min(S.w, sw))), oh = Math.max(1, Math.round(ow / ratio));
+    let sw = iw, sh = iw / ratio, ow, oh;
+    if (S.fit) {
+      const k = Math.min(1, S.w / iw, S.h / ih);
+      sh = ih; ow = Math.max(1, Math.round(iw * k)); oh = Math.max(1, Math.round(ih * k));
+    } else {
+      if (sh > ih) { sh = ih; sw = ih * ratio; }
+      ow = Math.max(1, Math.round(Math.min(S.w, sw))); oh = Math.max(1, Math.round(ow / ratio));
+    }
     const canvas = document.createElement("canvas");
     canvas.width = ow; canvas.height = oh;
     const ctx = canvas.getContext("2d");
@@ -643,10 +657,11 @@ async function readImage(file, shape) {
 function setImageField(fieldEl, value) {
   const hidden = fieldEl.querySelector('input[type="hidden"]'), box = fieldEl.querySelector("[data-image-preview]");
   const clear = fieldEl.querySelector("[data-image-clear]"), label = fieldEl.querySelector("[data-image-pick-label]");
+  const pick = fieldEl.querySelector("input[data-image-input]"), d = fieldEl.dataset;
   hidden.value = value;
-  box.innerHTML = value ? `<img src="${esc(value)}" alt="" class="absolute inset-0 size-full object-cover"/>` : fieldEl.querySelector("template[data-image-fallback]").innerHTML;
+  box.innerHTML = value ? `<img src="${esc(value)}" alt="" class="absolute inset-0 size-full ${imageFitCls(pick ? pick.dataset.imageShape : "")}"/>` : fieldEl.querySelector("template[data-image-fallback]").innerHTML;
   if (clear) clear.hidden = !value;
-  if (label) label.textContent = value ? t("Changer la photo") : t("Choisir une photo");
+  if (label) label.textContent = value ? d.labelChange || t("Changer la photo") : d.labelPick || t("Choisir une photo");
   hidden.dispatchEvent(new Event("input", { bubbles: true }));
 }
 

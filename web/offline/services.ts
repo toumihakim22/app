@@ -294,6 +294,7 @@ export function deleteCampaign({ db }: Ctx, user: UserRow, id: string) {
   db.members = db.members.filter((m) => m.campaignId !== id);
   db.publications = db.publications.filter((p) => p.campaignId !== id);
   db.snapshots = db.snapshots.filter((x) => !pubIds.has(x.publicationId));
+  db.appeals = db.appeals.filter((a) => !pubIds.has(a.publicationId));
   for (const t of db.transactions) if (t.publicationId && pubIds.has(t.publicationId)) t.publicationId = null;
   // Les notifications déjà reçues sur cette campagne mènent désormais à la liste des campagnes.
   for (const n of db.notifications) {
@@ -501,6 +502,23 @@ function credit(db: Store, p: PubRow, c: CampaignRow, amount: number, label: str
   }
 }
 
+/**
+ * Validation d'un clip (validateClip du serveur) : validation normale (reviewClip) ou recours accepté (appeals.ts),
+ * mêmes règles. La campagne doit encore payer et le seuil être atteint, sinon l'erreur est levée (la requête n'enregistre
+ * rien). Le clip est validé et le gain de ses vues relevées crédité au clipper, avec sa notification. Renvoie le montant.
+ */
+export function validateClip(db: Store, p: PubRow, holdDays: number) {
+  const c = getCampaign(db, p.campaignId);
+  // Campagne terminée : son budget restant a été rendu à l'agence, un gain ne serait plus couvert. Le clip peut être refusé.
+  if (!paying(c)) throw badRequest("Cette campagne est terminée : ce clip ne peut plus être validé");
+  if (belowMin(p.views, c)) throw badRequest(`Seuil non atteint : ${viewsFor(c.minPayout, c.rate).toLocaleString("fr-FR")} vues minimum`);
+  p.status = "Validée";
+  p.approvedAt = Date.now();
+  const amount = payoutDelta(p.views, c, p.paid);
+  if (amount > 0) credit(db, p, c, amount, c.title, holdDays);
+  return amount;
+}
+
 export function reviewClip({ db }: Ctx, admin: UserRow, id: string, decision: { approve: true } | { approve: false; reason: string }) {
   const settings = getSettings(db);
   const p = db.publications.find((x) => x.id === id);
@@ -513,15 +531,8 @@ export function reviewClip({ db }: Ctx, admin: UserRow, id: string, decision: { 
     logActivity(db, "🚫", `Clip « ${p.title} » refusé par ${admin.name}.`);
     return;
   }
-  const c = getCampaign(db, p.campaignId);
-  // Campagne terminée : son budget restant a été rendu à l'agence, un gain ne serait plus couvert. Le clip peut être refusé.
-  if (!paying(c)) throw badRequest("Cette campagne est terminée : ce clip ne peut plus être validé");
-  if (belowMin(p.views, c)) throw badRequest(`Seuil non atteint : ${viewsFor(c.minPayout, c.rate).toLocaleString("fr-FR")} vues minimum`);
-  p.status = "Validée";
-  p.approvedAt = Date.now();
-  const amount = payoutDelta(p.views, c, 0);
-  if (amount > 0) credit(db, p, c, amount, c.title, settings.holdDays);
-  else notify(db, p.userId, "✅", `Votre clip « ${p.title} » a été validé.`, link.clip(p.id));
+  const amount = validateClip(db, p, settings.holdDays);
+  if (!amount) notify(db, p.userId, "✅", `Votre clip « ${p.title} » a été validé.`, link.clip(p.id));
   logActivity(db, "✅", `Clip « ${p.title} » validé (${fmt(amount)}).`);
 }
 

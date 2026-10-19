@@ -98,6 +98,22 @@ export const reviewClipSchema = z.discriminatedUnion("approve", [
   z.object({ approve: z.literal(true) }),
   z.object({ approve: z.literal(false), reason: text("Motif", 200) }),
 ]);
+/**
+ * Recours d'un clipper contre le refus d'un clip : son explication (20 à 1 000 caractères) et une preuve obligatoire,
+ * une capture d'écran envoyée en data URL JPEG, PNG ou WebP (réduite dans le navigateur, sans recadrage).
+ */
+export const appealSchema = z.object({
+  message: z.string({ error: "Message manquant" }).trim()
+    .min(20, "Expliquez votre contestation en 20 caractères au moins").max(1000, "Message trop long (1 000 caractères maximum)"),
+  proof: z.string({ error: "Ajoutez une capture d'écran comme preuve" }).min(1, "Ajoutez une capture d'écran comme preuve")
+    .max(MAX_IMAGE_CHARS, "Image trop lourde (1,5 Mo maximum)").refine((v) => IMAGE_DATA_URL.test(v), "Image invalide (JPEG, PNG ou WebP)"),
+});
+/** Décision de l'équipe sur un recours : acceptation (le clip est validé) ou refus, motif obligatoire dans les deux cas. */
+export const reviewAppealSchema = z.object({
+  approve: z.boolean({ error: "Indiquez votre décision" }),
+  reason: z.string({ error: "Motif manquant" }).trim()
+    .min(3, "Indiquez le motif de votre décision (3 caractères minimum)").max(300, "Motif trop long (300 caractères maximum)"),
+});
 /** Compte social d'un clipper (Profil → Comptes sociaux) : identifiant ou adresse du profil, normalisé par le service (normalizeHandle). */
 export const socialAccountSchema = z.object({
   platform: z.enum(PLATFORMS as [string, ...string[]], { error: "Plateforme inconnue" }),

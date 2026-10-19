@@ -2,6 +2,7 @@
 import { randomBytes } from "node:crypto";
 import { eq } from "drizzle-orm";
 import * as schema from "../lib/server/db/schema";
+import { DEMO_APPEAL_MESSAGE, DEMO_PROOF_JPEG_BASE64 } from "../lib/server/demo-appeal";
 import { newId, newRef } from "../lib/server/ids";
 import { link } from "../lib/server/links";
 import { hashPassword } from "../lib/server/password";
@@ -119,7 +120,7 @@ if (process.argv.includes("--demo")) {
       { u: yacine, c: derby, title: "Les supporters chantent", platform: "YouTube", views: 1600, status: "En attente", days: 0 },
       { u: lina, c: rire, title: "Sketch du marché", platform: "YouTube", views: 4100, status: "Refusée", days: 9, reason: "Musique protégée" },
     ];
-    let i = 0, tracked = 0;
+    let i = 0, tracked = 0, sketchId = "";
     const lastRun = new Date(Date.now() - 2 * 3_600_000), earningMs = DEFAULT_SETTINGS.earningDays * 86_400_000;
     for (const p of pubs) {
       // Un lien TikTok nomme le compte : celui que le clipper a vérifié.
@@ -150,8 +151,15 @@ if (process.argv.includes("--demo")) {
       } else if (p.status === "Refusée") {
         acts.push([p.days, "🚫", `Clip « ${p.title} » refusé par Équipe ClipBoost.`]);
         notes.push([p.u, p.days, "⚠️", `Clip « ${p.title} » refusé : ${sentence(p.reason!)}`, link.clip(id)]);
+        if (p.title === "Sketch du marché") sketchId = id;
       }
     }
+    // Recours en attente : Lina conteste le refus de « Sketch du marché » (musique libre de droits), capture d'écran à
+    // l'appui, rangée dans la table media comme toute image envoyée. L'équipe l'examine dans la modération (onglet Recours).
+    const proofId = newId(), appealId = newId();
+    await db.insert(schema.media).values({ id: proofId, ownerId: lina.id, mime: "image/jpeg", data: DEMO_PROOF_JPEG_BASE64, createdAt: daysAgo(0.6) });
+    await db.insert(schema.appeals).values({ id: appealId, publicationId: sketchId, userId: lina.id, message: DEMO_APPEAL_MESSAGE, proof: `/api/media/${proofId}`, createdAt: daysAgo(0.6) });
+    acts.push([0.6, "⚖️", `${lina.name} a contesté le refus du clip « Sketch du marché ».`]);
     for (const c of [derby, rire, kahwa]) await db.update(schema.campaigns).set({ spent: c.spent }).where(eq(schema.campaigns.id, c.id));
     // Dernier relevé automatique des vues (tâche « views » de job_runs, toutes les 6 heures), tout en mode simulé.
     await db.insert(schema.jobRuns).values({ name: "views", lastRunAt: lastRun, summary: { by: "cron", total: tracked, updated: tracked, simulated: tracked, failed: 0 } });
@@ -163,7 +171,8 @@ if (process.argv.includes("--demo")) {
     for (const admin of await db.select({ id: schema.users.id }).from(schema.users).where(eq(schema.users.role, "admin"))) {
       notes.push([admin, 2, "🏢", `${hoggar.name} a soumis la campagne « ${soirees.title} ».`, link.adminCampaign(soirees.id)], [admin, 1, "💸", `${amira.name} demande un retrait de ${fmt(2000)}.`, link.adminPayment(withdrawalId)],
         [admin, 0.9, "🏦", `${hoggar.name} annonce une recharge de ${fmt(600000)} par virement bancaire (réf. ${rechargeRef}).`, link.adminPayment(rechargeId)],
-        [admin, 1.5, "🛡️", `${hoggar.name} demande le badge de vérification.`, link.adminUser(hoggar.id)]);
+        [admin, 1.5, "🛡️", `${hoggar.name} demande le badge de vérification.`, link.adminUser(hoggar.id)],
+        [admin, 0.6, "⚖️", `${lina.name} conteste le refus du clip « Sketch du marché ».`, link.adminAppeal(appealId)]);
     }
     // Les événements de plus de 2 jours sont déjà lus ; les plus récents restent à lire.
     await db.insert(schema.activity).values(acts.map(([days, icon, text]) => ({ id: newId(), icon, text, createdAt: daysAgo(days) })));

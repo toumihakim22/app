@@ -115,6 +115,18 @@ Object.assign(I18N.en, {
   "Le nombre de vues ne peut pas diminuer": "The view count cannot go down",
   "Relevé planifié désactivé : définissez CRON_SECRET": "Scheduled tracking disabled: set CRON_SECRET",
   "Ce clip a déjà été traité": "This clip has already been reviewed",
+  // Recours (lib/server/services/appeals.ts, validation.ts : appealSchema, reviewAppealSchema)
+  "Message manquant": "Message is missing",
+  "Expliquez votre contestation en 20 caractères au moins": "Explain your appeal in at least 20 characters",
+  "Message trop long (1 000 caractères maximum)": "Message is too long (1,000 characters maximum)",
+  "Ajoutez une capture d'écran comme preuve": "Add a screenshot as proof",
+  "Indiquez votre décision": "Give your decision",
+  "Indiquez le motif de votre décision (3 caractères minimum)": "Give the reason for your decision (3 characters minimum)",
+  "Seul un clip refusé peut être contesté": "Only a rejected clip can be appealed",
+  "Vous avez déjà contesté ce clip": "You have already appealed this clip",
+  "Recours introuvable": "Appeal not found",
+  "Ce recours a déjà été traité": "This appeal has already been reviewed",
+  "Cette campagne est terminée : ce clip ne peut plus être validé": "This campaign has ended: this clip can no longer be approved",
 
   // ---------- Comptes sociaux des clippers (lib/server/services/social.ts, validation.ts) ----------
   "Identifiant manquant": "Username is missing",
@@ -215,6 +227,13 @@ I18N_RX.en.push(
   [/^Clip « (.+) » validé \(([+-]?[\d\s]+ DA)\)\.$/, "Clip “$1” approved ($2)."],
   [/^Clip « (.+) » refusé par (.+)\.$/, "Clip “$1” rejected by $2."],
   [/^Clip « (.+) » refusé : (.+)$/, "Clip “$1” rejected: $2"],
+  // Recours : notification des admins, décision envoyée au clipper, journal d'activité.
+  [/^(.+) conteste le refus du clip « (.+) »\.$/, "$1 is appealing the rejection of the clip “$2”."],
+  [/^(.+) a contesté le refus du clip « (.+) »\.$/, "$1 appealed the rejection of the clip “$2”."],
+  [/^Recours accepté pour « (.+) » : le clip est validé\. (.+)$/, "Appeal accepted for “$1”: the clip is approved. $2"],
+  [/^Recours refusé pour « (.+) » : (.+)$/, "Appeal rejected for “$1”: $2"],
+  [/^Recours de (.+) sur « (.+) » accepté par (.+) : clip validé \(([+-]?[\d\s]+ DA)\)\.$/, "$3 accepted $1's appeal on “$2”: clip approved ($4)."],
+  [/^Recours de (.+) sur « (.+) » refusé par (.+)\.$/, "$3 rejected $1's appeal on “$2”."],
 
   // ---------- Retraits et recharges ----------
   [/^(.+) demande un retrait de ([+-]?[\d\s]+ DA) \(instantané\)\.$/, "$1 is requesting an instant withdrawal of $2."],

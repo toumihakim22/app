@@ -3,12 +3,13 @@
 // les mêmes contrôles d'accès et les mêmes réponses. web/src/data.js l'appelle à la place de fetch().
 import { z, ZodError, type ZodType } from "zod";
 import {
-  amountSchema, approveSchema, campaignSchema, campaignStatusSchema, changePasswordSchema, clipSchema, creditSchema, forgotSchema,
-  loginSchema, membershipSchema, oauthDemoSchema, profileSchema, resetSchema, reviewClipSchema, settingsSchema, signupSchema, socialAccountSchema,
+  amountSchema, appealSchema, approveSchema, campaignSchema, campaignStatusSchema, changePasswordSchema, clipSchema, creditSchema, forgotSchema,
+  loginSchema, membershipSchema, oauthDemoSchema, profileSchema, resetSchema, reviewAppealSchema, reviewClipSchema, settingsSchema, signupSchema, socialAccountSchema,
   userStatusSchema, verificationRequestSchema, verificationReviewSchema, verifySchema, viewsSchema, withdrawSchema,
 } from "../../lib/server/validation";
 import { ApiError, badRequest, clear, forbidden, load, logActivity, save } from "./db";
 import * as svc from "./services";
+import { reviewAppeal, submitAppeal } from "./appeals";
 import { publicState, stateFor } from "./state";
 import { runDueJobs, trackViews } from "./tracking";
 import { viewsTrackedText } from "../../lib/server/rules";
@@ -180,6 +181,20 @@ const routes: Record<string, Record<string, Handler>> = {
       svc.requireUser(req.db, "admin");
       const { views, likes } = body(req, viewsSchema);
       svc.recordViews(req, req.params.id, views, likes);
+      return ok();
+    },
+  },
+  // Recours du clipper contre le refus de son clip (une seule fois), puis décision de l'équipe (motif obligatoire).
+  "/api/clips/:id/appeal": {
+    POST: (req) => {
+      const user = svc.requireUser(req.db, "clipper");
+      return ok({ id: submitAppeal(req, user, req.params.id, body(req, appealSchema)) }, 201);
+    },
+  },
+  "/api/appeals/:id/review": {
+    POST: (req) => {
+      const admin = svc.requireUser(req.db, "admin");
+      reviewAppeal(req, admin, req.params.id, body(req, reviewAppealSchema));
       return ok();
     },
   },

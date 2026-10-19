@@ -1,6 +1,7 @@
 // Données de démarrage de la version autonome : le compte administrateur et les mêmes
 // données d'exemple que `scripts/seed.mts --demo`, datées par rapport au premier lancement.
 import type { CampaignStatus, PublicationStatus } from "../../lib/server/db/schema";
+import { DEMO_APPEAL_MESSAGE, DEMO_PROOF_DATA_URL } from "../../lib/server/demo-appeal";
 import { clipRisk, payoutFor, sentence, simulatedHistory } from "../../lib/server/rules";
 import { link } from "../../lib/server/links";
 import { DEFAULT_SETTINGS } from "../../lib/server/settings";
@@ -96,7 +97,7 @@ export async function seed(): Promise<Store> {
   acts.push([1.5, "🛡️", `${hoggar.name} demande le badge de vérification.`]);
   for (const a of db.social) if (a.verifiedAt !== null) acts.push([(Date.now() - a.verifiedAt) / 86_400_000, "🛡️", `${userOf(a.userId).name} a vérifié son compte ${a.platform} @${a.handle}.`]);
 
-  let i = 0, tracked = 0;
+  let i = 0, tracked = 0, sketchId = "";
   const lastRun = Date.now() - 2 * 3_600_000, earningMs = DEFAULT_SETTINGS.earningDays * 86_400_000;
   for (const p of pubs) {
     // Un lien TikTok nomme le compte : celui que le clipper a vérifié.
@@ -126,8 +127,13 @@ export async function seed(): Promise<Store> {
     } else if (p.status === "Refusée") {
       acts.push([p.days, "🚫", `Clip « ${p.title} » refusé par Équipe ClipBoost.`]);
       notes.push([p.u, p.days, "⚠️", `Clip « ${p.title} » refusé : ${sentence(p.reason!)}`, link.clip(id)]);
+      if (p.title === "Sketch du marché") sketchId = id;
     }
   }
+  // Recours en attente : Lina conteste le refus de « Sketch du marché » (musique libre de droits), capture d'écran à l'appui.
+  const appealId = newId();
+  db.appeals.push({ id: appealId, publicationId: sketchId, userId: lina.id, message: DEMO_APPEAL_MESSAGE, proof: DEMO_PROOF_DATA_URL, status: "En attente", decisionNote: null, decidedBy: null, decidedAt: null, createdAt: daysAgo(0.6) });
+  acts.push([0.6, "⚖️", `${lina.name} a contesté le refus du clip « Sketch du marché ».`]);
   // Dernier relevé automatique des vues (toutes les 6 heures, simulé) : le prochain sera lancé à l'ouverture de l'app dans 4 heures.
   db.jobRuns.push({ name: "views", lastRunAt: lastRun, summary: { by: "cron", total: tracked, updated: tracked, simulated: tracked, failed: 0 } });
   const withdrawalId = newId(), rechargeId = newId();
@@ -138,7 +144,8 @@ export async function seed(): Promise<Store> {
   acts.push([1, "💸", `${amira.name} a demandé un retrait de ${fmt(2000)}.`]);
   notes.push([admin, 2, "🏢", `${hoggar.name} a soumis la campagne « ${soirees.title} ».`, link.adminCampaign(soirees.id)], [admin, 1, "💸", `${amira.name} demande un retrait de ${fmt(2000)}.`, link.adminPayment(withdrawalId)],
     [admin, 0.9, "🏦", `${hoggar.name} annonce une recharge de ${fmt(600000)} par virement bancaire (réf. ${rechargeRef}).`, link.adminPayment(rechargeId)],
-    [admin, 1.5, "🛡️", `${hoggar.name} demande le badge de vérification.`, link.adminUser(hoggar.id)]);
+    [admin, 1.5, "🛡️", `${hoggar.name} demande le badge de vérification.`, link.adminUser(hoggar.id)],
+    [admin, 0.6, "⚖️", `${lina.name} conteste le refus du clip « Sketch du marché ».`, link.adminAppeal(appealId)]);
   // Les événements de plus de 2 jours sont déjà lus ; les plus récents restent à lire.
   for (const [days, icon, text] of acts) db.activity.push({ id: newId(), icon, text, createdAt: daysAgo(days) });
   for (const [u, days, icon, text, href] of notes) db.notifications.push({ id: newId(), userId: u.id, icon, text, link: href, read: days > 2, createdAt: daysAgo(days) });
