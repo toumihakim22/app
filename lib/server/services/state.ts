@@ -4,21 +4,33 @@ import type { User } from "../auth";
 import { getSettings } from "../settings";
 import { balances } from "./money";
 import { inferLink, type LinkContext } from "../links";
+import { configuredProviders } from "../oauth";
+import { OAUTH_PROVIDERS } from "../validation";
 
 const day = (d: Date) => d.toISOString().slice(0, 10);
 const time = (d: Date) => d.toISOString().slice(11, 16);
 
-function publicUser(u: typeof schema.users.$inferSelect) {
-  return { id: u.id, role: u.role, name: u.name, country: u.country, status: u.status, level: u.level, joined: day(u.createdAt), handle: u.handles.tiktok ?? u.handles.instagram ?? u.handles.youtube ?? "" };
+type UserRow = typeof schema.users.$inferSelect;
+
+/** Ce que tout utilisateur visible peut voir d'un autre : photo et badge bleu (agence vérifiée) compris. */
+function publicUser(u: UserRow) {
+  return {
+    id: u.id, role: u.role, name: u.name, country: u.country, status: u.status, level: u.level, joined: day(u.createdAt),
+    handle: u.handles.tiktok || u.handles.instagram || u.handles.youtube || u.handles.facebook || "", avatar: u.avatar, verified: u.verification === "verified",
+  };
 }
 
 /** Profil public d'une agence (organisatrice de campagnes) : aucune donnée privée (email, contact, crédit). */
-function publicAgency(u: typeof schema.users.$inferSelect) {
-  return { id: u.id, name: u.name, country: u.country, bio: u.bio, joined: day(u.createdAt) };
+function publicAgency(u: UserRow) {
+  return { id: u.id, name: u.name, country: u.country, bio: u.bio, joined: day(u.createdAt), avatar: u.avatar, cover: u.cover, verified: u.verification === "verified" };
 }
 
-function fullUser(u: typeof schema.users.$inferSelect) {
-  return { ...publicUser(u), email: u.email, contact: u.contact, credit: u.credit, bio: u.bio, handles: u.handles, payoutMethod: u.payoutMethod, payoutAccount: u.payoutAccount, verified: true };
+/** Profil complet (soi-même ; tous les comptes pour l'admin). emailVerified : l'adresse a été vérifiée à l'inscription (code ou fournisseur). */
+function fullUser(u: UserRow) {
+  return {
+    ...publicUser(u), email: u.email, contact: u.contact, credit: u.credit, bio: u.bio, handles: u.handles, payoutMethod: u.payoutMethod, payoutAccount: u.payoutAccount,
+    cover: u.cover, verification: u.verification, verificationNote: u.verificationNote, locale: u.locale, emailVerified: true,
+  };
 }
 
 /** Série quotidienne sur 30 jours à partir de lignes { d: 'YYYY-MM-DD', v }. */
@@ -65,6 +77,8 @@ export async function stateFor(user: User) {
   const activityRows = isAdmin ? await db.select().from(schema.activity).orderBy(desc(schema.activity.createdAt)).limit(30) : [];
 
   const mine = isClipper ? await db.select().from(M).where(eq(M.userId, user.id)) : [];
+  // Comptes Google, Apple ou Discord reliés (Paramètres), dans l'ordre des boutons ; hasPassword : faux pour un compte créé par l'un d'eux sans mot de passe.
+  const providers = (await db.select({ provider: schema.oauthAccounts.provider }).from(schema.oauthAccounts).where(eq(schema.oauthAccounts.userId, user.id))).map((r) => r.provider);
   const since = new Date(Date.now() - 30 * 86_400_000);
 
   // Séries des graphiques.
@@ -88,12 +102,15 @@ export async function stateFor(user: User) {
   const linkCtx: LinkContext = { campaigns: campaignRows, publications: pubRows, transactions: txRows };
 
   return {
-    me: { ...fullUser(user), favorites: mine.filter((m) => m.favorite).map((m) => m.campaignId), joinedCampaigns: mine.filter((m) => m.joined).map((m) => m.campaignId), ...(balanceOf.get(user.id) ?? {}) },
+    me: {
+      ...fullUser(user), favorites: mine.filter((m) => m.favorite).map((m) => m.campaignId), joinedCampaigns: mine.filter((m) => m.joined).map((m) => m.campaignId),
+      ...(balanceOf.get(user.id) ?? {}), hasPassword: user.passwordHash !== "", providers: OAUTH_PROVIDERS.filter((p) => providers.includes(p)),
+    },
     settings: { maintenance: settings.maintenance, signupsOpen: settings.signupsOpen, announcement: settings.announcement, minWithdraw: settings.minWithdraw, commissionRate: settings.commissionRate, minBudget: settings.minBudget, holdDays: settings.holdDays, earningDays: settings.earningDays, instantFeePercent: settings.instantFeePercent, instantMinFee: settings.instantMinFee },
     users: userRows.map((u) => ({ ...(isAdmin ? fullUser(u) : u.id === user.id ? fullUser(u) : publicUser(u)), ...(balanceOf.get(u.id) ?? {}) })),
-    campaigns: campaignRows.map((c) => ({ ...c, createdAt: day(c.createdAt), clippers: clippersOf.get(c.id) ?? 0 })),
+    campaigns: campaignRows.map((c) => ({ ...c, createdAt: day(c.createdAt), updatedAt: c.updatedAt.toISOString(), clippers: clippersOf.get(c.id) ?? 0 })),
     agencies: agencyRows.map(publicAgency).sort((a, b) => a.name.localeCompare(b.name, "fr") || a.id.localeCompare(b.id)),
-    publications: pubRows.map((p) => ({ id: p.id, userId: p.userId, campaign: p.campaignId, title: p.title, platform: p.platform, url: p.url, views: p.views, status: p.status, reason: p.reason, paid: p.paid, date: day(p.createdAt) })),
+    publications: pubRows.map((p) => ({ id: p.id, userId: p.userId, campaign: p.campaignId, title: p.title, platform: p.platform, url: p.url, batch: p.batch, views: p.views, status: p.status, reason: p.reason, paid: p.paid, date: day(p.createdAt) })),
     transactions: txRows.map((t) => ({ id: t.id, ref: t.ref, userId: t.userId, type: t.type, label: t.label, amount: t.amount, fee: t.fee, status: t.status, method: t.method, date: day(t.createdAt), time: time(t.createdAt), availableAt: t.availableAt?.toISOString() ?? null })),
     notifications: notifRows.map((n) => ({ id: n.id, icon: n.icon, text: n.text, link: n.link ?? inferLink(user.role, n.text, linkCtx), unread: !n.read, at: n.createdAt.toISOString() })),
     activity: activityRows.map((a) => ({ icon: a.icon, text: a.text, at: a.createdAt.toISOString() })),
@@ -106,10 +123,12 @@ export async function publicState() {
   const db = await getDb();
   const settings = await getSettings();
   const C = schema.campaigns;
-  const campaigns = await db.select({ id: C.id, title: C.title, brand: C.brand, category: C.category, rate: C.rate, budget: C.budget, spent: C.spent, minPayout: C.minPayout, maxPayout: C.maxPayout, emoji: C.emoji, gradient: C.gradient, top: C.top, platforms: C.platforms, createdAt: C.createdAt })
+  const campaigns = await db.select({ id: C.id, title: C.title, brand: C.brand, category: C.category, rate: C.rate, budget: C.budget, spent: C.spent, minPayout: C.minPayout, maxPayout: C.maxPayout, emoji: C.emoji, gradient: C.gradient, image: C.image, top: C.top, platforms: C.platforms, createdAt: C.createdAt })
     .from(C).where(eq(C.status, "Active")).orderBy(desc(C.top), desc(C.createdAt)).limit(12);
   return {
     settings: { maintenance: settings.maintenance, signupsOpen: settings.signupsOpen, announcement: settings.announcement },
     campaigns: campaigns.map((c) => ({ ...c, createdAt: day(c.createdAt) })),
+    // Boutons « Continuer avec … » des écrans de connexion et d'inscription : fournisseurs configurés sur ce serveur.
+    oauth: configuredProviders(),
   };
 }

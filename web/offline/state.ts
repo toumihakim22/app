@@ -2,21 +2,30 @@
 import { getSettings, newestFirst, type Store, type UserRow } from "./db";
 import { balances } from "./services";
 import { inferLink, type LinkContext } from "../../lib/server/links";
+import { OAUTH_PROVIDERS } from "../../lib/server/validation";
 
 const day = (ms: number) => new Date(ms).toISOString().slice(0, 10);
 const time = (ms: number) => new Date(ms).toISOString().slice(11, 16);
 
+/** verified : le badge bleu de vérification (agences). */
 function publicUser(u: UserRow) {
-  return { id: u.id, role: u.role, name: u.name, country: u.country, status: u.status, level: u.level, joined: day(u.createdAt), handle: u.handles.tiktok ?? u.handles.instagram ?? u.handles.youtube ?? "" };
+  return {
+    id: u.id, role: u.role, name: u.name, avatar: u.avatar, verified: u.verification === "verified", country: u.country, status: u.status, level: u.level,
+    joined: day(u.createdAt), handle: u.handles.tiktok || u.handles.instagram || u.handles.youtube || u.handles.facebook || "",
+  };
 }
 
 /** Profil public d'une agence (organisatrice de campagnes) : aucune donnée privée (email, contact, crédit). */
 function publicAgency(u: UserRow) {
-  return { id: u.id, name: u.name, country: u.country, bio: u.bio, joined: day(u.createdAt) };
+  return { id: u.id, name: u.name, avatar: u.avatar, cover: u.cover, verified: u.verification === "verified", country: u.country, bio: u.bio, joined: day(u.createdAt) };
 }
 
+/** emailVerified : adresse confirmée (code à l'inscription, ou fournisseur Google, Apple, Discord). */
 function fullUser(u: UserRow) {
-  return { ...publicUser(u), email: u.email, contact: u.contact, credit: u.credit, bio: u.bio, handles: u.handles, payoutMethod: u.payoutMethod, payoutAccount: u.payoutAccount, verified: true };
+  return {
+    ...publicUser(u), email: u.email, contact: u.contact, credit: u.credit, bio: u.bio, handles: u.handles, payoutMethod: u.payoutMethod, payoutAccount: u.payoutAccount,
+    cover: u.cover, verification: u.verification, verificationNote: u.verificationNote, locale: u.locale, emailVerified: true,
+  };
 }
 
 /** Série quotidienne sur 30 jours (jours UTC, comme le serveur). */
@@ -73,17 +82,24 @@ export function stateFor(db: Store, user: UserRow) {
   // Notifications antérieures aux liens (ancienne copie du navigateur) : lien déduit du texte (voir inferLink).
   const linkCtx: LinkContext = { campaigns: campaignRows, publications: pubRows, transactions: txRows };
 
+  // Comptes Google, Apple, Discord reliés ; hasPassword faux pour un compte créé avec l'un d'eux, tant qu'il n'a pas défini de mot de passe.
+  const linked = new Set(db.oauth.filter((a) => a.userId === user.id).map((a) => a.provider));
+
   return {
-    me: { ...fullUser(user), favorites: mine.filter((m) => m.favorite).map((m) => m.campaignId), joinedCampaigns: mine.filter((m) => m.joined).map((m) => m.campaignId), ...(balanceOf.get(user.id) ?? {}) },
+    me: {
+      ...fullUser(user), hasPassword: user.passwordHash !== "", providers: OAUTH_PROVIDERS.filter((p) => linked.has(p)),
+      favorites: mine.filter((m) => m.favorite).map((m) => m.campaignId), joinedCampaigns: mine.filter((m) => m.joined).map((m) => m.campaignId), ...(balanceOf.get(user.id) ?? {}),
+    },
     settings: { maintenance: settings.maintenance, signupsOpen: settings.signupsOpen, announcement: settings.announcement, minWithdraw: settings.minWithdraw, commissionRate: settings.commissionRate, minBudget: settings.minBudget, holdDays: settings.holdDays, earningDays: settings.earningDays, instantFeePercent: settings.instantFeePercent, instantMinFee: settings.instantMinFee },
     users: userRows.map((u) => ({ ...(isAdmin ? fullUser(u) : u.id === user.id ? fullUser(u) : publicUser(u)), ...(balanceOf.get(u.id) ?? {}) })),
     campaigns: campaignRows.map((c) => ({
       id: c.id, ownerId: c.ownerId, title: c.title, brand: c.brand, category: c.category, rate: c.rate, budget: c.budget, spent: c.spent,
       minPayout: c.minPayout, maxPayout: c.maxPayout, commissionRate: c.commissionRate, reserved: c.reserved, status: c.status, top: c.top,
-      emoji: c.emoji, gradient: c.gradient, platforms: c.platforms, rules: c.rules, createdAt: day(c.createdAt), clippers: clippersOf.get(c.id) ?? 0,
+      emoji: c.emoji, gradient: c.gradient, platforms: c.platforms, rules: c.rules, image: c.image, reviewNote: c.reviewNote,
+      createdAt: day(c.createdAt), updatedAt: new Date(c.updatedAt).toISOString(), clippers: clippersOf.get(c.id) ?? 0,
     })),
     agencies: agencyRows.map(publicAgency).sort((a, b) => a.name.localeCompare(b.name, "fr") || a.id.localeCompare(b.id)),
-    publications: pubRows.map((p) => ({ id: p.id, userId: p.userId, campaign: p.campaignId, title: p.title, platform: p.platform, url: p.url, views: p.views, status: p.status, reason: p.reason, paid: p.paid, date: day(p.createdAt) })),
+    publications: pubRows.map((p) => ({ id: p.id, userId: p.userId, campaign: p.campaignId, title: p.title, platform: p.platform, url: p.url, batch: p.batch, views: p.views, status: p.status, reason: p.reason, paid: p.paid, date: day(p.createdAt) })),
     transactions: txRows.map((t) => ({ id: t.id, ref: t.ref, userId: t.userId, type: t.type, label: t.label, amount: t.amount, fee: t.fee, status: t.status, method: t.method, date: day(t.createdAt), time: time(t.createdAt), availableAt: t.availableAt === null ? null : new Date(t.availableAt).toISOString() })),
     notifications: notifRows.map((n) => ({ id: n.id, icon: n.icon, text: n.text, link: n.link ?? inferLink(user.role, n.text, linkCtx), unread: !n.read, at: new Date(n.createdAt).toISOString() })),
     activity: activityRows.map((a) => ({ icon: a.icon, text: a.text, at: new Date(a.createdAt).toISOString() })),
@@ -91,7 +107,7 @@ export function stateFor(db: Store, user: UserRow) {
   };
 }
 
-/** Données publiques de la page d'accueil (aucune connexion requise). */
+/** Données publiques de la page d'accueil et des écrans de connexion (aucune connexion requise). */
 export function publicState(db: Store) {
   const settings = getSettings(db);
   const campaigns = newestFirst(db.campaigns.filter((c) => c.status === "Active"))
@@ -99,6 +115,8 @@ export function publicState(db: Store) {
     .slice(0, 12);
   return {
     settings: { maintenance: settings.maintenance, signupsOpen: settings.signupsOpen, announcement: settings.announcement },
-    campaigns: campaigns.map((c) => ({ id: c.id, title: c.title, brand: c.brand, category: c.category, rate: c.rate, budget: c.budget, spent: c.spent, minPayout: c.minPayout, maxPayout: c.maxPayout, emoji: c.emoji, gradient: c.gradient, top: c.top, platforms: c.platforms, createdAt: day(c.createdAt) })),
+    campaigns: campaigns.map((c) => ({ id: c.id, title: c.title, brand: c.brand, category: c.category, rate: c.rate, budget: c.budget, spent: c.spent, minPayout: c.minPayout, maxPayout: c.maxPayout, emoji: c.emoji, gradient: c.gradient, image: c.image, top: c.top, platforms: c.platforms, createdAt: day(c.createdAt) })),
+    // Hors ligne, les trois connexions sont proposées (simulées, voir POST /api/auth/oauth/demo).
+    oauth: [...OAUTH_PROVIDERS],
   };
 }

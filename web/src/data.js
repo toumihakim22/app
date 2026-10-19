@@ -1,6 +1,12 @@
 // Données de l'utilisateur connecté, chargées depuis l'API (voir refresh()).
 
-const CATEGORIES = ["Sport", "Food", "Tech", "Mode", "Musique", "Humour"];
+// Mêmes listes que lib/server/gradients.ts. « Autre » : l'agence précise sa catégorie (texte libre enregistré tel quel).
+const CATEGORIES = ["Sport", "Food", "Tech", "Mode", "Beauté", "Musique", "Humour", "Gaming", "Cinéma", "Voyage",
+  "Automobile", "Éducation", "Santé", "Finance", "Immobilier", "Lifestyle", "Événementiel", "Autre"];
+const PLATFORMS = ["TikTok", "Instagram", "YouTube", "Facebook"];
+// Le lien d'un clip doit pointer vers la plateforme déclarée (https), comme côté serveur.
+const PLATFORM_HOSTS = { TikTok: /(^|\.)tiktok\.com$/, Instagram: /(^|\.)instagram\.com$/, YouTube: /(^|\.)(youtube\.com|youtu\.be)$/, Facebook: /(^|\.)(facebook\.com|fb\.watch|fb\.com)$/ };
+const PLATFORM_PLACEHOLDER = { TikTok: "https://www.tiktok.com/@…", Instagram: "https://www.instagram.com/reel/…", YouTube: "https://youtube.com/shorts/…", Facebook: "https://www.facebook.com/reel/…" };
 const COUNTRIES = ["Algérie", "Maroc", "Tunisie", "Libye", "Mauritanie", "Égypte", "France", "Belgique", "Suisse", "Canada", "Sénégal", "Côte d'Ivoire", "Arabie saoudite", "Émirats arabes unis", "Qatar", "Autre"];
 const PAYOUT_METHODS = ["BaridiMob", "CCP", "RIB bancaire"];
 
@@ -9,6 +15,8 @@ const emptyDb = () => ({
   settings: { maintenance: false, signupsOpen: true, announcement: "", minWithdraw: 2000, commissionRate: 15, minBudget: 50000, holdDays: 3, earningDays: 7, instantFeePercent: 2, instantMinFee: 100 },
   users: [], campaigns: [], agencies: [], publications: [], transactions: [], notifications: [], activity: [],
   series: { daily: [], label: "" },
+  // Connexions Google, Apple, Discord proposées (configurées sur le serveur ; toutes, simulées, dans la version autonome).
+  oauth: [],
 });
 let db = emptyDb();
 
@@ -20,12 +28,14 @@ async function api(method, path, body) {
     const offline = window.__CLIPBOOST_OFFLINE__;
     res = await (offline ? offline.fetch(path, init) : fetch(path, init));
   } catch (e) {
-    throw new Error("Connexion au serveur impossible. Vérifiez votre connexion internet.");
+    // Erreur née dans le navigateur (aucune réponse) : déjà dans la langue choisie (tServer la laisse telle quelle).
+    throw new Error(t("Connexion au serveur impossible. Vérifiez votre connexion internet."));
   }
   let data = {};
   try { data = await res.json(); } catch (e) {}
   if (!res.ok) {
-    const err = new Error(data.error || "Une erreur est survenue, réessayez.");
+    // Message du serveur gardé en français (comparaisons, motifs de tServer) : traduit là où il s'affiche.
+    const err = new Error(data.error || t("Une erreur est survenue, réessayez."));
     err.status = res.status;
     throw err;
   }
@@ -38,6 +48,7 @@ async function refresh() {
   if (!s.user) {
     db = emptyDb();
     Object.assign(db.settings, s.public.settings);
+    db.oauth = s.public.oauth || [];
     state.session = null;
     return;
   }
@@ -45,8 +56,10 @@ async function refresh() {
   s.me.joinedCampaigns = new Set(s.me.joinedCampaigns);
   s.users = s.users.map((u) => (u.id === s.me.id ? s.me : u));
   if (!s.users.some((u) => u.id === s.me.id)) s.users.push(s.me);
+  s.oauth = s.oauth || [];
   db = s;
   state.session = s.me.id;
+  adoptAccountLang(s.me.locale);
 }
 
 /**
@@ -65,8 +78,10 @@ async function act(method, path, body, success, after) {
     if (success) toast(typeof success === "function" ? success(res) : success);
     return res;
   } catch (e) {
+    // Session expirée : retour à la connexion (onRoute() referme modale, menus et tiroir).
     if (e.status === 401) { await refresh().catch(() => {}); state.modal = null; navigate("#/connexion"); }
-    toast(e.message, "danger");
+    // Message du serveur (français) traduit à l'affichage dans la langue choisie.
+    toast(tServer(e.message), "danger");
     return null;
   } finally {
     busy = false;

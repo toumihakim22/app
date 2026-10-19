@@ -1,9 +1,13 @@
-// Espace Clipper : accueil, campagnes, publications, portefeuille, statistiques, profil, paramètres.
+// Espace Clipper : accueil (activité et statistiques), découvrir (toutes les campagnes), agences et page d'une agence,
+// publications, portefeuille, profil, paramètres. Modales : fiche d'une campagne, soumission d'un clip, retrait.
 // Recettes et helpers : docs/design-system.md §4 et §6.2 (web/src/ui.js). Helpers locaux préfixés « cl ».
+// Textes : t("source française") au moment du rendu (web/src/i18n.js) ; traductions dans web/src/i18n/{en,ar}/clipper.js.
+// Les valeurs échangées avec le serveur ou comparées (statuts, catégories, moyens de retrait, data-value) restent en
+// français : seul leur affichage est traduit. Aucune variable locale ne s'appelle « t » (elle masquerait t()).
 
 const me = () => db.me;
 const myPubs = () => db.publications.filter((p) => p.userId === state.session);
-const myTx = () => db.transactions.filter((t) => t.userId === state.session);
+const myTx = () => db.transactions.filter((x) => x.userId === state.session);
 const myNotifs = () => db.notifications;
 const activeCampaigns = () => db.campaigns.filter((c) => c.status === "Active");
 
@@ -15,38 +19,80 @@ const dailySeries = () => (state.period === 7 ? db.series.daily.slice(-7) : db.s
 // Masquage sur les chiffres seuls : « •••• 7890 ».
 const maskAccount = (a) => { const d = String(a || "").replace(/\D/g, ""); return d ? `••••${NB}${d.slice(-4)}` : ""; };
 
+// « Accueil » réunit l'ancienne vue d'ensemble et les statistiques ; « Découvrir » et « Agences » remplacent les deux
+// onglets de l'ancienne page Campagnes. Le bouton « Soumettre un clip » est dans l'en-tête de l'Accueil et des publications.
+// Libellés en getters : relus à chaque rendu, ils suivent la langue choisie sans recharger la page.
 const CLIPPER_NAV = [
-  { id: "accueil", label: "Vue d'ensemble", short: "Accueil", icon: "home" },
-  { id: "campagnes", label: "Campagnes", icon: "target" },
-  { id: "publications", label: "Mes publications", short: "Clips", icon: "film" },
-  { id: "portefeuille", label: "Portefeuille", icon: "wallet" },
-  { id: "statistiques", label: "Statistiques", icon: "chart" },
-  { id: "profil", label: "Profil", icon: "user" },
-  { id: "parametres", label: "Paramètres", icon: "gear" },
+  { id: "accueil", get label() { return t("Accueil"); }, icon: "home" },
+  { id: "decouvrir", get label() { return t("Découvrir"); }, icon: "compass" },
+  { id: "agences", get label() { return t("Agences"); }, icon: "building" },
+  { id: "publications", get label() { return t("Mes publications"); }, get short() { return t("Clips"); }, icon: "film" },
+  { id: "portefeuille", get label() { return t("Portefeuille"); }, icon: "wallet" },
+  { id: "profil", get label() { return t("Profil"); }, icon: "user" },
+  { id: "parametres", get label() { return t("Paramètres"); }, icon: "gear" },
 ];
 
 // ---------- Helpers locaux ----------
-const CL_MONTHS_LONG = ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"];
 const CL_PAYOUT_ICON = { BaridiMob: "wallet", CCP: "mail", "RIB bancaire": "bank" };
-// Le lien doit pointer vers la plateforme déclarée (mêmes règles que le serveur, lib/server/services/clips.ts).
-const CL_HOSTS = { TikTok: /(^|\.)tiktok\.com$/, Instagram: /(^|\.)instagram\.com$/, YouTube: /(^|\.)(youtube\.com|youtu\.be)$/ };
 const CL_CHIP = `inline-flex h-10 shrink-0 items-center gap-1.5 rounded-full border border-line-strong bg-surface px-3.5 text-small font-medium text-fg-muted transition-colors hover:border-line-control hover:text-fg aria-pressed:border-brand-line aria-pressed:bg-brand-soft aria-pressed:text-brand-fg [&_svg]:size-3.5 ${FOCUS}`;
+// Découvrir : toutes les campagnes actives, celles que le clipper a rejointes, ses favoris (valeurs ; libellés : t(v)).
+const CL_SCOPES = ["Toutes", "Rejointes", "Favoris"];
+// Grille des plateformes de la modale de soumission (classes écrites en entier pour Tailwind).
+const CL_COLS = { 2: "sm:grid-cols-2", 3: "sm:grid-cols-3", 4: "sm:grid-cols-4" };
 const clSum = (a) => a.reduce((s, v) => s + v, 0);
 const clFirst = (u) => esc(u.name.split(" ")[0]);
 const clToday = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
-const clLink = (href, text) => `<a href="${href}" class="${HIT} inline-flex items-center gap-1 rounded-sm text-small font-medium text-brand-fg underline-offset-4 hover:underline ${FOCUS}">${text}${icon("chevronRight", "size-3.5")}</a>`;
+const clLink = (href, text) => `<a href="${href}" class="${HIT} inline-flex items-center gap-1 rounded-sm text-small font-medium text-brand-fg underline-offset-4 hover:underline ${FOCUS}">${text}${icon("chevronRight", "size-3.5 rtl:-scale-x-100")}</a>`;
 const clThresholdViews = (c) => viewsFor(c, c.minPayout);
 const clThresholdPct = (p) => Math.min(99, Math.floor((p.views / Math.max(1, clThresholdViews(campaignById(p.campaign)))) * 100));
 const clMyEarnings = (c) => myPubs().filter((p) => p.campaign === c.id).reduce((s, p) => s + earningsOf(p), 0);
 // Gain encore en rétention (contrôle anti-fraude) : pas encore retirable.
-const clOnHold = (t) => t.type === "gain" && t.availableAt && new Date(t.availableAt).getTime() > Date.now();
-const clTxBadge = (t) => (clOnHold(t) ? badge("En rétention", "idle", { ic: "clock" }) : statusBadge(t.status));
-const clPeriodSeg = () => segmented("period", `${state.period} jours`, [["7 jours", "7 j"], ["30 jours", "30 j"]], "Période");
+const clOnHold = (x) => x.type === "gain" && x.availableAt && new Date(x.availableAt).getTime() > Date.now();
+const clTxBadge = (x) => (clOnHold(x) ? badge(t("En rétention"), "idle", { ic: "clock" }) : statusBadge(x.status));
+// Libellé d'une opération : un gain porte le titre de sa campagne (texte de l'agence, jamais traduit), suivi le cas
+// échéant de « · vues supplémentaires » ; les autres libellés viennent du serveur (« Retrait vers CCP ») : tServer.
+const clTxLabel = (x) => {
+  const s = String(x.label || ""), extra = s.match(/^(.*) · vues supplémentaires$/);
+  if (x.type !== "gain") return tServer(s);
+  return extra ? t("{title} · vues supplémentaires", { title: extra[1] }) : s;
+};
+// Mois de l'historique (« Janvier 2026 ») dans la langue de l'interface, chiffres latins. key : « 2026-01 ».
+const clMonthLabel = (key) => {
+  const [y, m] = key.split("-").map(Number);
+  let s = `${m}/${y}`;
+  try { s = new Intl.DateTimeFormat(LOCALES[LANG].intl, { month: "long", year: "numeric", numberingSystem: "latn" }).format(new Date(y, m - 1, 1)); } catch (e) {}
+  return s.charAt(0).toUpperCase() + s.slice(1);
+};
+const clPeriodSeg = () => segmented("period", `${state.period} jours`, [["7 jours", t("7 j")], ["30 jours", t("30 j")]], t("Période"));
+// Catégorie de filtre : une catégorie précisée par l'agence (« Autre » au moment de la création) se range sous « Autre ».
+const clCat = (c) => (CATEGORIES.includes(c.category) ? c.category : "Autre");
+// Catégorie affichée : traduite si c'est l'une des 18 de la liste, sinon telle que l'agence l'a écrite.
+const clCatLabel = (c) => esc(t(c.category));
+// Mention « (facultatif) » d'un libellé de champ.
+const clOptional = () => `<span class="font-normal text-fg-subtle">${t("(facultatif)")}</span>`;
+// Énumération dans la langue de l'interface : « TikTok, Instagram et YouTube ».
+const clList = (arr) => {
+  try { return new Intl.ListFormat(LOCALES[LANG].intl, { type: "conjunction" }).format(arr); } catch (e) { return arr.join(", "); }
+};
+// Lien de clip : https et domaine de la plateforme déclarée (mêmes règles que le serveur, PLATFORM_HOSTS dans data.js).
+const clUrlOk = (p, v) => { try { const x = new URL(String(v || "").trim()); return x.protocol === "https:" && !!PLATFORM_HOSTS[p] && PLATFORM_HOSTS[p].test(x.hostname); } catch (e) { return false; } };
+// Forme normalisée d'un lien (le serveur enregistre url.toString()) : sert à repérer un lien déjà soumis.
+const clUrlKey = (v) => { try { return new URL(String(v || "").trim()).toString(); } catch (e) { return String(v || "").trim(); } };
+// Pictogrammes des plateformes d'une campagne (nom accessible : la liste complète).
+const clPlatformIcons = (list, cls = "") =>
+  `<span class="inline-flex items-center gap-1 ${cls}" role="img" aria-label="${t("Plateformes : {list}", { list: esc(clList(list)) })}" title="${esc(list.join(" · "))}">${list.map((p) => icon(PLATFORM_ICON[p] || "film", "size-3.5 shrink-0")).join("")}</span>`;
+// En-tête de section avec des commandes en bout de ligne (filtre, lien « Tout voir »).
+const clSection = (title, right = "") =>
+  `<div class="mb-3 mt-8 flex flex-wrap items-end justify-between gap-x-3 gap-y-2"><h2 class="text-heading text-fg">${title}</h2>${right ? `<div class="flex flex-wrap items-center gap-3">${right}</div>` : ""}</div>`;
+// Campagnes ouvertes aux clips du clipper (rejointes et actives) : choix de la modale de soumission.
+const clJoinedOpen = () => activeCampaigns().filter((c) => me().joinedCampaigns.has(c.id));
+// Erreur sous un champ : effacée dès la saisie suivante (clearInvalid, main.js) grâce à data-field-error.
+const clErr = (msg) => `<span data-field-error class="flex items-center gap-1 text-xs font-medium text-danger-fg" role="alert">${icon("alert", "size-3.5 shrink-0")}${msg}</span>`;
 
 // ---------- Organisateurs : agences et marques partenaires ----------
-// L'organisateur d'une campagne est l'agence qui la finance (profil public dans db.agencies) ; sans agence
-// (campagne créée par l'équipe ClipBoost), c'est l'agence visible qui porte le nom de sa marque, sinon la marque
-// elle-même, sous la clé « brand:<nom normalisé> » (toutes écritures : arabe, tifinagh…). Page : #/clipper/agence/<clé>.
+// L'organisateur d'une campagne est l'agence qui la finance (profil public dans db.agencies : photo, couverture, badge) ;
+// sans agence (campagne créée par l'équipe ClipBoost), c'est l'agence visible qui porte le nom de sa marque, sinon la
+// marque elle-même, sous la clé « brand:<nom normalisé> » (toutes écritures : arabe, tifinagh…). Page : #/clipper/agence/<clé>.
 // Normalisation : sans accents ni signes diacritiques, en minuscules, espaces réduits (« Café  Noir » = « cafe noir »).
 const clNorm = (s) => String(s || "").normalize("NFKD").replace(/\p{M}/gu, "").toLowerCase().replace(/\s+/g, " ").trim();
 const clAgencyOf = (c) => {
@@ -56,15 +102,33 @@ const clAgencyOf = (c) => {
 const clOrgKey = (c) => { const a = clAgencyOf(c); return c.ownerId || (a ? a.id : `brand:${clNorm(c.brand) || c.id}`); };
 const clOrgHref = (key) => `#/clipper/agence/${encodeURIComponent(key)}`;
 const clOrgName = (c) => { const a = clAgencyOf(c); return a ? a.name : c.brand; };
+// Organisateur réduit d'une campagne (lien, pastille, badge) : clé, nom, photo, badge de vérification.
+const clOrgOf = (c) => { const a = clAgencyOf(c); return { key: clOrgKey(c), name: a ? a.name : c.brand, avatar: a ? a.avatar || null : null, verified: !!(a && a.verified) }; };
 // Ligne de type des cartes (la page de l'organisateur précise « Campagne gérée par ClipBoost »).
-const clOrgType = (o) => (o.agency ? `Agence · ${esc(o.country || "Algérie")}` : "Marque partenaire");
+const clOrgType = (o) => (o.agency ? `${t("Agence")} · ${esc(t(o.country || "Algérie"))}` : t("Marque partenaire"));
 // Présentation : la bio de l'agence, sinon une phrase factuelle (marque gérée par ClipBoost, ancienneté de l'agence).
-const clOrgAbout = (o) => (o.bio ? esc(o.bio) : o.agency ? `Agence membre de ClipBoost depuis le ${date(o.since)}.` : `Campagnes de la marque ${esc(o.name)}, publiées et vérifiées par l'équipe ClipBoost.`);
-// Pastille d'initiales (carré arrondi : une structure, pas une personne) ; même teinte que l'avatar de l'agence.
-const clOrgMark = (o, size) => `<span class="grid ${size} shrink-0 select-none place-items-center rounded-tile font-semibold text-on-brand ${AVATARS[[...String(o.key)].reduce((h, ch) => h + ch.charCodeAt(0), 0) % AVATARS.length]}" aria-hidden="true">${esc(initials(o.name))}</span>`;
+const clOrgAbout = (o) => (o.bio ? esc(o.bio) : o.agency
+  ? t("Agence membre de ClipBoost depuis le {date}.", { date: date(o.since) })
+  : t("Campagnes de la marque {name}, publiées et vérifiées par l'équipe ClipBoost.", { name: esc(o.name) }));
+// Pastille de l'organisateur (carré arrondi : une structure, pas une personne) : sa photo, sinon ses initiales sur la
+// même teinte que l'avatar de l'agence. size : taille et extras (anneau, marge négative sur une couverture) ;
+// radius : arrondi (plus serré pour la petite pastille des cartes).
+const clOrgMark = (o, size, radius = "rounded-tile") => o.avatar
+  ? `<img src="${esc(o.avatar)}" alt="" loading="lazy" decoding="async" class="block ${size} shrink-0 select-none ${radius} bg-muted object-cover" aria-hidden="true"/>`
+  : `<span class="grid ${size} shrink-0 select-none place-items-center ${radius} font-semibold text-on-brand ${AVATARS[[...String(o.key)].reduce((h, ch) => h + ch.charCodeAt(0), 0) % AVATARS.length]}" aria-hidden="true">${esc(initials(o.name))}</span>`;
+// Couverture de l'organisateur (bandeau 3:1) : sa photo de couverture, sinon le dégradé de sa catégorie principale.
+const clOrgCover = (o, cls) => o.cover
+  ? `<div class="relative overflow-hidden bg-muted ${cls}" aria-hidden="true"><img src="${esc(o.cover)}" alt="" loading="lazy" decoding="async" class="absolute inset-0 size-full object-cover"/></div>`
+  : `<div class="cover ${cls}" data-cat="${clCat(o.campaigns[0] || {})}" aria-hidden="true"></div>`;
 // Lien vers l'organisateur dans une carte ou une ligne : cible tactile HIT (§3.5) sans décaler la ligne ; le nom se
-// tronque dans un span intérieur (un overflow sur le lien rognerait sa zone de clic). wrap : le nom passe à la ligne.
-const clOrgLink = (c, extra = "", wrap = false) => `<a href="${clOrgHref(clOrgKey(c))}" ${extra} class="${HIT} ${wrap ? "break-words" : "flex min-w-0"} rounded-sm font-medium text-fg-muted underline-offset-2 transition-colors duration-150 hover:text-brand-fg hover:underline ${FOCUS}"><span class="${wrap ? "" : "truncate"}">${esc(clOrgName(c))}</span></a>`;
+// tronque dans un span intérieur (un overflow sur le lien rognerait sa zone de clic), le badge bleu reste entier.
+// mark : taille de la pastille affichée avant le nom (sinon aucune).
+const clOrgLink = (c, mark = "") => {
+  const o = clOrgOf(c);
+  return `<a href="${clOrgHref(o.key)}" class="${HIT} flex min-w-0 items-center gap-1 rounded-sm font-medium text-fg-muted underline-offset-2 transition-colors duration-150 hover:text-brand-fg hover:underline ${FOCUS}">${mark ? clOrgMark(o, mark, "rounded-[5px]") : ""}<span class="truncate">${esc(o.name)}</span>${o.verified ? verifiedBadge("size-3.5", t("Agence vérifiée")) : ""}</a>`;
+};
+// Mini-couverture (vignette 20 px) d'une campagne active sur la carte d'une agence.
+const clMiniCover = (c) => `<span class="cover relative grid size-5 shrink-0 place-items-center overflow-hidden rounded-[4px] text-[11px] ring-2 ring-surface" ${coverAttr(c)}>${c.image ? `<img src="${esc(c.image)}" alt="" loading="lazy" decoding="async" class="absolute inset-0 size-full object-cover"/>` : c.emoji}</span>`;
 
 /** Organisateurs des campagnes visibles : ceux qui ont une campagne active d'abord, puis par budget restant. */
 function clOrganisers() {
@@ -73,7 +137,8 @@ function clOrganisers() {
     const key = clOrgKey(c);
     if (!map.has(key)) {
       const a = clAgencyOf(c);
-      map.set(key, { key, agency: !!(c.ownerId || a), name: a ? a.name : c.brand, country: a ? a.country : "", bio: a ? a.bio : "", joined: a ? a.joined : "", campaigns: [] });
+      map.set(key, { key, agency: !!(c.ownerId || a), name: a ? a.name : c.brand, avatar: a ? a.avatar || null : null, cover: a ? a.cover || null : null,
+        verified: !!(a && a.verified), country: a ? a.country : "", bio: a ? a.bio : "", joined: a ? a.joined : "", campaigns: [] });
     }
     map.get(key).campaigns.push(c);
   }
@@ -86,92 +151,103 @@ function clOrganisers() {
   }).sort((a, b) => (b.active.length > 0) - (a.active.length > 0) || b.remaining - a.remaining || a.name.localeCompare(b.name, "fr"));
 }
 
-// Carte portefeuille : seule source du solde sur l'Accueil et le Portefeuille.
+// Carte portefeuille : seule source du solde sur l'Accueil et le Portefeuille. Sur l'Accueil (curve), la courbe des
+// gains cumulés couvre toujours les 30 derniers jours : le sélecteur de période ne règle que la section Statistiques.
 function clWalletCard({ curve = false } = {}) {
   const bal = balance(), hold = db.settings.holdDays, min = db.settings.minWithdraw;
   // Sous le minimum, « Retirer » n'est pas l'action principale de l'écran : bouton secondaire et seuil affiché.
   const canWithdraw = bal >= min, wdVariant = canWithdraw ? "primary" : "secondary";
   const actions = curve
-    ? `<div class="flex flex-col items-start gap-1.5 sm:items-end"><div class="flex items-center gap-2"><button type="button" data-action="withdraw" class="${btn(wdVariant)}">Retirer</button><a href="#/clipper/portefeuille" class="${btn("ghost")}">Portefeuille</a></div>${canWithdraw ? "" : `<p class="text-xs text-fg-subtle">Disponible dès ${da(min)}</p>`}</div>`
+    ? `<div class="flex flex-col items-start gap-1.5 sm:items-end"><div class="flex items-center gap-2"><button type="button" data-action="withdraw" class="${btn(wdVariant)}">${t("Retirer")}</button><a href="#/clipper/portefeuille" class="${btn("ghost")}">${t("Portefeuille")}</a></div>${canWithdraw ? "" : `<p class="text-xs text-fg-subtle">${t("Disponible dès {amount}", { amount: da(min) })}</p>`}</div>`
     : "";
   const facts = `<dl class="mt-5 grid grid-cols-2 gap-4 border-t border-line pt-4">
-      <div class="min-w-0"><dt class="flex items-center gap-1.5 text-small text-fg-muted">${icon("clock", "size-3.5 shrink-0 text-fg-subtle")}En rétention</dt>
-        <dd class="mt-1 text-base font-semibold">${money(pendingAmount())}</dd><dd class="mt-0.5 text-xs text-fg-subtle">libéré après ${plural(hold, "jour", "jours")} de contrôle</dd></div>
-      <div class="min-w-0"><dt class="text-small text-fg-muted">Total gagné</dt>
-        <dd class="mt-1 text-base font-semibold">${money(totalEarned())}</dd><dd class="mt-0.5 text-xs text-fg-subtle">depuis l'inscription</dd></div></dl>`;
+      <div class="min-w-0"><dt class="flex items-center gap-1.5 text-small text-fg-muted">${icon("clock", "size-3.5 shrink-0 text-fg-subtle")}${t("En rétention")}</dt>
+        <dd class="mt-1 text-base font-semibold">${money(pendingAmount())}</dd><dd class="mt-0.5 text-xs text-fg-subtle">${t("libéré après {days} de contrôle", { days: plural(hold, "jour", "jours") })}</dd></div>
+      <div class="min-w-0"><dt class="text-small text-fg-muted">${t("Total gagné")}</dt>
+        <dd class="mt-1 text-base font-semibold">${money(totalEarned())}</dd><dd class="mt-0.5 text-xs text-fg-subtle">${t("depuis l'inscription")}</dd></div></dl>`;
   if (!curve) {
-    return card(`<p class="text-small font-medium text-fg-muted">Solde disponible</p>
+    return card(`<p class="text-small font-medium text-fg-muted">${t("Solde disponible")}</p>
       <p class="mt-1">${bigMoney(bal, "money")}</p>
-      <button type="button" data-action="withdraw" class="${btn(wdVariant, "md", "mt-5 w-full")}">Demander un retrait</button>
-      <p class="mt-2 text-center text-xs text-fg-subtle">${canWithdraw ? `Retrait minimum ${da(min)}` : `Disponible dès ${da(min)} de solde`}</p>
+      <button type="button" data-action="withdraw" class="${btn(wdVariant, "md", "mt-5 w-full")}">${t("Demander un retrait")}</button>
+      <p class="mt-2 text-center text-xs text-fg-subtle">${canWithdraw ? t("Retrait minimum {amount}", { amount: da(min) }) : t("Disponible dès {amount} de solde", { amount: da(min) })}</p>
       ${facts}`, "p-5");
   }
-  const series = dailySeries();
+  const series = db.series.daily;
   return card(`<div class="flex flex-wrap items-end justify-between gap-x-6 gap-y-4">
-      <div class="min-w-0"><p class="text-small font-medium text-fg-muted">Solde disponible</p><p class="mt-1">${bigMoney(bal, "money")}</p></div>
+      <div class="min-w-0"><p class="text-small font-medium text-fg-muted">${t("Solde disponible")}</p><p class="mt-1">${bigMoney(bal, "money")}</p></div>
       ${actions}</div>
     ${facts}
-    ${clSum(series) ? `<p class="mt-5 text-micro font-medium text-fg-subtle">Gains cumulés · ${state.period} derniers jours</p>
-    <div class="-mx-5 -mb-5 mt-1 pr-4">${cumulativeChart(series, { h: "h-20", end: false })}</div>` : ""}`, "p-5 overflow-hidden");
+    ${clSum(series) ? `<p class="mt-5 text-micro font-medium text-fg-subtle">${t("Gains cumulés · {days}", { days: plural(series.length, "dernier jour", "derniers jours") })}</p>
+    <div class="-mx-5 -mb-5 mt-1 pe-4" dir="ltr">${cumulativeChart(series, { h: "h-20", end: false, label: t("Gains cumulés") })}</div>` : ""}`, "p-5 overflow-hidden");
 }
 
-// Ligne d'historique d'argent (§4.6), du point de vue du clipper.
-function txRow(t) {
-  const credit = t.amount > 0, final = t.status === "Validé" && !clOnHold(t);
-  return `<li data-row="${t.id}" class="flex items-center gap-3 py-3">
-    <span class="grid size-8 shrink-0 place-items-center rounded-full ${credit ? "bg-income-soft text-income" : "bg-muted text-fg-muted"}" aria-hidden="true">${icon(credit ? "arrowDownLeft" : "arrowUpRight", "size-4")}</span>
-    <div class="min-w-0 flex-1"><p class="truncate text-sm font-medium text-fg">${esc(t.label)}</p>
-      <p class="truncate text-xs text-fg-subtle">${date(t.date)} · ${code(t.ref)}${t.fee ? ` · frais ${da(t.fee)}` : ""}</p>
-      ${final ? "" : `<div class="mt-1.5 sm:hidden">${clTxBadge(t)}</div>`}</div>
-    <div class="shrink-0 text-right"><p class="text-sm font-medium">${money(t.amount, { signed: true, pending: !final })}</p><div class="mt-1 hidden justify-end sm:flex">${clTxBadge(t)}</div></div>
+// Ligne d'historique d'argent (§4.6), du point de vue du clipper. Flèches entrée / sortie miroir en arabe ;
+// la référence (code) reste de gauche à droite.
+function txRow(x) {
+  const credit = x.amount > 0, final = x.status === "Validé" && !clOnHold(x);
+  return `<li data-row="${x.id}" class="flex items-center gap-3 py-3">
+    <span class="grid size-8 shrink-0 place-items-center rounded-full ${credit ? "bg-income-soft text-income" : "bg-muted text-fg-muted"}" aria-hidden="true">${icon(credit ? "arrowDownLeft" : "arrowUpRight", "size-4 rtl:-scale-x-100")}</span>
+    <div class="min-w-0 flex-1"><p class="truncate text-sm font-medium text-fg">${esc(clTxLabel(x))}</p>
+      <p class="truncate text-xs text-fg-subtle">${date(x.date)} · <span dir="ltr">${code(x.ref)}</span>${x.fee ? ` · ${t("frais {amount}", { amount: da(x.fee) })}` : ""}</p>
+      ${final ? "" : `<div class="mt-1.5 sm:hidden">${clTxBadge(x)}</div>`}</div>
+    <div class="shrink-0 text-end"><p class="text-sm font-medium">${money(x.amount, { signed: true, pending: !final })}</p><div class="mt-1 hidden justify-end sm:flex">${clTxBadge(x)}</div></div>
   </li>`;
 }
 
-// Carte campagne (§4.4). o.org === false : sans le lien vers l'organisateur (sur sa propre page).
-// Campagne en pause ou terminée (page d'une agence) : statut et détail, sans favori ni participation.
+// Carte campagne (§4.4) : photo de la campagne (sinon le dégradé de sa catégorie), tarif, plateformes, organisateur
+// (pastille, nom et badge bleu). o.org === false : sans le lien vers l'organisateur (sur sa propre page).
+// Campagne en pause ou terminée (page d'une agence, favoris, campagnes rejointes) : statut et détail, sans participation ;
+// le cœur reste affiché tant qu'elle est en favori (pour pouvoir l'en retirer).
 function campaignCard(c, o) {
   const u = me(), fav = u.favorites.has(c.id), joined = u.joinedCampaigns.has(c.id), open = c.status === "Active", org = !(o && o.org === false);
+  const plats = PLATFORMS.filter((p) => c.platforms.includes(p));
   return `<article class="group flex min-w-0 flex-col ${CARD} ${CARD_HOVER} p-2">
     <div class="relative">
-      <button type="button" data-action="open-campaign" data-id="${c.id}" class="cover relative block aspect-[16/9] w-full overflow-hidden rounded-tile ${FOCUS}" ${coverAttr(c)} aria-label="Voir la campagne ${esc(c.title)}">
-        <span class="absolute inset-0 grid place-items-center text-5xl drop-shadow-[0_6px_14px_rgb(0_0_0/0.22)]" aria-hidden="true">${c.emoji}</span>
-        <span class="absolute left-2.5 top-2.5 inline-flex items-baseline gap-1 rounded-badge bg-night/80 px-2 py-1 text-small font-semibold tabular-nums text-on-brand backdrop-blur-sm">${fmt(c.rate)}${NB}DA<span class="text-[11px] font-medium text-on-brand/80">/ 1k${NB}vues</span></span>
-        ${c.top ? `<span class="absolute bottom-2.5 left-2.5 inline-flex items-center gap-1 rounded-badge bg-on-brand/90 px-1.5 py-0.5 text-[11px] font-semibold text-night">${icon("star", "size-3", true)}Top campagne</span>` : ""}
+      <button type="button" data-action="open-campaign" data-id="${c.id}" class="cover relative block aspect-[16/9] w-full overflow-hidden rounded-tile ${FOCUS}" ${coverAttr(c)} aria-label="${t("Voir la campagne {title}", { title: esc(c.title) })}">
+        ${coverArt(c, "text-5xl")}
+        <span class="absolute start-2.5 top-2.5 inline-flex items-baseline gap-1 whitespace-nowrap rounded-badge bg-night/80 px-2 py-1 text-small font-semibold tabular-nums text-on-brand backdrop-blur-sm">${fmt(c.rate)}${NB}${t("DA")}<span class="text-[11px] font-medium text-on-brand/80">${t("/ 1k vues")}</span></span>
+        ${c.top ? `<span class="absolute bottom-2.5 start-2.5 inline-flex items-center gap-1 rounded-badge bg-on-brand/90 px-1.5 py-0.5 text-[11px] font-semibold text-night">${icon("star", "size-3", true)}${t("Top campagne")}</span>` : ""}
       </button>
-      ${open ? `<button type="button" data-action="toggle-fav" data-id="${c.id}" aria-pressed="${fav}" aria-label="${fav ? "Retirer des favoris" : "Ajouter aux favoris"}" class="absolute right-2.5 top-2.5 grid size-10 place-items-center rounded-full bg-on-brand/90 md:size-8 text-night/70 shadow-control backdrop-blur-sm transition-colors hover:text-danger-solid aria-pressed:text-danger-solid ${FOCUS}">${icon("heart", "size-4", fav)}</button>` : ""}
+      ${plats.length ? clPlatformIcons(plats, "pointer-events-none absolute bottom-2.5 end-2.5 h-6 rounded-badge bg-night/80 px-1.5 text-on-brand backdrop-blur-sm") : ""}
+      ${open || fav ? `<button type="button" data-action="toggle-fav" data-id="${c.id}" aria-pressed="${fav}" aria-label="${fav ? t("Retirer des favoris") : t("Ajouter aux favoris")}" class="absolute end-2.5 top-2.5 grid size-10 place-items-center rounded-full bg-on-brand/90 text-night/70 shadow-control backdrop-blur-sm transition-colors hover:text-danger-solid aria-pressed:text-danger-solid md:size-8 ${FOCUS}">${icon("heart", "size-4", fav)}</button>` : ""}
     </div>
     <div class="flex flex-1 flex-col gap-3 px-2 pb-1 pt-3">
-      <div class="min-w-0"><p class="flex min-w-0 items-baseline gap-1 text-xs text-fg-subtle">${org ? `${clOrgLink(c)}<span class="shrink-0">· ${esc(c.category)}</span>` : `<span class="truncate">${esc(c.category)}</span>`}</p><h3 class="mt-0.5 font-sans text-[15px] font-semibold leading-snug text-fg">${esc(c.title)}</h3></div>
+      <div class="min-w-0"><p class="flex min-w-0 items-center gap-1 text-xs text-fg-subtle">${org ? `${clOrgLink(c, "size-5 text-[9px]")}<span class="max-w-[60%] shrink-0 truncate">· ${clCatLabel(c)}</span>` : `<span class="truncate">${clCatLabel(c)}</span>`}</p><h3 class="mt-1 font-sans text-[15px] font-semibold leading-snug text-fg">${esc(c.title)}</h3></div>
       <dl class="grid grid-cols-[1fr_auto] gap-x-4 gap-y-1 text-small">
-        <dt class="text-fg-subtle">Payé dès</dt><dd class="text-right font-medium tabular-nums text-fg">${plural(clThresholdViews(c), "vue", "vues")}</dd>
-        <dt class="text-fg-subtle">Plafond par clip</dt><dd class="text-right font-medium tabular-nums text-fg">${da(c.maxPayout)}</dd>
-        ${joined ? `<dt class="text-fg-subtle">Vos gains</dt><dd class="text-right font-medium">${money(clMyEarnings(c), { signed: true })}</dd>` : ""}
+        <dt class="text-fg-subtle">${t("Payé dès")}</dt><dd class="text-end font-medium tabular-nums text-fg">${plural(clThresholdViews(c), "vue", "vues")}</dd>
+        <dt class="text-fg-subtle">${t("Plafond par clip")}</dt><dd class="text-end font-medium tabular-nums text-fg">${da(c.maxPayout)}</dd>
+        ${joined ? `<dt class="text-fg-subtle">${t("Vos gains")}</dt><dd class="text-end font-medium">${money(clMyEarnings(c), { signed: true })}</dd>` : ""}
       </dl>
-      ${progress(c.spent, c.budget)}
+      ${progress(c.spent, c.budget, { aria: t("Budget utilisé") })}
       <div class="mt-auto pt-1">${!open
-        ? `<div class="flex items-center justify-between gap-2">${statusBadge(c.status)}<button type="button" data-action="open-campaign" data-id="${c.id}" class="${btn("soft", "sm")}">Détails</button></div>`
+        ? `<div class="flex items-center justify-between gap-2">${statusBadge(c.status)}<button type="button" data-action="open-campaign" data-id="${c.id}" class="${btn("soft", "sm")}">${t("Détails")}</button></div>`
         : joined
-        ? `<button type="button" data-action="submit-clip" data-id="${c.id}" class="${btn("secondary", "sm", "w-full")}">${icon("plus")}Soumettre un clip</button>`
-        : `<button type="button" data-action="join" data-id="${c.id}" class="${btn("soft", "sm", "w-full")}">Rejoindre</button>`}</div>
+        ? `<button type="button" data-action="submit-clip" data-id="${c.id}" class="${btn("secondary", "sm", "w-full")}">${icon("plus")}${t("Soumettre un clip")}</button>`
+        : `<button type="button" data-action="join" data-id="${c.id}" class="${btn("soft", "sm", "w-full")}">${t("Rejoindre")}</button>`}</div>
     </div>
   </article>`;
 }
 
-// Vue liste des campagnes (§4.5) : une ligne de tableau (≥ md) et un élément de liste (< md).
+// Vue liste des campagnes (§4.5) : une ligne de tableau (≥ xl) et un élément de liste (< xl).
+// Campagne en pause ou terminée (rejointe ou en favori) : son statut à la place de l'action.
 function clCampaignAction(c, size = "sm") {
+  if (c.status !== "Active") return statusBadge(c.status);
   return me().joinedCampaigns.has(c.id)
-    ? `<button type="button" data-action="submit-clip" data-id="${c.id}" class="${btn("secondary", size)}">${icon("plus")}Soumettre</button>`
-    : `<button type="button" data-action="join" data-id="${c.id}" class="${btn("soft", size)}">Rejoindre</button>`;
+    ? `<button type="button" data-action="submit-clip" data-id="${c.id}" class="${btn("secondary", size)}">${icon("plus")}${t("Soumettre")}</button>`
+    : `<button type="button" data-action="join" data-id="${c.id}" class="${btn("soft", size)}">${t("Rejoindre")}</button>`;
 }
 function clFavButton(c, size = "sm") {
   const fav = me().favorites.has(c.id);
-  return `<button type="button" data-action="toggle-fav" data-id="${c.id}" aria-pressed="${fav}" aria-label="${fav ? "Retirer des favoris" : "Ajouter aux favoris"}" class="${iconBtn(size, false, "aria-pressed:text-danger-solid")}">${icon("heart", "", fav)}</button>`;
+  if (!fav && c.status !== "Active") return `<span class="${iconBtn(size, false, "pointer-events-none invisible")}" aria-hidden="true"></span>`;
+  return `<button type="button" data-action="toggle-fav" data-id="${c.id}" aria-pressed="${fav}" aria-label="${fav ? t("Retirer des favoris") : t("Ajouter aux favoris")}" class="${iconBtn(size, false, "aria-pressed:text-danger-solid")}">${icon("heart", "", fav)}</button>`;
 }
 function campaignRow(c) {
+  const plats = PLATFORMS.filter((p) => c.platforms.includes(p));
   return `<tr class="${TBL.tr}">
     <td class="${TBL.td}"><div class="flex min-w-0 items-center gap-3"><button type="button" data-action="open-campaign" data-id="${c.id}" tabindex="-1" aria-hidden="true" class="shrink-0 rounded-tile">${coverThumb(c, "sm")}</button>
-      <div class="min-w-0"><button type="button" data-action="open-campaign" data-id="${c.id}" class="block max-w-72 truncate rounded-sm text-left font-medium text-fg underline-offset-2 hover:underline ${FOCUS}" aria-label="Voir la campagne ${esc(c.title)}">${esc(c.title)}</button>
-        <p class="mt-0.5 flex min-w-0 max-w-72 items-baseline gap-1 text-xs text-fg-subtle">${clOrgLink(c)}<span class="shrink-0">· ${esc(c.category)}</span></p></div></div></td>
+      <div class="min-w-0"><button type="button" data-action="open-campaign" data-id="${c.id}" class="block max-w-72 truncate rounded-sm text-start font-medium text-fg underline-offset-2 hover:underline ${FOCUS}" aria-label="${t("Voir la campagne {title}", { title: esc(c.title) })}">${esc(c.title)}</button>
+        <p class="mt-0.5 flex min-w-0 max-w-72 items-center gap-1 text-xs text-fg-subtle">${clOrgLink(c)}<span class="max-w-[60%] shrink-0 truncate">· ${clCatLabel(c)}</span></p></div></div></td>
+    <td class="${TBL.td}">${clPlatformIcons(plats, "text-fg-muted")}</td>
     <td class="${TBL.td} ${TBL.tdNum}">${money(c.rate)}</td>
     <td class="${TBL.td} ${TBL.tdNum}">${money(c.maxPayout)}</td>
     <td class="${TBL.td} ${TBL.tdNum}">${fmt(c.clippers)}</td>
@@ -179,75 +255,110 @@ function campaignRow(c) {
   </tr>`;
 }
 function clCampaignItem(c) {
+  const plats = PLATFORMS.filter((p) => c.platforms.includes(p));
   return `<li class="${TBL.item}">
     <div class="flex items-start gap-3"><button type="button" data-action="open-campaign" data-id="${c.id}" tabindex="-1" aria-hidden="true" class="shrink-0 rounded-tile">${coverThumb(c, "sm")}</button>
-      <div class="min-w-0 flex-1"><button type="button" data-action="open-campaign" data-id="${c.id}" class="block max-w-full truncate rounded-sm text-left text-sm font-medium text-fg ${FOCUS}" aria-label="Voir la campagne ${esc(c.title)}">${esc(c.title)}</button>
-        <p class="mt-0.5 flex min-w-0 items-baseline gap-1 text-xs text-fg-subtle">${clOrgLink(c)}<span class="shrink-0">· ${esc(c.category)} · ${plural(c.clippers, "clipper", "clippers")}</span></p></div>${clFavButton(c, "md")}</div>
-    <div class="flex items-center justify-between gap-3"><span class="text-small font-medium tabular-nums text-fg">${rateShort(c.rate)}</span>${clCampaignAction(c, "md")}</div>
+      <div class="min-w-0 flex-1"><button type="button" data-action="open-campaign" data-id="${c.id}" class="block max-w-full truncate rounded-sm text-start text-sm font-medium text-fg ${FOCUS}" aria-label="${t("Voir la campagne {title}", { title: esc(c.title) })}">${esc(c.title)}</button>
+        <p class="mt-0.5 flex min-w-0 items-center gap-1 text-xs text-fg-subtle">${clOrgLink(c)}<span class="max-w-[70%] shrink-0 truncate">· ${clCatLabel(c)} · ${plural(c.clippers, "clipper", "clippers")}</span></p></div>${clFavButton(c, "md")}</div>
+    <div class="flex items-center justify-between gap-3"><span class="flex min-w-0 items-center gap-2 text-small font-medium tabular-nums text-fg">${rateShort(c.rate)}${clPlatformIcons(plats, "text-fg-subtle")}</span>${clCampaignAction(c, "md")}</div>
   </li>`;
 }
 
 // Tableau des clips (§4.5), partagé avec l'agence (amountLabel « Coût ») et l'admin (actions : colonne Décision, §6.4).
+// amountLabel : texte source français (traduit ici, à l'affichage). Liens selon l'espace : clipper, la campagne ouvre sa
+// fiche ; admin, le clip ouvre sa fiche d'examen (#/admin/moderation/<id>), la campagne la sienne (#/admin/campagnes/<id>)
+// et le clippeur son profil (#/admin/utilisateur/<id>). Un clip publié sur plusieurs plateformes (même lot) le signale :
+// « Aussi publié sur … ».
 function publicationsTable(list, { showUser = false, actions = false, amountLabel = actions ? "Gain estimé" : "Gains" } = {}) {
-  if (!list.length) return emptyState("film", "Aucun clip pour le moment", "Les clips soumis apparaîtront ici.");
+  if (!list.length) return emptyState("film", t("Aucun clip pour le moment"), t("Les clips soumis apparaîtront ici."));
   const dash = `<span class="font-normal text-fg-subtle">—</span>`;
+  const area = state.route.area, clipperArea = area === "clipper", adminArea = area === "admin";
+  // Lots : publications soumises ensemble (un même clip, une publication par plateforme).
+  const batches = new Map();
+  for (const x of db.publications) if (x.batch) { if (!batches.has(x.batch)) batches.set(x.batch, []); batches.get(x.batch).push(x.platform); }
+  const alsoOn = (p) => {
+    const others = p.batch ? (batches.get(p.batch) || []).filter((pl) => pl !== p.platform) : [];
+    const names = PLATFORMS.filter((pl) => others.includes(pl)).concat(others.filter((pl) => !PLATFORMS.includes(pl)));
+    return names.length ? `<span class="mt-0.5 flex min-w-0 items-center gap-1 text-xs text-fg-subtle">${icon("layers", "size-3.5 shrink-0")}<span class="truncate">${t("Aussi publié sur {list}", { list: esc(clList([...new Set(names)])) })}</span></span>` : "";
+  };
+  const userHref = (u) => `#/admin/utilisateur/${encodeURIComponent(u.id)}`;
   const rows = list.map((p) => {
     const c = campaignById(p.campaign), owner = userById(p.userId), pending = p.status === "En attente", under = pending && belowMin(p);
     const share = under ? clThresholdPct(p) : 0;
-    const thresholdBar = (w) => `<span class="block ${w}">${progress(p.views, clThresholdViews(c), { label: false, aria: "Progression vers le seuil" })}</span>`;
+    const thresholdBar = (w) => `<span class="block ${w}">${progress(p.views, clThresholdViews(c), { label: false, aria: t("Progression vers le seuil") })}</span>`;
+    // Lien externe vers la vidéo publiée (l'admin l'ouvre d'un pictogramme : le titre mène à la fiche d'examen).
+    const external = p.url ? `<a href="${esc(p.url)}" target="_blank" rel="noopener noreferrer" class="inline-grid size-6 shrink-0 place-items-center rounded-sm text-fg-subtle transition-colors hover:text-fg ${FOCUS}" aria-label="${t("Ouvrir « {title} » sur {platform}", { title: esc(p.title), platform: esc(p.platform) })}" title="${t("Ouvrir sur {platform}", { platform: esc(p.platform) })}">${icon("external", "size-3.5")}</a>` : "";
+    // Lien transformé en bouton par admPubTable (admin.js) : garder la forme <a href="#/admin/moderation/…" class="…" …>titre</a>.
+    const reviewLink = (cls) => `<a href="#/admin/moderation/${encodeURIComponent(p.id)}" class="${cls} underline-offset-2 hover:underline ${FOCUS}" title="${t("Examiner le clip")}">${esc(p.title)}</a>`;
     // La cellule Clip prend la place restante (w-full max-w-0) : seul le texte trop long est tronqué.
-    const title = p.url
-      ? `<a href="${esc(p.url)}" target="_blank" rel="noopener noreferrer" class="block truncate font-medium text-fg underline-offset-2 hover:underline ${FOCUS}">${esc(p.title)}</a>`
-      : `<span class="block truncate font-medium text-fg">${esc(p.title)}</span>`;
-    const reason = p.status === "Refusée" && p.reason ? `<span class="mt-0.5 block truncate text-xs text-danger-fg">Motif${NB}: ${esc(p.reason)}</span>` : "";
-    const capped = p.status === "Validée" && isCapped(p) ? `<span class="mt-0.5 flex items-center justify-end gap-1 text-xs font-medium text-warning-fg">${icon("info", "size-3.5 shrink-0")}Plafond atteint</span>` : "";
+    const title = adminArea
+      ? `<span class="flex min-w-0 items-center gap-1">${reviewLink("block min-w-0 truncate rounded-sm font-medium text-fg")}${external}</span>`
+      : p.url
+        ? `<a href="${esc(p.url)}" target="_blank" rel="noopener noreferrer" class="block truncate font-medium text-fg underline-offset-2 hover:underline ${FOCUS}">${esc(p.title)}</a>`
+        : `<span class="block truncate font-medium text-fg">${esc(p.title)}</span>`;
+    const titleMobile = adminArea
+      ? `<span class="flex min-w-0 items-center gap-1">${reviewLink("min-w-0 truncate rounded-sm text-sm font-medium text-fg")}${external}</span>`
+      : `<p class="truncate text-sm font-medium text-fg">${p.url ? `<a href="${esc(p.url)}" target="_blank" rel="noopener noreferrer" class="underline-offset-2 hover:underline">${esc(p.title)}</a>` : esc(p.title)}</p>`;
+    const reason = p.status === "Refusée" && p.reason ? `<span class="mt-0.5 block truncate text-xs text-danger-fg">${t("Motif : {reason}", { reason: esc(p.reason) })}</span>` : "";
+    const also = alsoOn(p);
+    const capped = p.status === "Validée" && isCapped(p) ? `<span class="mt-0.5 flex items-center justify-end gap-1 text-xs font-medium text-warning-fg">${icon("info", "size-3.5 shrink-0")}${t("Plafond atteint")}</span>` : "";
     // Montant : réel si validé ; estimé pour la modération ; « — » sinon (jamais « 0 DA » pour un gain non calculé).
     const amount = p.status === "Validée" ? `${money(earningsOf(p))}${capped}`
-      : actions && pending && !under ? `${money(payoutOf(p))}<span class="${TBL.tdSub} font-normal">estimé</span>`
-      : under && !actions ? `${dash}<span class="mt-0.5 block text-xs font-normal text-fg-subtle">${pct(share)} du seuil</span><span class="mt-1 flex justify-end">${thresholdBar("w-20")}</span>`
+      : actions && pending && !under ? `${money(payoutOf(p))}<span class="${TBL.tdSub} font-normal">${t("estimé")}</span>`
+      : under && !actions ? `${dash}<span class="mt-0.5 block text-xs font-normal text-fg-subtle">${t("{pct} du seuil", { pct: pct(share) })}</span><span class="mt-1 flex justify-end">${thresholdBar("w-20")}</span>`
       : dash;
-    const amountMobile = p.status === "Validée" ? money(earningsOf(p)) : actions && pending && !under ? `<span class="text-fg-subtle">estimé</span> ${money(payoutOf(p))}` : under ? `<span class="text-xs text-fg-subtle">${pct(share)} du seuil</span>` : dash;
-    const eye = (size) => `<button type="button" data-action="adm-views" data-id="${p.id}" class="${iconBtn(size, true)}" aria-label="Relever les vues de « ${esc(p.title)} »" title="Relever les vues">${icon("eye")}</button>`;
-    const threshold = (cls) => `<span class="${cls}"><span class="text-xs font-medium text-warning-fg">Seuil${NB}: ${pct(share)}</span>${thresholdBar("w-full")}</span>`;
-    // Clip déjà traité : l'emplacement du bouton « Relever les vues » est toujours réservé (badges alignés à droite).
+    const amountMobile = p.status === "Validée" ? money(earningsOf(p)) : actions && pending && !under ? `<span class="text-fg-subtle">${t("estimé")}</span> ${money(payoutOf(p))}` : under ? `<span class="text-xs text-fg-subtle">${t("{pct} du seuil", { pct: pct(share) })}</span>` : dash;
+    const eye = (size) => `<button type="button" data-action="adm-views" data-id="${p.id}" class="${iconBtn(size, true)}" aria-label="${t("Relever les vues de « {title} »", { title: esc(p.title) })}" title="${t("Relever les vues")}">${icon("eye")}</button>`;
+    const threshold = (cls) => `<span class="${cls}"><span class="text-xs font-medium text-warning-fg">${t("Seuil : {pct}", { pct: pct(share) })}</span>${thresholdBar("w-full")}</span>`;
+    // Clip déjà traité : l'emplacement du bouton « Relever les vues » est toujours réservé (badges alignés en bout de ligne).
     const decision = !actions ? "" : pending
-      ? `<div class="flex items-center justify-end gap-2">${eye("sm")}<button type="button" data-action="adm-reject" data-id="${p.id}" class="${btn("dangerSoft", "sm")}">Refuser</button>${under ? threshold("inline-grid w-[4.125rem] gap-1 whitespace-nowrap text-left") : `<button type="button" data-action="adm-validate" data-id="${p.id}" class="${btn("primary", "sm")}">Valider</button>`}</div>`
+      ? `<div class="flex items-center justify-end gap-2">${eye("sm")}<button type="button" data-action="adm-reject" data-id="${p.id}" class="${btn("dangerSoft", "sm")}">${t("Refuser")}</button>${under ? threshold("inline-grid w-[4.125rem] gap-1 whitespace-nowrap text-start") : `<button type="button" data-action="adm-validate" data-id="${p.id}" class="${btn("primary", "sm")}">${t("Valider")}</button>`}</div>`
       : `<div class="flex items-center justify-end gap-2">${statusBadge(p.status)}${p.status === "Validée" ? eye("sm") : `<span class="size-10 shrink-0 md:size-8" aria-hidden="true"></span>`}</div>`;
-    // Liste (sous 1 440 px chez l'admin) : boutons md en grille sur téléphone, alignés à droite dès sm (comme Campagnes et Paiements).
+    // Liste (sous 1 440 px chez l'admin) : boutons md en grille sur téléphone, en bout de ligne dès sm (comme Campagnes et Paiements).
     const decisionMobile = !actions ? "" : pending
-      ? `<div class="grid grid-cols-[auto_1fr_1fr] gap-2 sm:flex sm:justify-end">${eye("lg")}<button type="button" data-action="adm-reject" data-id="${p.id}" class="${btn("dangerSoft", "md")}">Refuser</button>${under ? threshold("grid content-center gap-1 rounded-control border border-line px-3 sm:w-40") : `<button type="button" data-action="adm-validate" data-id="${p.id}" class="${btn("primary", "md")}">Valider</button>`}</div>`
-      : p.status === "Validée" ? `<div class="flex justify-end"><button type="button" data-action="adm-views" data-id="${p.id}" class="${btn("secondary", "md")}">${icon("eye")}Relever les vues</button></div>` : "";
-    // Espace Clipper : la campagne du clip ouvre sa fiche (et, de là, la page de son organisateur). Cible tactile HIT :
-    // le titre se tronque dans un span intérieur et la ligne n'a pas d'overflow (la zone de clic n'est pas rognée).
-    const clipperArea = state.route.area === "clipper";
+      ? `<div class="grid grid-cols-[auto_1fr_1fr] gap-2 sm:flex sm:justify-end">${eye("lg")}<button type="button" data-action="adm-reject" data-id="${p.id}" class="${btn("dangerSoft", "md")}">${t("Refuser")}</button>${under ? threshold("grid content-center gap-1 rounded-control border border-line px-3 sm:w-40") : `<button type="button" data-action="adm-validate" data-id="${p.id}" class="${btn("primary", "md")}">${t("Valider")}</button>`}</div>`
+      : p.status === "Validée" ? `<div class="flex justify-end"><button type="button" data-action="adm-views" data-id="${p.id}" class="${btn("secondary", "md")}">${icon("eye")}${t("Relever les vues")}</button></div>` : "";
+    // Campagne du clip : sa fiche (clipper) ou sa fiche d'examen (admin). Cible tactile HIT : le titre se tronque dans
+    // un span intérieur et la ligne n'a pas d'overflow (la zone de clic n'est pas rognée).
+    const campLabel = `<span class="truncate">${esc(c.title)}</span>`;
+    const LINKISH = `${HIT} inline-flex min-w-0 max-w-full rounded-sm text-start underline-offset-2 transition-colors hover:text-fg hover:underline ${FOCUS}`;
     const campName = clipperArea
-      ? `<button type="button" data-action="open-campaign" data-id="${c.id}" class="${HIT} inline-flex min-w-0 max-w-full rounded-sm text-left underline-offset-2 transition-colors hover:text-fg hover:underline ${FOCUS}" aria-label="Voir la campagne ${esc(c.title)}"><span class="truncate">${esc(c.title)}</span></button>`
-      : `<span class="truncate">${esc(c.title)}</span>`;
-    const subLine = clipperArea
-      ? `<p class="flex min-w-0 items-center gap-1 text-xs text-fg-subtle">${campName}<span class="shrink-0 whitespace-nowrap">· ${date(p.date)}</span></p>`
-      : `<p class="truncate text-xs text-fg-subtle">${showUser && owner ? `${esc(owner.name)} · ` : ""}${esc(c.title)} · ${date(p.date)}</p>`;
+      ? `<button type="button" data-action="open-campaign" data-id="${c.id}" class="${LINKISH}" aria-label="${t("Voir la campagne {title}", { title: esc(c.title) })}">${campLabel}</button>`
+      : adminArea
+        ? `<a href="#/admin/campagnes/${encodeURIComponent(c.id)}" class="${LINKISH}" aria-label="${t("Examiner la campagne {title}", { title: esc(c.title) })}">${campLabel}</a>`
+        : `<span class="min-w-0 truncate">${esc(c.title)}</span>`;
+    // Clippeur (agence et admin, sous-ligne de la liste) : chez l'admin, un lien vers son profil.
+    const ownerSub = !showUser || !owner ? ""
+      : adminArea
+        ? `<a href="${userHref(owner)}" class="${HIT} min-w-0 truncate rounded-sm font-medium text-fg-muted underline-offset-2 hover:text-fg hover:underline ${FOCUS}">${esc(owner.name)}</a><span class="shrink-0" aria-hidden="true">·</span>`
+        : `<span class="min-w-0 truncate">${esc(owner.name)}</span><span class="shrink-0" aria-hidden="true">·</span>`;
+    const subLine = `<p class="flex min-w-0 items-center gap-1 text-xs text-fg-subtle">${ownerSub}${campName}<span class="shrink-0 whitespace-nowrap">· ${date(p.date)}</span></p>`;
     // Sous-ligne du tableau : seule la campagne se tronque ; la plateforme (colonne masquée sous xl) devient un pictogramme.
     const subCell = `<span class="mt-0.5 flex min-w-0 items-center gap-1 text-xs text-fg-subtle">${campName}<span class="shrink-0 whitespace-nowrap">· ${date(p.date)}</span><span class="inline-flex shrink-0 items-center gap-1 xl:hidden" title="${esc(p.platform)}">·${icon(PLATFORM_ICON[p.platform] || "film", "size-3.5")}<span class="sr-only">${esc(p.platform)}</span></span></span>`;
+    const ownerCell = !owner ? dash
+      : adminArea
+        ? `<a href="${userHref(owner)}" class="flex min-w-0 items-center gap-2 rounded-sm text-small text-fg underline-offset-2 hover:underline ${FOCUS}">${avatar(owner, "xs")}<span class="max-w-40 truncate">${esc(owner.name)}</span>${owner.verified ? verifiedBadge("size-3.5", t("Agence vérifiée")) : ""}</a>`
+        : `<div class="flex items-center gap-2">${avatar(owner, "xs")}<span class="max-w-40 truncate text-small text-fg">${esc(owner.name)}</span></div>`;
     return {
       tr: `<tr data-row="${p.id}" class="${TBL.tr}">
-        <td class="${TBL.td} w-full max-w-0"><div class="flex min-w-0 items-center gap-3">${coverThumb(c, "sm")}<div class="min-w-0 flex-1">${title}${subCell}${reason}</div></div></td>
-        ${showUser ? `<td class="${TBL.td}">${owner ? `<div class="flex items-center gap-2">${avatar(owner, "xs")}<span class="max-w-40 truncate text-small text-fg">${esc(owner.name)}</span></div>` : dash}</td>` : ""}
+        <td class="${TBL.td} w-full max-w-0"><div class="flex min-w-0 items-center gap-3">${coverThumb(c, "sm")}<div class="min-w-0 flex-1">${title}${subCell}${also}${reason}</div></div></td>
+        ${showUser ? `<td class="${TBL.td}">${ownerCell}</td>` : ""}
         <td class="${TBL.td} hidden xl:table-cell">${platformTag(p.platform)}</td>
-        <td class="${TBL.td} ${TBL.tdNum}">${fmt(p.views)}${actions ? `<span class="${TBL.tdSub} font-normal">seuil ${fmt(clThresholdViews(c))}</span>` : ""}</td>
+        <td class="${TBL.td} ${TBL.tdNum}">${fmt(p.views)}${actions ? `<span class="${TBL.tdSub} font-normal">${t("seuil {views}", { views: fmt(clThresholdViews(c)) })}</span>` : ""}</td>
         <td class="${TBL.td} ${TBL.tdNum}">${amount}</td>
         ${actions ? `<td class="${TBL.td} ${TBL.tdActions}">${decision}</td>` : `<td class="${TBL.td}">${statusBadge(p.status)}</td>`}
       </tr>`,
       li: `<li data-row="${p.id}" class="${TBL.item}">
-        <div class="flex items-start gap-3">${coverThumb(c, "sm")}<div class="min-w-0 flex-1"><p class="truncate text-sm font-medium text-fg">${p.url ? `<a href="${esc(p.url)}" target="_blank" rel="noopener noreferrer" class="underline-offset-2 hover:underline">${esc(p.title)}</a>` : esc(p.title)}</p>
-          ${subLine}${reason}</div>${actions && pending ? "" : statusBadge(p.status)}</div>
-        <div class="flex items-center justify-between gap-3 text-small"><span class="min-w-0 truncate text-fg-subtle">${plural(p.views, "vue", "vues")} · ${esc(p.platform)}</span><span class="shrink-0 font-medium">${amountMobile}</span></div>
+        <div class="flex items-start gap-3">${coverThumb(c, "sm")}<div class="min-w-0 flex-1">${titleMobile}
+          ${subLine}${also}${reason}</div>${actions && pending ? "" : statusBadge(p.status)}</div>
+        <div class="flex items-center justify-between gap-3 text-small"><span class="flex min-w-0 items-center gap-1.5 truncate text-fg-subtle">${icon(PLATFORM_ICON[p.platform] || "film", "size-3.5 shrink-0")}<span class="truncate">${esc(p.platform)} · ${plural(p.views, "vue", "vues")}</span></span><span class="shrink-0 font-medium">${amountMobile}</span></div>
         ${under && !actions ? thresholdBar("w-full") : ""}${decisionMobile}
       </li>`,
     };
   });
   return `<div class="${TBL.wrap}">
     <table class="${TBL.table}">
-      <thead><tr class="${TBL.headRow}"><th scope="col" class="${TBL.th}">Clip</th>${showUser ? `<th scope="col" class="${TBL.th}">Clippeur</th>` : ""}<th scope="col" class="${TBL.th} hidden xl:table-cell">Plateforme</th><th scope="col" class="${TBL.th} ${TBL.thNum}">Vues</th><th scope="col" class="${TBL.th} ${TBL.thNum}">${esc(amountLabel)}</th>${actions ? `<th scope="col" class="${TBL.th} ${TBL.thNum}">Décision</th>` : `<th scope="col" class="${TBL.th}">Statut</th>`}</tr></thead>
+      <thead><tr class="${TBL.headRow}"><th scope="col" class="${TBL.th}">${t("Clip")}</th>${showUser ? `<th scope="col" class="${TBL.th}">${t("Clippeur")}</th>` : ""}<th scope="col" class="${TBL.th} hidden xl:table-cell">${t("Plateforme")}</th><th scope="col" class="${TBL.th} ${TBL.thNum}">${t("Vues")}</th><th scope="col" class="${TBL.th} ${TBL.thNum}">${esc(t(amountLabel))}</th>${actions ? `<th scope="col" class="${TBL.th} ${TBL.thNum}">${t("Décision")}</th>` : `<th scope="col" class="${TBL.th}">${t("Statut")}</th>`}</tr></thead>
       <tbody>${rows.map((r) => r.tr).join("")}</tbody>
     </table>
     <ul class="${TBL.list}">${rows.map((r) => r.li).join("")}</ul>
@@ -256,14 +367,21 @@ function publicationsTable(list, { showUser = false, actions = false, amountLabe
 
 // ---------- Vues ----------
 
+// Accueil : l'activité (portefeuille, opérations, seuil le plus proche), les statistiques sur 7 ou 30 jours (chiffres
+// clés, gains par jour ou cumulés, vues par plateforme, gains par campagne), les clips et une sélection à découvrir.
 function cAccueil() {
   const u = me(), pubs = myPubs(), series = dailySeries();
-  const count = (s) => pubs.filter((p) => p.status === s).length, validated = count("Validée");
+  const count = (s) => pubs.filter((p) => p.status === s).length, validated = count("Validée"), waiting = count("En attente");
   const totalViews = clSum(pubs.map((p) => p.views)), periodGain = clSum(series), activeDays = series.filter((v) => v > 0).length;
   // Variation contre la période précédente (seulement sur 7 jours : la série du serveur couvre 30 jours).
   const prev = state.period === 7 && db.series.daily.length >= 14 ? clSum(db.series.daily.slice(-14, -7)) : 0;
   const change = prev ? ((periodGain - prev) / prev) * 100 : null;
-  const recommended = activeCampaigns().filter((c) => !u.joinedCampaigns.has(c.id)).slice(0, 3);
+  // Revenu pour 1 000 vues : gains validés ÷ vues validées × 1 000.
+  const valid = pubs.filter((p) => p.status === "Validée"), validViews = clSum(valid.map((p) => p.views));
+  const rpm = validViews ? Math.round((clSum(valid.map(earningsOf)) / validViews) * 1000) : 0;
+  // À découvrir : campagnes actives pas encore rejointes, les « Top campagne » d'abord (puis les plus récentes).
+  const discover = activeCampaigns().filter((c) => !u.joinedCampaigns.has(c.id)).sort((a, b) => Number(b.top) - Number(a.top)).slice(0, 3);
+  const submitBtn = `<button type="button" data-action="submit-clip" class="${btn("primary")}">${icon("plus")}${t("Soumettre un clip")}</button>`;
 
   // Motivation : le clip en attente le plus proche du seuil (un seul, des faits, aucun emoji).
   const near = pubs.filter((p) => p.status === "En attente" && belowMin(p))
@@ -273,358 +391,464 @@ function cAccueil() {
   const onboarding = !u.joinedCampaigns.size
     ? `<section class="mt-6 rounded-card border border-brand-line bg-brand-soft p-5 sm:p-6">
         <div class="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
-          <div class="min-w-0"><h2 class="text-section text-fg">Prêt pour votre premier clip${NB}?</h2>
-            <ol class="mt-3 grid gap-3 sm:grid-cols-3 sm:gap-6">${["Rejoignez une campagne", "Publiez votre clip", "Soumettez le lien pour validation"].map((s, i) =>
+          <div class="min-w-0"><h2 class="text-section text-fg">${t("Prêt pour votre premier clip ?")}</h2>
+            <ol class="mt-3 grid gap-3 sm:grid-cols-3 sm:gap-6">${[t("Rejoignez une campagne"), t("Publiez votre clip"), t("Soumettez le lien pour validation")].map((s, i) =>
               `<li class="flex items-center gap-2.5 text-small text-fg-muted"><span class="grid size-6 shrink-0 place-items-center rounded-full bg-brand text-xs font-semibold text-on-brand">${i + 1}</span>${s}</li>`).join("")}</ol></div>
-          <a href="#/clipper/campagnes" class="${btn("primary")}">Voir les campagnes</a></div></section>`
+          <a href="#/clipper/decouvrir" class="${btn("primary")}">${icon("compass")}${t("Découvrir les campagnes")}</a></div></section>`
     : "";
 
   const ops = myTx().slice(0, 4);
-  const opsCard = card(`${cardHeader("Dernières opérations", "", ops.length ? clLink("#/clipper/portefeuille", "Tout voir") : "")}
+  const opsCard = card(`${cardHeader(t("Dernières opérations"), "", ops.length ? clLink("#/clipper/portefeuille", t("Tout voir")) : "")}
     ${ops.length ? `<ul class="mt-1 divide-y divide-line">${ops.map(txRow).join("")}</ul>`
-      : emptyState("wallet", "Aucune opération", "Vos gains validés et vos retraits apparaîtront ici.", "", { inCard: true })}`, "p-5");
+      : emptyState("wallet", t("Aucune opération"), t("Vos gains validés et vos retraits apparaîtront ici."), "", { inCard: true })}`, "p-5");
 
-  const kpis = [
-    kpi({ label: "Gains de la période", value: bigMoney(periodGain), delta: change === null ? "" : `${change >= 0 ? "+" : MINUS}${pct(Math.abs(change))}`, deltaTone: change === null ? "flat" : change > 0 ? "up" : change < 0 ? "down" : "flat", sub: change === null ? `${state.period} derniers jours` : "vs 7 jours précédents" }),
-    kpi({ label: "Vues totales", value: kpiValue(compact(totalViews)), sub: "Tous clips confondus" }),
-    kpi({ label: "Clips publiés", value: kpiValue(fmt(pubs.length)), sub: `${plural(validated, "validé", "validés")} · ${fmt(count("En attente"))} en attente` }),
-    kpi({ label: "Taux de validation", value: kpiValue(pubs.length ? pct((validated / pubs.length) * 100) : "—"), sub: `Objectif 80${NB}%` }),
-  ];
+  // Statistiques (après le premier clip) : la période choisie règle les chiffres clés et le graphique.
+  let stats = "";
+  if (pubs.length) {
+    const periodDays = plural(state.period, "jour", "jours");
+    const kpis = [
+      // Variation signée (+12 %) : de gauche à droite, même en arabe.
+      kpi({ label: t("Gains de la période"), value: bigMoney(periodGain), delta: change === null ? "" : `<span dir="ltr">${change >= 0 ? "+" : MINUS}${pct(Math.abs(change))}</span>`, deltaTone: change === null ? "flat" : change > 0 ? "up" : change < 0 ? "down" : "flat",
+        sub: change === null ? t("Sur les {days}", { days: plural(state.period, "dernier jour", "derniers jours") }) : t("vs 7 jours précédents") }),
+      kpi({ label: t("Vues totales"), value: kpiValue(compact(totalViews)), sub: t("sur {clips}", { clips: plural(pubs.length, "clip", "clips") }) }),
+      kpi({ label: t("Taux de validation"), value: kpiValue(pct((validated / pubs.length) * 100)), sub: t("{validated} · {waiting} en attente", { validated: plural(validated, "validé", "validés"), waiting: fmt(waiting) }) }),
+      kpi({ label: t("Revenu pour 1 000 vues"), value: rpm ? bigMoney(rpm) : kpiValue("—"), sub: rpm ? t("sur vos clips validés") : t("Aucun clip validé") }),
+    ];
+    const mode = state.clChart === "cumul" ? "cumul" : "jour";
+    const dates = seriesDates(series.length);
+    // Libellé de la courbe : cumulativeChart (ui.js) y ajoute le total et le nombre de jours.
+    const cumul = `<div class="pt-7" dir="ltr">${cumulativeChart(series, { h: "h-44", label: t("Gains cumulés") })}</div>
+      <div class="mt-2 flex justify-between text-micro tabular-nums text-fg-subtle" dir="ltr" aria-hidden="true"><span>${dayLabel(dates[0])}</span><span>${dayLabel(dates[Math.floor((dates.length - 1) / 2)])}</span><span>${t("Auj.")}</span></div>`;
+    const chart = card(`<header class="flex flex-wrap items-start justify-between gap-3">
+        <div class="min-w-0"><h3 class="text-section text-fg">${mode === "cumul" ? t("Gains cumulés") : t("Gains par jour")}</h3><p class="mt-0.5 text-small text-fg-subtle">${t("Sur {days} · {active}", { days: periodDays, active: plural(activeDays, "jour actif", "jours actifs") })}</p></div>
+        ${segmented("cl-chart", mode, [["jour", t("Par jour")], ["cumul", t("Cumulé")]], t("Forme du graphique"))}</header>
+      ${periodGain ? `<div class="mt-5">${mode === "cumul" ? cumul : `<div dir="ltr">${barChart(series, { tone: "income", h: "h-44", caption: t("Gains par jour sur {days}", { days: periodDays }) })}</div>`}</div>`
+        : emptyState("chart", t("Aucun gain sur cette période"), t("Choisissez une période plus longue ou attendez la validation de vos clips."), "", { inCard: true })}`, "p-5");
+    const byPlatform = PLATFORMS.map((pl) => {
+      const v = clSum(pubs.filter((p) => p.platform === pl).map((p) => p.views));
+      return { label: platformTag(pl), value: v, display: fmt(v) };
+    });
+    const byCampaign = db.campaigns.map((c) => ({ c, earn: clSum(pubs.filter((p) => p.campaign === c.id).map(earningsOf)) })).filter((x) => x.earn > 0)
+      .map((x) => ({ label: `${coverThumb(x.c, "xs")}<span class="truncate">${esc(x.c.title)}</span>`, value: x.earn, display: money(x.earn) }));
+    stats = `${clSection(t("Statistiques"), clPeriodSeg())}
+      <div class="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">${kpis.join("")}</div>
+      <div class="mt-4 lg:mt-5">${chart}</div>
+      <div class="mt-4 grid gap-4 lg:mt-5 lg:grid-cols-2 lg:gap-5">
+        ${card(`${cardHeader(t("Vues par plateforme"), t("Tous clips confondus"))}<div class="mt-5">${barList(byPlatform, { tone: "brand", aria: t("Vues par plateforme") })}</div>`, "p-5")}
+        ${card(`${cardHeader(t("Gains par campagne"), t("Gains validés"))}${byCampaign.length ? `<div class="mt-5">${barList(byCampaign, { tone: "income", aria: t("Gains par campagne") })}</div>`
+          : emptyState("wallet", t("Aucun gain validé pour l'instant"), "", "", { inCard: true })}`, "p-5")}
+      </div>`;
+  }
 
-  const chart = card(`<header class="flex flex-wrap items-start justify-between gap-3">
-      <div class="min-w-0"><h2 class="text-section text-fg">Gains par jour</h2><p class="mt-0.5 text-small text-fg-subtle">Sur ${state.period} jours · ${plural(activeDays, "jour actif", "jours actifs")}</p></div>
-      ${clPeriodSeg()}</header>
-    ${periodGain ? `<div class="mt-5">${barChart(series, { tone: "income", caption: `Gains par jour sur ${state.period} jours` })}</div>`
-      : emptyState("chart", "Pas encore de gains sur cette période", "Vos gains apparaîtront ici après votre premier clip validé.", "", { inCard: true })}`, "p-5");
+  // Vos clips : les plus récents ou les plus vus (un seul tableau, les deux classements).
+  const clipsMode = state.clClips === "top" ? "top" : "recent";
+  const shown = clipsMode === "top" ? pubs.slice().sort((a, b) => b.views - a.views).slice(0, 4) : pubs.slice(0, 4);
+  const clips = pubs.length
+    ? `${clSection(t("Vos clips"), `${pubs.length > 1 ? segmented("cl-clips", clipsMode, [["recent", t("Récents")], ["top", t("Les plus vus")]], t("Classer vos clips")) : ""}${clLink("#/clipper/publications", t("Tout voir"))}`)}
+      ${publicationsTable(shown)}`
+    : u.joinedCampaigns.size
+      ? `${clSection(t("Vos clips"))}${emptyState("film", t("Aucun clip soumis"), t("Publiez votre clip sur l'une des plateformes de la campagne, puis soumettez son lien pour validation."), `<button type="button" data-action="submit-clip" class="${btn("secondary")}">${icon("plus")}${t("Soumettre un clip")}</button>`)}`
+      : "";
 
-  return `${pageHeader(`Bonjour ${clFirst(u)}`, `Voici votre activité au ${date(clToday())}`, `<span class="lg:hidden"><button type="button" data-action="submit-clip" class="${btn("primary")}">${icon("plus")}Soumettre un clip</button></span>`)}
+  return `${pageHeader(t("Bonjour {name}", { name: clFirst(u) }), t("Voici votre activité au {date}", { date: date(clToday()) }), submitBtn)}
     ${onboarding}
     <div class="mt-6 grid gap-4 lg:grid-cols-[1.35fr_1fr] lg:gap-5">${clWalletCard({ curve: true })}${opsCard}</div>
-    ${near ? `<div class="mt-4">${alertBox("info", `Plus que <strong class="font-semibold">${plural(near.left, "vue", "vues")}</strong> sur «${NB}${esc(near.c.title)}${NB}» pour être payé.`)}</div>` : ""}
-    <div class="mt-4 grid grid-cols-2 gap-3 sm:gap-4 lg:mt-5 xl:grid-cols-4">${kpis.join("")}</div>
-    <div class="mt-4 lg:mt-5">${chart}</div>
-    ${recommended.length ? `${sectionHeader("Campagnes recommandées", "#/clipper/campagnes", "Tout voir", 'data-action="camp-tab" data-value="campagnes"')}
-    <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">${recommended.map(campaignCard).join("")}</div>` : ""}
-    ${sectionHeader("Dernières publications", pubs.length ? "#/clipper/publications" : "")}
-    ${pubs.length ? publicationsTable(pubs.slice(0, 4))
-      : emptyState("film", "Aucun clip soumis", "Rejoignez une campagne, publiez votre clip puis soumettez son lien.", `<a href="#/clipper/campagnes" class="${btn("secondary")}">Voir les campagnes</a>`)}`;
+    ${near ? `<div class="mt-4">${alertBox("info", t("Plus que {views} sur « {title} » pour être payé.", { views: `<strong class="font-semibold">${plural(near.left, "vue", "vues")}</strong>`, title: esc(near.c.title) }))}</div>` : ""}
+    ${stats}
+    ${clips}
+    ${discover.length ? `${sectionHeader(t("À découvrir"), "#/clipper/decouvrir", t("Tout voir"))}
+    <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">${discover.map((c) => campaignCard(c)).join("")}</div>` : ""}`;
 }
 
-// En-tête de Campagnes : titre et bascule Agences / Campagnes sur une ligne (aussi à 390 px), sous-titre dessous.
-function clCampHeader(text) {
-  const tab = state.camp.tab === "campagnes" ? "campagnes" : "agences";
-  return `<div class="flex items-center justify-between gap-3">
-      <h1 class="min-w-0 text-title-sm text-fg sm:text-title">Campagnes</h1>
-      ${segmented("camp-tab", tab, [["agences", "Agences"], ["campagnes", "Campagnes"]], "Parcourir par")}
-    </div>
-    <p class="mt-1 max-w-2xl text-sm text-fg-muted">${text}</p>`;
-}
+// Découvrir : toutes les campagnes. Recherche (titre, marque, agence, catégorie dans les deux langues ; accents ignorés),
+// catégorie (les catégories précisées par une agence sont rangées sous « Autre »), Toutes / Rejointes / Favoris, tri,
+// grille ou liste. Rejointes et Favoris montrent aussi les campagnes en pause ou terminées (après les actives).
+function cDecouvrir() {
+  const f = state.camp, u = me(), q = clNorm(f.q || "");
+  const scope = CL_SCOPES.includes(f.scope) ? f.scope : "Toutes", category = f.category || "Toutes", layout = f.layout === "list" ? "list" : "grid";
+  const pools = {
+    Toutes: activeCampaigns(),
+    Rejointes: db.campaigns.filter((c) => u.joinedCampaigns.has(c.id)),
+    Favoris: db.campaigns.filter((c) => u.favorites.has(c.id)),
+  };
+  const pool = pools[scope];
+  const sorters = { recent: (a, b) => b.createdAt.localeCompare(a.createdAt), rate: (a, b) => b.rate - a.rate, popular: (a, b) => b.clippers - a.clippers };
+  const sorter = sorters[f.sort] || sorters.recent;
+  const list = pool.filter((c) =>
+    (category === "Toutes" || clCat(c) === category) &&
+    (!q || clNorm(`${c.title} ${c.brand} ${clOrgName(c)} ${c.category} ${t(c.category)}`).includes(q)))
+    .sort((a, b) => (b.status === "Active") - (a.status === "Active") || sorter(a, b));
+  const categoryOptions = [["Toutes", t("Toutes")], ...CATEGORIES.map((c) => [c, t(c)])];
+  const layoutBtn = (v, ic, label) => `<button type="button" data-action="layout" data-value="${v}" aria-label="${label}" aria-pressed="${layout === v}" class="grid size-8 place-items-center rounded-lg text-fg-muted transition-colors duration-150 hover:text-fg aria-pressed:bg-surface-raised aria-pressed:text-fg aria-pressed:shadow-control [&_svg]:size-4 ${FOCUS}">${icon(ic)}</button>`;
+  // Puces Rejointes / Favoris (mobile) : un second appui revient à « Toutes ».
+  const scopeChip = (v, ic) => `<button type="button" data-action="camp-scope" data-value="${v}" data-toggle aria-pressed="${scope === v}" class="${CL_CHIP}">${icon(ic, "", ic === "heart" && scope === v)}${t(v)}<span class="tabular-nums opacity-80">${fmt(pools[v].length)}</span></button>`;
 
-// Carte d'un organisateur (vue Agences) : toute la carte mène à sa page.
-function clAgencyCard(o) {
-  const n = o.active.length, dash = `<span class="font-normal text-fg-subtle">—</span>`;
-  const thumbs = o.active.slice(0, 3).map((c) => `<span class="cover grid size-5 place-items-center rounded-[4px] text-[11px] ring-2 ring-surface" ${coverAttr(c)}>${c.emoji}</span>`).join("");
-  return `<a href="${clOrgHref(o.key)}" data-org="${esc(o.key)}" class="group flex min-w-0 flex-col ${CARD} ${CARD_HOVER} p-4 sm:p-5">
-    <div class="flex items-start gap-3">
-      ${clOrgMark(o, "size-11 text-sm")}
-      <div class="min-w-0 flex-1 pt-0.5">
-        <h3 class="truncate font-sans text-[15px] font-semibold leading-snug text-fg">${esc(o.name)}</h3>
-        <p class="mt-0.5 truncate text-xs text-fg-subtle">${clOrgType(o)}</p>
+  // Desktop : recherche, catégorie, tri, affichage ; dessous, Toutes / Rejointes / Favoris et le nombre de résultats.
+  // Mobile : recherche + tri, puis une rangée de puces défilante (Rejointes, Favoris, catégories).
+  const toolbar = `<div class="mt-6 flex flex-wrap items-center gap-2 md:flex-nowrap md:gap-3">
+      ${searchInput("camp-q", f.q || "", t("Rechercher"), t("Rechercher une campagne, une agence ou une marque"), "min-w-0 flex-1 md:max-w-sm")}
+      <span class="hidden md:ms-auto md:block">${select("camp-category", category, [["Toutes", t("Toutes les catégories")], ...CATEGORIES.map((c) => [c, t(c)])], { label: t("Catégorie") })}</span>
+      ${select("camp-sort", sorters[f.sort] ? f.sort : "recent", [["recent", t("Plus récentes")], ["rate", t("Mieux payées")], ["popular", t("Plus populaires")]], { label: t("Trier les campagnes"), cls: "w-40 shrink-0 md:w-auto" })}
+      <span class="hidden md:block"><span class="inline-flex items-center gap-0.5 rounded-control border border-line bg-subtle p-0.5" role="group" aria-label="${t("Affichage")}">${layoutBtn("grid", "grid", t("Affichage en grille"))}${layoutBtn("list", "list", t("Affichage en liste"))}</span></span>
+      <div class="-mx-4 flex basis-full gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] md:hidden" role="group" aria-label="${t("Filtrer les campagnes")}">
+        ${scopeChip("Rejointes", "check")}${scopeChip("Favoris", "heart")}
+        <span class="my-1.5 w-px shrink-0 bg-line" aria-hidden="true"></span>
+        ${categoryOptions.map(([v, l]) => `<button type="button" data-action="camp-cat" data-value="${esc(v)}" aria-pressed="${category === v}" class="${CL_CHIP}">${esc(l)}</button>`).join("")}
       </div>
     </div>
-    <p class="mt-3 line-clamp-2 min-h-[2lh] text-small ${o.bio ? "text-fg-muted" : "text-fg-subtle"}">${clOrgAbout(o)}</p>
-    <dl class="mt-4 grid grid-cols-[1fr_auto] gap-x-4 gap-y-1.5 border-t border-line pt-3.5 text-small">
-      <dt class="text-fg-subtle">Campagnes actives</dt><dd class="flex items-center justify-end gap-2 font-medium tabular-nums text-fg">${thumbs ? `<span class="flex -space-x-1" aria-hidden="true">${thumbs}</span>` : ""}${n ? fmt(n) : `<span class="font-normal text-fg-subtle">Aucune</span>`}</dd>
-      <dt class="text-fg-subtle">Meilleur tarif</dt><dd class="text-right font-medium tabular-nums text-fg">${n ? rateShort(o.best) : dash}</dd>
-      <dt class="text-fg-subtle">Budget restant</dt><dd class="text-right font-medium">${n ? money(o.remaining) : dash}</dd>
-    </dl>
-    <div class="mt-auto flex items-center justify-between gap-3 pt-4">
-      <ul class="flex min-w-0 flex-wrap gap-1.5" aria-label="Catégories">${o.categories.map((cat) => `<li class="inline-flex h-6 items-center rounded-badge bg-muted px-2 text-xs font-medium text-fg-muted">${esc(cat)}</li>`).join("")}</ul>
-      <span class="inline-flex shrink-0 items-center gap-0.5 text-small font-medium text-brand-fg">Voir les projets${icon("chevronRight", "size-4 transition-transform duration-150 ease-standard group-hover:translate-x-0.5")}</span>
+    <div class="mb-3 mt-4 flex flex-wrap items-center justify-between gap-3">
+      <span class="hidden md:block">${segmented("camp-scope", scope, CL_SCOPES.map((v) => [v, t(v), pools[v].length]), t("Afficher les campagnes"))}</span>
+      <p class="text-small text-fg-subtle" aria-live="polite">${plural(list.length, "résultat", "résultats")}</p>
+    </div>`;
+
+  const showAll = `<button type="button" data-action="camp-scope" data-value="Toutes" class="${btn("secondary")}">${t("Voir toutes les campagnes")}</button>`;
+  const results = !pool.length
+    ? scope === "Rejointes"
+      ? emptyState("target", t("Aucune campagne rejointe"), t("Rejoignez une campagne pour soumettre vos clips et suivre vos gains."), showAll)
+      : scope === "Favoris"
+        ? emptyState("heart", t("Aucun favori"), t("Touchez le cœur d'une campagne pour la retrouver ici."), showAll)
+        : emptyState("compass", t("Aucune campagne active pour le moment"), t("Les nouvelles campagnes apparaissent ici dès leur validation par l'équipe ClipBoost."))
+    : !list.length
+      ? emptyState("search", t("Aucune campagne ne correspond"), t("Essayez une autre catégorie ou effacez la recherche."), `<button type="button" data-action="reset-filters" class="${btn("secondary")}">${t("Effacer les filtres")}</button>`)
+      : layout === "list"
+        // 6 colonnes (environ 870 px) : le tableau à partir de xl, la liste en dessous (jamais de colonne rognée).
+        ? `<div class="${TBL.wrap}"><table class="${TBL.table.replace("md:table", "xl:table")}">
+            <thead><tr class="${TBL.headRow}"><th scope="col" class="${TBL.th}">${t("Campagne")}</th><th scope="col" class="${TBL.th}">${t("Plateformes")}</th><th scope="col" class="${TBL.th} ${TBL.thNum}">${t("Tarif / 1 000 vues")}</th><th scope="col" class="${TBL.th} ${TBL.thNum}">${t("Plafond par clip")}</th><th scope="col" class="${TBL.th} ${TBL.thNum}">${t("Clippers")}</th><th scope="col" class="${TBL.th} ${TBL.thNum}"><span class="sr-only">${t("Actions")}</span></th></tr></thead>
+            <tbody>${list.map(campaignRow).join("")}</tbody></table>
+            <ul class="${TBL.list.replace("md:hidden", "xl:hidden")}">${list.map(clCampaignItem).join("")}</ul></div>`
+        : `<div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">${list.map((c) => campaignCard(c)).join("")}</div>`;
+
+  return `${pageHeader(t("Découvrir"), t("{campaigns} · tarif pour 1 000 vues validées", { campaigns: plural(activeCampaigns().length, "campagne active", "campagnes actives") }))}
+    ${toolbar}
+    ${results}`;
+}
+
+// Carte d'un organisateur (page Agences) : couverture 3:1, pastille, nom et badge bleu ; toute la carte mène à sa page.
+function clAgencyCard(o) {
+  const n = o.active.length, dash = `<span class="font-normal text-fg-subtle">—</span>`;
+  const thumbs = o.active.slice(0, 3).map(clMiniCover).join("");
+  return `<a href="${clOrgHref(o.key)}" data-org="${esc(o.key)}" class="group flex min-w-0 flex-col overflow-hidden ${CARD} ${CARD_HOVER}">
+    ${clOrgCover(o, "aspect-[3/1] w-full")}
+    <div class="flex flex-1 flex-col px-4 pb-4 sm:px-5 sm:pb-5">
+      ${clOrgMark(o, "relative -mt-6 size-12 text-sm ring-4 ring-surface")}
+      <h3 class="mt-2.5 flex min-w-0 items-center gap-1 font-sans text-[15px] font-semibold leading-snug text-fg"><span class="truncate">${esc(o.name)}</span>${o.verified ? verifiedBadge("size-4", t("Agence vérifiée")) : ""}</h3>
+      <p class="mt-0.5 truncate text-xs text-fg-subtle">${clOrgType(o)}</p>
+      <p class="mt-3 line-clamp-2 min-h-[2lh] text-small ${o.bio ? "text-fg-muted" : "text-fg-subtle"}">${clOrgAbout(o)}</p>
+      <dl class="mt-4 grid grid-cols-[1fr_auto] gap-x-4 gap-y-1.5 border-t border-line pt-3.5 text-small">
+        <dt class="text-fg-subtle">${t("Campagnes actives")}</dt><dd class="flex items-center justify-end gap-2 font-medium tabular-nums text-fg">${thumbs ? `<span class="flex -space-x-1" aria-hidden="true">${thumbs}</span>` : ""}${n ? fmt(n) : `<span class="font-normal text-fg-subtle">${t("Aucune")}</span>`}</dd>
+        <dt class="text-fg-subtle">${t("Meilleur tarif")}</dt><dd class="text-end font-medium tabular-nums text-fg">${n ? rateShort(o.best) : dash}</dd>
+        <dt class="text-fg-subtle">${t("Budget restant")}</dt><dd class="text-end font-medium">${n ? money(o.remaining) : dash}</dd>
+      </dl>
+      <div class="mt-auto flex items-center justify-between gap-3 pt-4">
+        <ul class="flex min-w-0 flex-wrap gap-1.5" aria-label="${t("Catégories")}">${o.categories.map((cat) => `<li class="inline-flex h-6 items-center rounded-badge bg-muted px-2 text-xs font-medium text-fg-muted">${esc(t(cat))}</li>`).join("")}</ul>
+        <span class="inline-flex shrink-0 items-center gap-0.5 text-small font-medium text-brand-fg">${t("Voir les projets")}${icon("chevronRight", "size-4 transition-transform duration-150 ease-standard group-hover:translate-x-0.5 rtl:-scale-x-100 rtl:group-hover:-translate-x-0.5")}</span>
+      </div>
     </div>
   </a>`;
 }
 
-// Vue Agences : qui propose des projets de clipping. Recherche par nom ; les agences avec une campagne active d'abord.
-function clAgencies() {
-  const all = clOrganisers(), q = state.camp.aq.trim().toLowerCase();
-  const list = q ? all.filter((o) => o.name.toLowerCase().includes(q)) : all;
+// Agences : qui propose des projets de clipping. Recherche par nom (accents ignorés) ; les agences avec une campagne active d'abord.
+function cAgences() {
+  const all = clOrganisers(), q = clNorm(state.camp.aq || "");
+  const list = q ? all.filter((o) => clNorm(o.name).includes(q)) : all;
   const active = activeCampaigns().length, withActive = all.filter((o) => o.active.length).length;
   const results = !all.length
-    ? emptyState("building", "Aucune agence pour le moment", "Les agences apparaîtront ici dès leur première campagne en ligne.")
+    ? emptyState("building", t("Aucune agence pour le moment"), t("Les agences apparaîtront ici dès leur première campagne en ligne."))
     : !list.length
-      ? emptyState("search", "Aucune agence ne correspond", "Vérifiez l'orthographe ou effacez la recherche.", `<button type="button" data-action="reset-agencies" class="${btn("secondary")}">Effacer la recherche</button>`)
+      ? emptyState("search", t("Aucune agence ne correspond"), t("Vérifiez l'orthographe ou effacez la recherche."), `<button type="button" data-action="reset-agencies" class="${btn("secondary")}">${t("Effacer la recherche")}</button>`)
       : `<div class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">${list.map(clAgencyCard).join("")}</div>`;
-  return `${clCampHeader(`${plural(withActive, "agence recrute", "agences recrutent")} des clippers sur ${plural(active, "campagne active", "campagnes actives")}. Ouvrez une agence pour voir ses projets.`)}
-    <div class="mt-6 flex items-center gap-2 md:gap-3">${searchInput("camp-aq", state.camp.aq, "Rechercher une agence", "Rechercher une agence par son nom", "min-w-0 flex-1 md:max-w-sm")}</div>
+  return `${pageHeader(t("Agences"), t("{agencies} des clippers sur {campaigns}. Ouvrez une agence pour voir ses projets.", { agencies: plural(withActive, "agence recrute", "agences recrutent"), campaigns: plural(active, "campagne active", "campagnes actives") }))}
+    <div class="mt-6 flex items-center gap-2 md:gap-3">${searchInput("camp-aq", state.camp.aq || "", t("Rechercher une agence"), t("Rechercher une agence par son nom"), "min-w-0 flex-1 md:max-w-sm")}</div>
     <p class="mb-3 mt-4 text-small text-fg-subtle" aria-live="polite">${plural(list.length, "agence", "agences")}</p>
     ${results}`;
 }
 
-function cCampagnes() {
-  if (state.camp.tab !== "campagnes") return clAgencies();
-  const f = state.camp, q = f.q.trim().toLowerCase(), u = me();
-  let list = activeCampaigns().filter((c) =>
-    (f.category === "Toutes" || c.category === f.category) &&
-    (!f.favOnly || u.favorites.has(c.id)) &&
-    (!q || `${c.title} ${c.brand} ${clOrgName(c)}`.toLowerCase().includes(q)));
-  const sorters = { recent: (a, b) => b.createdAt.localeCompare(a.createdAt), rate: (a, b) => b.rate - a.rate, popular: (a, b) => b.clippers - a.clippers };
-  list = list.slice().sort(sorters[f.sort]);
-  const favCount = `<span class="tabular-nums opacity-80">${fmt(u.favorites.size)}</span>`;
-  const layoutBtn = (v, ic, label) => `<button type="button" data-action="layout" data-value="${v}" aria-label="${label}" aria-pressed="${f.layout === v}" class="grid size-8 place-items-center rounded-lg text-fg-muted transition-colors duration-150 hover:text-fg aria-pressed:bg-surface-raised aria-pressed:text-fg aria-pressed:shadow-control [&_svg]:size-4 ${FOCUS}">${icon(ic)}</button>`;
-
-  // Desktop : une ligne. Mobile : recherche + tri, puis une rangée de puces défilante (favoris, catégories).
-  const toolbar = `<div class="mt-6 flex flex-wrap items-center gap-2 md:flex-nowrap md:gap-3">
-      ${searchInput("camp-q", f.q, "Rechercher", "Rechercher une campagne ou une marque", "min-w-0 flex-1 md:max-w-sm")}
-      <span class="hidden md:ml-auto md:block">${select("camp-category", f.category, [["Toutes", "Toutes les catégories"], ...CATEGORIES.map((c) => [c, c])], { label: "Catégorie" })}</span>
-      ${select("camp-sort", f.sort, [["recent", "Plus récentes"], ["rate", "Mieux payées"], ["popular", "Plus populaires"]], { label: "Trier les campagnes", cls: "w-40 shrink-0 md:w-auto" })}
-      <span class="hidden md:block"><button type="button" data-action="fav-only" aria-pressed="${f.favOnly}" class="${btn("secondary", "md", "aria-pressed:border-brand-line aria-pressed:bg-brand-soft aria-pressed:text-brand-fg")}">${icon("heart", "", f.favOnly)}Favoris${favCount}</button></span>
-      <span class="hidden md:block"><span class="inline-flex items-center gap-0.5 rounded-control border border-line bg-subtle p-0.5" role="group" aria-label="Affichage">${layoutBtn("grid", "grid", "Affichage en grille")}${layoutBtn("list", "list", "Affichage en liste")}</span></span>
-      <div class="-mx-4 flex basis-full gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] md:hidden" role="group" aria-label="Filtrer les campagnes">
-        <button type="button" data-action="fav-only" aria-pressed="${f.favOnly}" class="${CL_CHIP}">${icon("heart", "", f.favOnly)}Favoris${favCount}</button>
-        <span class="my-1.5 w-px shrink-0 bg-line" aria-hidden="true"></span>
-        ${[["Toutes", "Toutes"], ...CATEGORIES.map((c) => [c, c])].map(([v, l]) => `<button type="button" data-action="camp-cat" data-value="${v}" aria-pressed="${f.category === v}" class="${CL_CHIP}">${l}</button>`).join("")}
-      </div>
-    </div>`;
-
-  const results = list.length === 0
-    ? emptyState("search", "Aucune campagne ne correspond", "Essayez une autre catégorie ou effacez la recherche.", `<button type="button" data-action="reset-filters" class="${btn("secondary")}">Effacer les filtres</button>`)
-    : f.layout === "list"
-      // 5 colonnes (environ 760 px) : le tableau à partir de xl, la liste en dessous (jamais de colonne rognée).
-      ? `<div class="${TBL.wrap}"><table class="${TBL.table.replace("md:table", "xl:table")}">
-          <thead><tr class="${TBL.headRow}"><th scope="col" class="${TBL.th}">Campagne</th><th scope="col" class="${TBL.th} ${TBL.thNum}">Tarif / 1${NB}000 vues</th><th scope="col" class="${TBL.th} ${TBL.thNum}">Plafond par clip</th><th scope="col" class="${TBL.th} ${TBL.thNum}">Clippers</th><th scope="col" class="${TBL.th} ${TBL.thNum}"><span class="sr-only">Actions</span></th></tr></thead>
-          <tbody>${list.map(campaignRow).join("")}</tbody></table>
-          <ul class="${TBL.list.replace("md:hidden", "xl:hidden")}">${list.map(clCampaignItem).join("")}</ul></div>`
-      : `<div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">${list.map(campaignCard).join("")}</div>`;
-
-  return `${clCampHeader(`${plural(activeCampaigns().length, "campagne active", "campagnes actives")} · tarif pour 1${NB}000 vues validées`)}
-    ${toolbar}
-    <p class="mb-3 mt-4 text-small text-fg-subtle" aria-live="polite">${plural(list.length, "résultat", "résultats")}</p>
-    ${results}`;
-}
-
-// Page d'un organisateur (#/clipper/agence/<clé>) : présentation, chiffres clés et projets de clipping.
+// Page d'un organisateur (#/clipper/agence/<clé>) : couverture, photo, nom et badge, présentation, chiffres clés, projets.
 function cAgence() {
   const key = state.route.item || "", o = clOrganisers().find((x) => x.key === key);
-  const back = `href="#/clipper/campagnes" data-action="camp-tab" data-value="agences"`;
-  const crumb = (name) => `<nav aria-label="Fil d'Ariane"><ol class="flex min-w-0 items-center gap-1.5 text-small">
-      <li class="shrink-0"><a ${back} class="${HIT} inline-flex items-center gap-1 rounded-sm font-medium text-fg-muted transition-colors duration-150 hover:text-fg ${FOCUS}">${icon("arrowLeft", "size-4 sm:hidden")}Campagnes</a></li>
-      <li class="hidden shrink-0 text-fg-subtle sm:block" aria-hidden="true">${icon("chevronRight", "size-3.5")}</li>
+  const crumb = (name) => `<nav aria-label="${t("Fil d'Ariane")}"><ol class="flex min-w-0 items-center gap-1.5 text-small">
+      <li class="shrink-0"><a href="#/clipper/agences" class="${HIT} inline-flex items-center gap-1 rounded-sm font-medium text-fg-muted transition-colors duration-150 hover:text-fg ${FOCUS}">${icon("arrowLeft", "size-4 sm:hidden rtl:-scale-x-100")}${t("Agences")}</a></li>
+      <li class="hidden shrink-0 text-fg-subtle sm:block" aria-hidden="true">${icon("chevronRight", "size-3.5 rtl:-scale-x-100")}</li>
       <li class="hidden min-w-0 truncate text-fg-subtle sm:block" aria-current="page">${esc(name)}</li></ol></nav>`;
   if (!o) {
-    return `${crumb("Agence introuvable")}
-      <h1 class="sr-only">Agence introuvable</h1>
-      <div class="mt-6">${emptyState("building", "Agence introuvable", "Cette agence n'existe pas ou n'a plus de campagne visible.", `<a ${back} class="${btn("secondary")}">Voir les agences</a>`)}</div>`;
+    return `${crumb(t("Agence introuvable"))}
+      <h1 class="sr-only">${t("Agence introuvable")}</h1>
+      <div class="mt-6">${emptyState("building", t("Agence introuvable"), t("Cette agence n'existe pas ou n'a plus de campagne visible."), `<a href="#/clipper/agences" class="${btn("secondary")}">${t("Voir les agences")}</a>`)}</div>`;
   }
   const n = o.active.length;
   const country = o.country || "Algérie";
   const grid = (list) => `<div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">${list.map((c) => campaignCard(c, { org: false })).join("")}</div>`;
   return `${crumb(o.name)}
-    <header class="mt-4 flex items-center gap-4">
-      ${clOrgMark(o, "size-14 text-lg sm:size-16 sm:text-xl")}
-      <div class="min-w-0 flex-1">
-        <h1 class="text-title-sm text-fg sm:text-title">${esc(o.name)}</h1>
+    <section class="mt-4 overflow-hidden ${CARD}">
+      ${clOrgCover(o, "aspect-[3/1] w-full")}
+      <div class="px-4 pb-5 sm:px-6 sm:pb-6">
+        ${clOrgMark(o, "relative -mt-10 size-20 text-xl ring-4 ring-surface sm:-mt-12 sm:size-24 sm:text-2xl")}
+        <h1 class="mt-3 break-words text-title-sm text-fg sm:text-title">${esc(o.name)}${o.verified ? `${NB}${verifiedBadge("size-5 sm:size-6", t("Agence vérifiée"))}` : ""}</h1>
         <p class="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-small text-fg-muted">${o.agency
-          ? `${badge("Agence", "info")}<span class="inline-flex items-center gap-1.5">${esc(country)}${country === "Algérie" ? flagDz() : ""}</span>`
-          : `${badge("Marque partenaire", "brand")}<span>Campagne gérée par ClipBoost</span>`}</p>
-        <p class="mt-1 text-xs text-fg-subtle">${o.agency ? "Membre depuis le" : "Sur ClipBoost depuis le"} ${date(o.since)}</p>
+          ? `${badge(t("Agence"), "info")}<span class="inline-flex items-center gap-1.5">${esc(t(country))}${country === "Algérie" ? flagDz() : ""}</span>`
+          : `${badge(t("Marque partenaire"), "brand")}<span>${t("Campagne gérée par ClipBoost")}</span>`}</p>
+        <p class="mt-1 text-xs text-fg-subtle">${o.agency ? t("Membre depuis le {date}", { date: date(o.since) }) : t("Sur ClipBoost depuis le {date}", { date: date(o.since) })}</p>
+        ${o.bio || !o.agency ? `<p class="mt-4 max-w-2xl text-sm leading-6 text-fg-muted">${clOrgAbout(o)}</p>` : ""}
       </div>
-    </header>
-    ${o.bio || !o.agency ? `<p class="mt-4 max-w-2xl text-sm leading-6 text-fg-muted">${clOrgAbout(o)}</p>` : ""}
-    <div class="mt-6 grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
-      ${kpi({ label: "Campagnes actives", value: kpiValue(fmt(n)), sub: o.closed.length ? `+ ${plural(o.closed.length, "en pause ou terminée", "en pause ou terminées")}` : "Ouvertes aux clippers" })}
-      ${kpi({ label: "Meilleur tarif", value: n ? bigMoney(o.best) : kpiValue("—"), sub: `pour 1${NB}000 vues validées` })}
-      ${kpi({ label: "Budget restant", value: bigMoney(o.remaining), sub: "campagnes actives" })}
-      ${kpi({ label: "Participations", value: kpiValue(fmt(o.entries)), sub: "tous projets confondus" })}
+    </section>
+    <div class="mt-4 grid grid-cols-2 gap-3 sm:gap-4 lg:mt-5 xl:grid-cols-4">
+      ${kpi({ label: t("Campagnes actives"), value: kpiValue(fmt(n)), sub: o.closed.length ? `+ ${plural(o.closed.length, "en pause ou terminée", "en pause ou terminées")}` : t("Ouvertes aux clippers") })}
+      ${kpi({ label: t("Meilleur tarif"), value: n ? bigMoney(o.best) : kpiValue("—"), sub: t("pour 1 000 vues validées") })}
+      ${kpi({ label: t("Budget restant"), value: bigMoney(o.remaining), sub: t("sur les campagnes actives") })}
+      ${kpi({ label: t("Participations"), value: kpiValue(fmt(o.entries)), sub: t("tous projets confondus") })}
     </div>
-    ${sectionHeader("Projets de clipping en cours")}
-    ${n ? grid(o.active) : emptyState("target", "Aucun projet en cours", `${esc(o.name)} n'a pas de campagne ouverte pour le moment.`, `<a href="#/clipper/campagnes" data-action="camp-tab" data-value="campagnes" class="${btn("secondary")}">Voir toutes les campagnes</a>`)}
-    ${o.closed.length ? `${sectionHeader("Projets terminés ou en pause")}${grid(o.closed)}` : ""}`;
+    ${sectionHeader(t("Projets de clipping en cours"))}
+    ${n ? grid(o.active) : emptyState("target", t("Aucun projet en cours"), t("{name} n'a pas de campagne ouverte pour le moment.", { name: esc(o.name) }), `<a href="#/clipper/decouvrir" class="${btn("secondary")}">${t("Découvrir toutes les campagnes")}</a>`)}
+    ${o.closed.length ? `${sectionHeader(t("Projets terminés ou en pause"))}${grid(o.closed)}` : ""}`;
 }
 
 function cPublications() {
   const pubs = myPubs(), list = pubs.filter((p) => state.pub.status === "Toutes" || p.status === state.pub.status);
   const count = (s) => pubs.filter((p) => p.status === s).length;
-  const empty = { Validée: "Aucun clip validé", "En attente": "Aucun clip en attente", Refusée: "Aucun clip refusé" }[state.pub.status];
-  return `${pageHeader("Mes publications", "Suivez la validation et les gains de chacun de vos clips.", `<span class="lg:hidden"><button type="button" data-action="submit-clip" class="${btn("primary")}">${icon("plus")}Soumettre un clip</button></span>`)}
-    ${pubs.length ? `<div class="mt-6">${segmented("pub-status", state.pub.status, [["Toutes", "Toutes", pubs.length], ["Validée", "Validées", count("Validée")], ["En attente", "En attente", count("En attente")], ["Refusée", "Refusées", count("Refusée")]], "Statut", { scroll: true })}</div>
+  const empty = { Validée: t("Aucun clip validé"), "En attente": t("Aucun clip en attente"), Refusée: t("Aucun clip refusé") }[state.pub.status];
+  return `${pageHeader(t("Mes publications"), t("Suivez la validation et les gains de chacun de vos clips."), `<button type="button" data-action="submit-clip" class="${btn("primary")}">${icon("plus")}${t("Soumettre un clip")}</button>`)}
+    ${pubs.length ? `<div class="mt-6">${segmented("pub-status", state.pub.status, [["Toutes", t("Toutes"), pubs.length], ["Validée", t("Validées"), count("Validée")], ["En attente", t("En attente"), count("En attente")], ["Refusée", t("Refusées"), count("Refusée")]], t("Statut"), { scroll: true })}</div>
     <div class="mt-4">${list.length ? publicationsTable(list)
-      : emptyState("film", empty, "Les clips de ce statut apparaîtront ici.", `<button type="button" data-action="pub-status" data-value="Toutes" class="${btn("secondary")}">Voir tous les clips</button>`)}</div>`
-    : `<div class="mt-6">${emptyState("film", "Aucun clip soumis", "Rejoignez une campagne, publiez votre clip puis soumettez son lien pour validation.", `<a href="#/clipper/campagnes" class="${btn("primary")}">Voir les campagnes</a>`)}</div>`}`;
+      : emptyState("film", empty, t("Les clips de ce statut apparaîtront ici."), `<button type="button" data-action="pub-status" data-value="Toutes" class="${btn("secondary")}">${t("Voir tous les clips")}</button>`)}</div>`
+    : `<div class="mt-6">${emptyState("film", t("Aucun clip soumis"), t("Rejoignez une campagne, publiez votre clip puis soumettez son lien pour validation."), `<a href="#/clipper/decouvrir" class="${btn("primary")}">${icon("compass")}${t("Découvrir les campagnes")}</a>`)}</div>`}`;
 }
 
 function cPortefeuille() {
   const u = me(), all = myTx();
-  const list = all.filter((t) => state.tx.type === "tous" || t.type === state.tx.type);
+  const list = all.filter((x) => state.tx.type === "tous" || x.type === state.tx.type);
   // Historique regroupé par mois (la liste arrive triée du plus récent au plus ancien).
   const groups = [];
-  for (const t of list) {
-    const key = t.date.slice(0, 7), last = groups[groups.length - 1];
-    if (last && last.key === key) last.items.push(t); else groups.push({ key, items: [t] });
+  for (const x of list) {
+    const key = x.date.slice(0, 7), last = groups[groups.length - 1];
+    if (last && last.key === key) last.items.push(x); else groups.push({ key, items: [x] });
   }
-  const typeSeg = segmented("tx-type", { tous: "Tous", gain: "Gains", retrait: "Retraits" }[state.tx.type], ["Tous", "Gains", "Retraits"], "Type d'opération");
+  // Valeurs des segments : « Tous », « Gains », « Retraits » (lues par l'action tx-type) ; libellés traduits.
+  const typeSeg = segmented("tx-type", { tous: "Tous", gain: "Gains", retrait: "Retraits" }[state.tx.type], [["Tous", t("Tous")], ["Gains", t("Gains")], ["Retraits", t("Retraits")]], t("Type d'opération"));
   const method = u.payoutMethod;
-  const payoutCard = card(`${cardHeader("Moyen de retrait")}
+  const payoutCard = card(`${cardHeader(t("Moyen de retrait"))}
     <div class="mt-4 flex items-center gap-3">
       <span class="grid size-10 shrink-0 place-items-center rounded-tile bg-subtle text-fg-muted">${icon(method ? CL_PAYOUT_ICON[method] || "bank" : "wallet", "size-5")}</span>
       <div class="min-w-0 flex-1">${method
-        ? `<p class="truncate text-sm font-medium text-fg">${esc(method)}</p><p class="truncate font-mono text-small text-fg-subtle">${maskAccount(u.payoutAccount)}</p>`
-        : `<p class="text-sm font-medium text-fg">Aucun moyen de retrait</p><p class="text-small text-fg-subtle">Ajoutez un compte pour être payé.</p>`}</div>
-      <a href="#/clipper/parametres" class="${btn("link", "", "shrink-0 text-small")}">${method ? "Modifier" : "Ajouter"}</a>
+        ? `<p class="truncate text-sm font-medium text-fg">${esc(t(method))}</p><p class="truncate font-mono text-small text-fg-subtle" dir="ltr">${maskAccount(u.payoutAccount)}</p>`
+        : `<p class="text-sm font-medium text-fg">${t("Aucun moyen de retrait")}</p><p class="text-small text-fg-subtle">${t("Ajoutez un compte pour être payé.")}</p>`}</div>
+      <a href="#/clipper/parametres" class="${btn("link", "", "shrink-0 text-small")}">${method ? t("Modifier") : t("Ajouter")}</a>
     </div>`, "p-5");
-  const history = card(`${cardHeader("Historique", "", typeSeg)}
+  const history = card(`${cardHeader(t("Historique"), "", typeSeg)}
     ${list.length ? `<div class="mt-4 grid gap-5">${groups.map((g) => {
-      const [y, m] = g.key.split("-");
-      return `<section aria-label="${CL_MONTHS_LONG[+m - 1]} ${y}"><h3 class="font-sans text-micro font-medium uppercase tracking-[0.08em] text-fg-subtle">${CL_MONTHS_LONG[+m - 1]} ${y}</h3>
+      const month = clMonthLabel(g.key);
+      return `<section aria-label="${esc(month)}"><h3 class="font-sans text-micro font-medium uppercase tracking-[0.08em] text-fg-subtle rtl:tracking-normal">${esc(month)}</h3>
         <ul class="mt-1 divide-y divide-line">${g.items.map(txRow).join("")}</ul></section>`;
     }).join("")}</div>`
-      : emptyState("wallet", all.length ? "Aucune opération de ce type" : "Aucune opération pour le moment", "Vos gains validés et vos retraits apparaîtront ici.", "", { inCard: true })}`, "p-5");
-  return `${pageHeader("Portefeuille", "Vos gains, versements et retraits.")}
+      : emptyState("wallet", all.length ? t("Aucune opération de ce type") : t("Aucune opération pour le moment"), t("Vos gains validés et vos retraits apparaîtront ici."), "", { inCard: true })}`, "p-5");
+  return `${pageHeader(t("Portefeuille"), t("Vos gains, versements et retraits."))}
     <div class="mt-6 grid items-start gap-4 lg:grid-cols-[360px_minmax(0,1fr)] lg:gap-5">
       <div class="grid content-start gap-4 lg:gap-5">${clWalletCard()}${payoutCard}</div>
       ${history}
     </div>`;
 }
 
-function cStatistiques() {
-  const pubs = myPubs();
-  if (!pubs.length) {
-    return `${pageHeader("Statistiques", "Comprenez ce qui fait performer vos clips.")}
-      <div class="mt-6">${emptyState("chart", "Pas encore de données", "Soumettez votre premier clip pour voir vos statistiques.", `<a href="#/clipper/campagnes" class="${btn("primary")}">Voir les campagnes</a>`)}</div>`;
-  }
-  const series = dailySeries(), periodGain = clSum(series), activeDays = series.filter((v) => v > 0).length;
-  const valid = pubs.filter((p) => p.status === "Validée"), validViews = clSum(valid.map((p) => p.views));
-  const rpm = validViews ? Math.round((clSum(valid.map(earningsOf)) / validViews) * 1000) : 0;
-  const mode = state.clChart === "cumul" ? "cumul" : "jour";
-  const byPlatform = ["TikTok", "Instagram", "YouTube"].map((pl) => {
-    const v = clSum(pubs.filter((p) => p.platform === pl).map((p) => p.views));
-    return { label: platformTag(pl), value: v, display: fmt(v) };
-  });
-  const byCampaign = db.campaigns.map((c) => ({ c, earn: clSum(pubs.filter((p) => p.campaign === c.id).map(earningsOf)) })).filter((x) => x.earn > 0)
-    .map((x) => ({ label: `${coverThumb(x.c, "xs")}<span class="truncate">${esc(x.c.title)}</span>`, value: x.earn, display: money(x.earn) }));
-  const top = pubs.slice().sort((a, b) => b.views - a.views).slice(0, 3);
-  const dates = seriesDates(series.length);
-
-  const cumul = `<div class="pt-7">${cumulativeChart(series, { h: "h-44", label: `Gains cumulés sur ${state.period} jours` })}</div>
-    <div class="mt-2 flex justify-between text-micro tabular-nums text-fg-subtle" aria-hidden="true"><span>${dayLabel(dates[0])}</span><span>${dayLabel(dates[Math.floor((dates.length - 1) / 2)])}</span><span>Auj.</span></div>`;
-  const chart = card(`<header class="flex flex-wrap items-start justify-between gap-3">
-      <div class="min-w-0"><h2 class="text-section text-fg">${mode === "cumul" ? "Gains cumulés" : "Gains par jour"}</h2><p class="mt-0.5 text-small text-fg-subtle">Sur ${state.period} jours · ${plural(activeDays, "jour actif", "jours actifs")}</p></div>
-      ${segmented("cl-chart", mode, [["jour", "Par jour"], ["cumul", "Cumulé"]], "Forme du graphique")}</header>
-    ${periodGain ? `<div class="mt-5">${mode === "cumul" ? cumul : barChart(series, { tone: "income", h: "h-44", caption: `Gains par jour sur ${state.period} jours` })}</div>`
-      : emptyState("chart", "Aucun gain sur cette période", "Choisissez une période plus longue ou attendez la validation de vos clips.", "", { inCard: true })}`, "p-5");
-
-  const topTable = `<div class="${TBL.wrap}">
-    <table class="${TBL.table}">
-      <thead><tr class="${TBL.headRow}"><th scope="col" class="${TBL.th} w-12">Rang</th><th scope="col" class="${TBL.th}">Clip</th><th scope="col" class="${TBL.th} hidden xl:table-cell">Plateforme</th><th scope="col" class="${TBL.th} ${TBL.thNum}">Vues</th><th scope="col" class="${TBL.th} ${TBL.thNum}">Gains</th></tr></thead>
-      <tbody>${top.map((p, i) => { const c = campaignById(p.campaign); return `<tr class="${TBL.tr}">
-        <td class="${TBL.td}"><span class="text-small font-medium tabular-nums text-fg-subtle">${i + 1}</span></td>
-        <td class="${TBL.td}"><div class="flex min-w-0 items-center gap-3">${coverThumb(c, "sm")}<div class="min-w-0"><span class="block max-w-72 truncate font-medium text-fg">${esc(p.title)}</span><span class="${TBL.tdSub} truncate">${esc(c.title)}<span class="xl:hidden"> · ${esc(p.platform)}</span></span></div></div></td>
-        <td class="${TBL.td} hidden xl:table-cell">${platformTag(p.platform)}</td>
-        <td class="${TBL.td} ${TBL.tdNum}">${fmt(p.views)}</td>
-        <td class="${TBL.td} ${TBL.tdNum}">${p.status === "Validée" ? money(earningsOf(p)) : `<span class="font-normal text-fg-subtle">—</span>`}</td></tr>`; }).join("")}</tbody>
-    </table>
-    <ul class="${TBL.list}">${top.map((p, i) => { const c = campaignById(p.campaign); return `<li class="${TBL.item}">
-      <div class="flex items-center gap-3"><span class="w-4 shrink-0 text-small font-medium tabular-nums text-fg-subtle">${i + 1}</span>${coverThumb(c, "sm")}<div class="min-w-0 flex-1"><p class="truncate text-sm font-medium text-fg">${esc(p.title)}</p><p class="truncate text-xs text-fg-subtle">${plural(p.views, "vue", "vues")} · ${esc(p.platform)}</p></div>
-        <span class="shrink-0 text-small font-medium">${p.status === "Validée" ? money(earningsOf(p)) : `<span class="text-fg-subtle">—</span>`}</span></div></li>`; }).join("")}</ul>
-  </div>`;
-
-  return `${pageHeader("Statistiques", "Comprenez ce qui fait performer vos clips.", clPeriodSeg())}
-    <div class="mt-6 grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3 lg:gap-5">
-      ${kpi({ label: "Gains de la période", value: bigMoney(periodGain), sub: `${state.period} derniers jours` })}
-      ${kpi({ label: "Vues totales", value: kpiValue(compact(clSum(pubs.map((p) => p.views)))), sub: `sur ${plural(pubs.length, "clip", "clips")}` })}
-      <div class="col-span-2 grid lg:col-span-1">${kpi({ label: `Revenu pour 1${NB}000 vues`, value: rpm ? bigMoney(rpm) : kpiValue("—"), sub: rpm ? "sur vos clips validés" : "Aucun clip validé" })}</div>
-    </div>
-    <div class="mt-4 lg:mt-5">${chart}</div>
-    <div class="mt-4 grid gap-4 lg:mt-5 lg:grid-cols-2 lg:gap-5">
-      ${card(`${cardHeader("Vues par plateforme", "Tous clips confondus")}<div class="mt-5">${barList(byPlatform, { tone: "brand", aria: "Vues par plateforme" })}</div>`, "p-5")}
-      ${card(`${cardHeader("Gains par campagne", "Gains validés")}${byCampaign.length ? `<div class="mt-5">${barList(byCampaign, { tone: "income", aria: "Gains par campagne" })}</div>`
-        : emptyState("wallet", "Aucun gain validé pour l'instant", "", "", { inCard: true })}`, "p-5")}
-    </div>
-    ${sectionHeader("Vos meilleurs clips")}
-    ${topTable}`;
-}
-
+// Profil : photo de profil, informations publiques et comptes de publication. Le compte (email, mot de passe), la langue
+// et le thème sont dans Paramètres.
 function cProfil() {
   const u = me(), h = u.handles || {};
   const at = (v) => esc(String(v || "").replace(/^@+/, ""));
-  const handleInput = (name, label, placeholder) => field(label, `<span class="relative block"><span class="pointer-events-none absolute inset-y-0 left-3 flex items-center text-sm text-fg-subtle" aria-hidden="true">@</span><input name="${name}" maxlength="60" value="${at(h[name])}" placeholder="${placeholder}" autocomplete="off" class="${inputCls} pl-8"/></span>`);
+  // Identifiants : saisis de gauche à droite (dir="ltr"), « @ » en préfixe.
+  const handleInput = (name, label, placeholder) => field(label, `<span class="relative block" dir="ltr"><span class="pointer-events-none absolute inset-y-0 start-3 flex items-center text-sm text-fg-subtle" aria-hidden="true">@</span><input name="${name}" maxlength="60" value="${at(h[name])}" placeholder="${esc(placeholder)}" autocomplete="off" spellcheck="false" class="${inputCls} ps-8"/></span>`);
+  // Sans photo : les initiales sur la teinte de l'avatar, à la taille du cadre de l'aperçu.
+  const initialsFallback = avatar({ ...u, avatar: null }, "size-full text-2xl");
   const form = card(`<form data-form="profile" class="@container">
-      <h2 class="text-section text-fg">Informations publiques</h2><p class="mt-0.5 text-small text-fg-muted">Visibles par les marques qui consultent vos clips.</p>
+      <h2 class="text-section text-fg">${t("Informations publiques")}</h2><p class="mt-0.5 text-small text-fg-muted">${t("Visibles par les marques qui consultent vos clips.")}</p>
+      <div class="mt-5">${imageField({ name: "avatar", value: u.avatar || "", shape: "avatar", label: t("Photo de profil"), hint: t("JPEG, PNG ou WebP. Elle est recadrée en carré et s'affiche en rond."), fallback: initialsFallback })}</div>
       <div class="mt-5 grid gap-4 sm:grid-cols-2">
-        ${field("Nom complet", `<input name="name" required maxlength="80" value="${esc(u.name)}" autocomplete="name" class="${inputCls}"/>`)}
-        ${field("Pays", countrySelect("country", u.country))}
-        <div class="sm:col-span-2">${field(`Bio ${OPTIONAL}`, `<textarea name="bio" rows="3" maxlength="300" placeholder="Présentez votre style de clips aux marques…" class="${textareaCls}">${esc(u.bio || "")}</textarea>`, "300 caractères maximum.")}</div>
+        ${field(t("Nom complet"), `<input name="name" required maxlength="80" value="${esc(u.name)}" autocomplete="name" class="${inputCls}"/>`)}
+        ${field(t("Pays"), countrySelect("country", u.country))}
+        <div class="sm:col-span-2">${field(`${t("Bio")} ${clOptional()}`, `<textarea name="bio" rows="3" maxlength="300" placeholder="${t("Présentez votre style de clips aux marques…")}" class="${textareaCls}">${esc(u.bio || "")}</textarea>`, t("300 caractères maximum."))}</div>
       </div>
       <div class="mt-5 border-t border-line pt-5">
-        <h2 class="text-section text-fg">Vos comptes</h2><p class="mt-0.5 text-small text-fg-muted">Les comptes depuis lesquels vous publiez vos clips.</p>
-        <div class="mt-5 grid gap-4 @xl:grid-cols-3">${handleInput("tiktok", "TikTok", "votrecompte")}${handleInput("instagram", "Instagram", "votrecompte")}${handleInput("youtube", "YouTube", "votrechaine")}</div>
+        <h2 class="text-section text-fg">${t("Vos comptes")}</h2><p class="mt-0.5 text-small text-fg-muted">${t("Les comptes depuis lesquels vous publiez vos clips.")}</p>
+        <div class="mt-5 grid gap-4 @xl:grid-cols-3">${handleInput("tiktok", "TikTok", t("votrecompte"))}${handleInput("instagram", "Instagram", t("votrecompte"))}${handleInput("youtube", "YouTube", t("votrechaine"))}</div>
       </div>
-      <div class="mt-6 flex justify-end"><button class="${btn("primary")}">Enregistrer</button></div>
+      <div class="mt-6 flex justify-end"><button class="${btn("primary")}">${t("Enregistrer")}</button></div>
     </form>`);
   const identity = card(`<div class="flex flex-col items-center text-center">${avatar(u, "xl")}
-      <p class="mt-4 font-display text-section text-fg">${esc(u.name)}</p>
-      <p class="mt-0.5 flex items-center gap-1.5 text-small text-fg-muted">${u.handle ? `${esc(u.handle)} · ` : ""}${esc(u.country)}${u.country === "Algérie" ? flagDz() : ""}</p>
-      ${u.level ? `<div class="mt-3">${badge(esc(u.level), "brand", { ic: "medal" })}</div>` : ""}
+      <p class="mt-4 break-words font-display text-section text-fg">${esc(u.name)}</p>
+      <p class="mt-0.5 flex flex-wrap items-center justify-center gap-1.5 text-small text-fg-muted">${u.handle ? `<span dir="ltr">${esc(u.handle)}</span> · ` : ""}${esc(t(u.country))}${u.country === "Algérie" ? flagDz() : ""}</p>
+      ${u.level ? `<div class="mt-3">${badge(esc(t(u.level)), "brand", { ic: "medal" })}</div>` : ""}
       ${u.bio ? `<p class="mt-4 text-sm text-fg-muted">${esc(u.bio)}</p>` : ""}
-      <p class="mt-4 text-xs text-fg-subtle">Membre depuis le ${date(u.joined)}</p></div>`);
-  return `${pageHeader("Profil", "Vos informations publiques et votre compte.")}
-    <div class="mt-6 grid items-start gap-4 lg:gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
+      <p class="mt-4 text-xs text-fg-subtle">${t("Membre depuis le {date}", { date: date(u.joined) })}</p>
+      <div class="mt-4 border-t border-line pt-4 self-stretch">${clLink("#/clipper/parametres", t("Compte, langue et thème"))}</div></div>`);
+  return `${pageHeader(t("Profil"), t("Vos informations publiques et votre photo."))}
+    <div class="mt-6 grid items-start gap-4 lg:gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
       ${form}
-      <div class="grid gap-4 lg:grid-cols-2 lg:gap-5 xl:grid-cols-1">${identity}${accountCard(u)}</div>
+      ${identity}
     </div>`;
 }
 
+// Paramètres : préférences (langue, thème), moyen de retrait, règles de paiement, compte et connexion.
 function cParametres() {
   const u = me(), s = db.settings, current = u.payoutMethod || PAYOUT_METHODS[0];
   const rules = [
-    ["Seuil de paiement", "Un clip doit atteindre le seuil minimum de sa campagne pour être examiné.", "Selon la campagne"],
-    ["Fenêtre de gains", "Un clip validé continue de rapporter pendant cette durée, jusqu'au plafond par clip.", plural(s.earningDays, "jour", "jours")],
-    ["Rétention", "Contrôle anti-fraude : chaque gain devient retirable ensuite.", plural(s.holdDays, "jour", "jours")],
-    ["Retrait minimum", "", money(s.minWithdraw)],
-    ["Retrait standard", "", "Gratuit"],
-    ["Retrait instantané", "Traité en priorité.", `${pct(s.instantFeePercent)}, min. ${money(s.instantMinFee)}`],
+    [t("Seuil de paiement"), t("Un clip doit atteindre le seuil minimum de sa campagne pour être examiné."), t("Selon la campagne")],
+    [t("Fenêtre de gains"), t("Un clip validé continue de rapporter pendant cette durée, jusqu'au plafond par clip."), plural(s.earningDays, "jour", "jours")],
+    [t("Rétention"), t("Contrôle anti-fraude : chaque gain devient retirable ensuite."), plural(s.holdDays, "jour", "jours")],
+    [t("Retrait minimum"), "", money(s.minWithdraw)],
+    [t("Retrait standard"), "", t("Gratuit")],
+    [t("Retrait instantané"), t("Traité en priorité."), t("{pct}, min. {amount}", { pct: pct(s.instantFeePercent), amount: money(s.instantMinFee) })],
   ];
-  return `${pageHeader("Paramètres", "Votre moyen de retrait et les règles de paiement.")}
-    <div class="mt-6 grid items-start gap-4 lg:gap-5 xl:grid-cols-2">
-      ${card(`${cardHeader("Moyen de retrait", "Vos gains sont versés sur ce compte, après validation de chaque demande par l'équipe ClipBoost.")}
+  const pref = (title, text, control) => `<div class="grid gap-3 py-4 first:pt-0 last:pb-0">
+      <div class="min-w-0"><p class="text-sm font-medium text-fg">${title}</p><p class="mt-0.5 text-xs text-fg-subtle">${text}</p></div>${control}</div>`;
+  const prefs = card(`${cardHeader(t("Préférences"), t("La langue et l'apparence de votre espace."))}
+      <div class="mt-4 divide-y divide-line">
+        ${pref(t("Langue"), t("Enregistrée sur votre compte : elle vous suit sur tous vos appareils."), langSwitch({ full: true, cls: "w-full sm:w-auto" }))}
+        ${pref(t("Thème"), t("Clair, sombre, ou selon le réglage de votre appareil."), themeModeSwitch({ labels: true, cls: "w-full sm:w-auto" }))}
+      </div>`);
+  // Type de compte : valeur envoyée en français (PAYOUT_METHODS) ; « RIB » seul sur téléphone, « RIB bancaire » ensuite.
+  const methodLabel = (m) => (m === "RIB bancaire"
+    ? `<span class="sm:hidden">${t("RIB")}</span><span class="hidden sm:inline">${t("RIB bancaire")}</span>`
+    : esc(t(m)));
+  const payout = card(`${cardHeader(t("Moyen de retrait"), t("Vos gains sont versés sur ce compte, après validation de chaque demande par l'équipe ClipBoost."))}
         <form data-form="payout" class="mt-5 grid gap-5">
-          <fieldset><legend class="mb-1.5 text-small font-medium text-fg">Type de compte</legend>
-            <div class="grid grid-cols-3 gap-2">${PAYOUT_METHODS.map((m) => `<label class="block min-w-0"><input type="radio" name="payoutMethod" value="${m}" ${current === m ? "checked" : ""} class="peer sr-only"/><span class="${SEG_CHOICE}"><span class="hidden sm:contents">${icon(CL_PAYOUT_ICON[m] || "bank")}</span><span class="truncate">${m === "RIB bancaire" ? `RIB<span class="hidden sm:inline">${NB}bancaire</span>` : m}</span></span></label>`).join("")}</div></fieldset>
-          ${field("Numéro de compte", `<input name="payoutAccount" required maxlength="60" value="${esc(u.payoutAccount || "")}" placeholder="RIP, numéro CCP ou RIB" autocomplete="off" spellcheck="false" class="${inputCls} font-mono"/>`, `Vérifiez ce numéro${NB}: les virements sont envoyés tels quels.`)}
-          <div class="flex justify-end"><button class="${btn("primary")}">Enregistrer</button></div>
-        </form>`)}
-      ${card(`${cardHeader("Comment vous êtes payé", "Les règles appliquées à chaque clip et à chaque retrait.")}
-        <dl class="mt-3 divide-y divide-line">${rules.map(([t, d, v]) => `<div class="flex items-start justify-between gap-4 py-3.5 last:pb-0">
-          <dt class="min-w-0"><span class="block text-sm text-fg-muted">${t}</span>${d ? `<span class="mt-0.5 block text-xs text-fg-subtle">${d}</span>` : ""}</dt>
-          <dd class="shrink-0 text-right text-sm font-medium tabular-nums text-fg">${v}</dd></div>`).join("")}</dl>`)}
+          <fieldset><legend class="mb-1.5 text-small font-medium text-fg">${t("Type de compte")}</legend>
+            <div class="grid grid-cols-3 gap-2">${PAYOUT_METHODS.map((m) => `<label class="block min-w-0"><input type="radio" name="payoutMethod" value="${m}" ${current === m ? "checked" : ""} class="peer sr-only"/><span class="${SEG_CHOICE}"><span class="hidden sm:contents">${icon(CL_PAYOUT_ICON[m] || "bank")}</span><span class="truncate">${methodLabel(m)}</span></span></label>`).join("")}</div></fieldset>
+          ${field(t("Numéro de compte"), `<input name="payoutAccount" required maxlength="60" value="${esc(u.payoutAccount || "")}" placeholder="${t("RIP, numéro CCP ou RIB")}" autocomplete="off" spellcheck="false" dir="ltr" class="${inputCls} font-mono"/>`, t("Vérifiez ce numéro : les virements sont envoyés tels quels."))}
+          <div class="flex justify-end"><button class="${btn("primary")}">${t("Enregistrer")}</button></div>
+        </form>`);
+  const howPaid = card(`${cardHeader(t("Comment vous êtes payé"), t("Les règles appliquées à chaque clip et à chaque retrait."))}
+        <dl class="mt-3 divide-y divide-line">${rules.map(([label, d, v]) => `<div class="flex items-start justify-between gap-4 py-3.5 last:pb-0">
+          <dt class="min-w-0"><span class="block text-sm text-fg-muted">${label}</span>${d ? `<span class="mt-0.5 block text-xs text-fg-subtle">${d}</span>` : ""}</dt>
+          <dd class="shrink-0 text-end text-sm font-medium tabular-nums text-fg">${v}</dd></div>`).join("")}</dl>`);
+  return `${pageHeader(t("Paramètres"), t("Langue, thème, moyen de retrait et sécurité de votre compte."))}
+    <div class="mt-6 grid items-start gap-4 lg:gap-5 xl:grid-cols-2">
+      <div class="grid content-start gap-4 lg:gap-5">${prefs}${payout}</div>
+      <div class="grid content-start gap-4 lg:gap-5">${accountCard(u)}${howPaid}</div>
     </div>`;
 }
 
-// agence : page hors navigation (ITEM_PAGES dans main.js), « Campagnes » y reste l'entrée courante.
-const CLIPPER_VIEWS = { accueil: cAccueil, campagnes: cCampagnes, agence: cAgence, publications: cPublications, portefeuille: cPortefeuille, statistiques: cStatistiques, profil: cProfil, parametres: cParametres };
+// agence : page hors navigation (ITEM_PAGES dans main.js), « Agences » y reste l'entrée courante.
+const CLIPPER_VIEWS = { accueil: cAccueil, decouvrir: cDecouvrir, agences: cAgences, agence: cAgence, publications: cPublications, portefeuille: cPortefeuille, profil: cProfil, parametres: cParametres };
 
 // ---------- Récapitulatifs en direct (main.js appelle LIVE[nom] à chaque saisie) ----------
 LIVE.withdraw = (d) => {
   const a = Math.max(0, Math.round(+String(d.amount || "").replace(/\D/g, "")) || 0), s = db.settings;
   const fee = d.speed === "instant" ? Math.max(s.instantMinFee, Math.round((a * s.instantFeePercent) / 100)) : 0;
   return {
-    "": summary([["Montant demandé", money(a)], ["Frais", fee ? money(fee) : "Aucun"], ["Vous recevrez", money(Math.max(0, a - fee)), true]]),
-    btn: a ? `Confirmer le retrait de ${da(a)}` : "Confirmer le retrait",
+    "": summary([[t("Montant demandé"), money(a)], [t("Frais"), fee ? money(fee) : t("Aucun")], [t("Vous recevrez"), money(Math.max(0, a - fee)), true]]),
+    btn: a ? t("Confirmer le retrait de {amount}", { amount: da(a) }) : t("Confirmer le retrait"),
   };
 };
-// Soumission d'un clip : plateformes acceptées par la campagne choisie.
-LIVE.clip = (d) => {
-  const c = campaignById(d.campaign);
-  if (!c) return { platforms: "" };
-  const list = c.platforms.join(", ").replace(/, ([^,]*)$/, " et $1");
-  return {
-    platforms: c.platforms.includes(d.platform)
-      ? `<span class="text-xs text-fg-subtle">Cette campagne accepte ${esc(list)}.</span>`
-      : `<span class="flex items-center gap-1 text-xs font-medium text-warning-fg">${icon("alert", "size-3.5 shrink-0")}Cette campagne n'accepte pas ${esc(d.platform)}${NB}: choisissez ${esc(c.platforms.join(" ou "))}.</span>`,
-  };
-};
+// Soumission d'un clip : coche verte dans chaque champ de lien dès que le lien pointe vers sa plateforme (https).
+LIVE.clip = (d) => Object.fromEntries(PLATFORMS.map((p) => [`ok-${p}`, clUrlOk(p, d[`url-${p}`]) ? icon("checkCircle", "size-4") : ""]));
 
 // ---------- Modales ----------
+
+// Fiche d'une campagne : photo (ou couverture en dégradé), organisateur (lien vers sa page, badge bleu), chiffres,
+// règles et plateformes. Une campagne en pause ou terminée reste consultable (lien d'une notification) : statut, sans action.
+function clCampaignSheet(c, u) {
+  const joined = u.joinedCampaigns.has(c.id), remaining = Math.max(0, c.budget - c.spent), open = c.status === "Active", o = clOrgOf(c);
+  const plats = PLATFORMS.filter((p) => c.platforms.includes(p));
+  const strong = (html) => `<strong class="font-semibold">${html}</strong>`;
+  const tile = (label, value, extra = "", cls = "") => `<div class="${TILE} ${cls}"><p class="text-xs text-fg-subtle">${label}</p><p class="mt-0.5 text-sm font-semibold tabular-nums text-fg">${value}</p>${extra}</div>`;
+  return modalShell({
+    title: esc(c.title), description: t("{category} · créée le {date}", { category: clCatLabel(c), date: date(c.createdAt) }), size: "lg",
+    body: `<div class="cover relative aspect-[16/9] overflow-hidden rounded-tile sm:aspect-[2/1]" ${coverAttr(c)}>
+        ${coverArt(c, "text-6xl")}
+        ${c.top ? `<span class="absolute bottom-3 start-3 inline-flex items-center gap-1 rounded-badge bg-on-brand/90 px-1.5 py-0.5 text-[11px] font-semibold text-night">${icon("star", "size-3", true)}${t("Top campagne")}</span>` : ""}</div>
+      <a href="${clOrgHref(o.key)}" data-action="close-modal" class="group mt-4 flex items-center gap-3 rounded-tile border border-line p-3 transition-colors duration-150 hover:border-line-strong hover:bg-subtle ${FOCUS}">
+        ${clOrgMark(o, "size-10 text-sm")}
+        <span class="min-w-0 flex-1"><span class="block text-xs text-fg-subtle">${t("Organisée par")}</span>
+          <span class="flex min-w-0 items-center gap-1 text-sm font-medium text-fg"><span class="truncate">${esc(o.name)}</span>${o.verified ? verifiedBadge("size-4", t("Agence vérifiée")) : ""}</span></span>
+        <span class="inline-flex shrink-0 items-center gap-0.5 text-small font-medium text-brand-fg">${t("Voir la page")}${icon("chevronRight", "size-4 rtl:-scale-x-100")}</span></a>
+      <div class="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3">
+        ${tile(t("Tarif"), rate(c.rate))}
+        ${tile(t("Clippers"), fmt(c.clippers))}
+        ${open
+          ? tile(t("Budget restant"), da(remaining), `<div class="mt-2">${progress(c.spent, c.budget, { label: false, aria: t("Budget utilisé") })}</div>`, "col-span-2 sm:col-span-1")
+          : `<div class="${TILE} col-span-2 sm:col-span-1"><p class="text-xs text-fg-subtle">${t("Statut")}</p><p class="mt-1">${statusBadge(c.status)}</p></div>`}
+      </div>
+      <div class="mt-4">${open ? alertBox("info", t("Vous êtes payé à partir de {minViews} ({min}) et jusqu'à {maxViews} ({max}) par clip.", { minViews: strong(plural(clThresholdViews(c), "vue", "vues")), min: da(c.minPayout), maxViews: strong(plural(viewsFor(c, c.maxPayout), "vue", "vues")), max: da(c.maxPayout) }))
+        : alertBox("warning", c.status === "En pause"
+          ? t("Cette campagne est {status} : elle n'accepte ni nouveaux clippers ni nouveaux clips pour le moment.", { status: strong(t("en pause")) })
+          : t("Cette campagne est {status} : elle n'accepte plus de clippers ni de clips.", { status: strong(t("terminée")) }))}</div>
+      <h3 class="mt-6 text-section text-fg">${t("Règles de la campagne")}</h3>
+      <ul class="mt-2 grid gap-2">${c.rules.map((r) => `<li class="flex gap-2.5 text-sm text-fg-muted">${icon("check", "mt-0.5 size-4 shrink-0 text-income")}<span>${esc(r)}</span></li>`).join("")}</ul>
+      <h3 class="mt-6 text-section text-fg">${plats.length > 1 ? t("Plateformes acceptées") : t("Plateforme acceptée")}</h3>
+      <div class="mt-2 flex flex-wrap gap-2">${plats.map(platformTag).join("")}</div>
+      ${open && plats.length > 1 ? `<p class="mt-2 text-xs text-fg-subtle">${t("Publiez votre clip sur une seule de ces plateformes ou sur toutes : vous indiquerez un lien par plateforme, chacun payé selon ses vues.")}</p>` : ""}`,
+    footer: `<button type="button" data-action="close-modal" class="${btn(open ? "ghost" : "secondary")}">${t("Fermer")}</button>${!open ? "" : joined
+      ? `<button type="button" data-action="submit-clip" data-id="${c.id}" class="${btn("primary")}">${icon("plus")}${t("Soumettre un clip")}</button>`
+      : `<button type="button" data-action="join" data-id="${c.id}" class="${btn("primary")}">${t("Rejoindre la campagne")}</button>`}`,
+  });
+}
+
+// Champ de lien d'une plateforme : pictogramme et nom, lien en LTR, coche en direct (LIVE.clip), erreur sous le champ.
+function clUrlField(p, value, error) {
+  return `<div class="grid gap-1.5" data-field>
+    <label class="contents"><span class="flex items-center gap-1.5 text-small font-medium text-fg">${icon(PLATFORM_ICON[p] || "film", "size-4 shrink-0 text-fg-muted")}${t("Lien {platform}", { platform: esc(p) })}</span>
+      <span class="relative block" dir="ltr">${icon("link", "pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2 text-fg-subtle")}<input name="url-${p}" type="url" inputmode="url" required value="${esc(value || "")}" placeholder="${esc(PLATFORM_PLACEHOLDER[p] || "https://…")}" autocomplete="off" autocapitalize="off" spellcheck="false" class="${inputCls} ps-9 pe-10"${error ? ' aria-invalid="true"' : ""}/>
+        <span data-live-out="ok-${p}" class="pointer-events-none absolute inset-y-0 end-3 flex items-center text-income" aria-hidden="true">${clUrlOk(p, value) ? icon("checkCircle", "size-4") : ""}</span></span></label>
+    ${error ? clErr(esc(error)) : ""}</div>`;
+}
+
+// Soumission d'un clip : campagne, titre, « Où avez-vous publié ce clip ? » (toutes les plateformes de la campagne ou
+// une seule, puis laquelle), et un champ de lien par plateforme retenue. Les choix (data-rerender) sont relus dans
+// state.modal.draft (main.js garde les saisies à chaque rendu) ; une erreur ne s'affiche que tant que la valeur fautive
+// n'a pas changé (m.errorValues : la saisie au moment de l'envoi).
+function clSubmitModal(m) {
+  const joined = clJoinedOpen();
+  if (!joined.length) {
+    return modalShell({
+      title: t("Soumettre un clip"),
+      body: emptyState("target", t("Aucune campagne rejointe"), t("Rejoignez d'abord une campagne pour pouvoir soumettre un clip."), "", { inCard: true }),
+      footer: `<button type="button" data-action="close-modal" class="${btn("ghost")}">${t("Annuler")}</button><a href="#/clipper/decouvrir" data-action="close-modal" class="${btn("primary")}">${icon("compass")}${t("Découvrir les campagnes")}</a>`,
+    });
+  }
+  const d = m.draft || {}, e = m.errors || {}, ev = m.errorValues || {};
+  const same = (k) => String(d[k] ?? "") === String(ev[k] ?? "");
+  const c = joined.find((x) => x.id === d.campaign) || joined.find((x) => x.id === m.id) || joined[0];
+  const plats = PLATFORMS.filter((p) => c.platforms.includes(p)), single = plats.length === 1;
+  const mode = single ? "one" : d.mode === "all" || d.mode === "one" ? d.mode : "";
+  const platform = single ? plats[0] : plats.includes(d.platform) ? d.platform : "";
+  const targets = mode === "all" ? plats : platform ? [platform] : [];
+  const errOf = (k) => (e[k] && same(k) ? e[k] : "");
+  const modeErr = e.mode && !mode ? e.mode : "", platformErr = e.platform && mode === "one" && !platform ? e.platform : "";
+  const titleErr = errOf("title"), campaignErr = errOf("campaign");
+  const LEGEND = "mb-1.5 text-small font-medium text-fg";
+  const choice = (value, title, text) => `<label class="${CHOICE} has-[[aria-invalid=true]]:border-danger-solid"><input type="radio" name="mode" value="${value}" data-rerender class="${RADIO}" ${mode === value ? "checked" : ""}${modeErr ? ' aria-invalid="true"' : ""}/>
+      <span class="min-w-0 flex-1"><span class="block text-sm font-medium text-fg">${title}</span>${text}</span></label>`;
+
+  // Campagne à une seule plateforme : une phrase (la pastille de la plateforme s'insère à sa place dans chaque langue).
+  const where = single ? `<div class="flex items-start gap-2 rounded-tile bg-subtle p-3 text-small leading-6 text-fg-muted in-[[aria-modal=true]]:bg-muted">${icon("info", "mt-1 size-4 shrink-0 text-fg-subtle")}<span class="min-w-0 [&>span]:align-middle">${t("Cette campagne se publie uniquement sur {platform}", { platform: platformTag(plats[0]) })}</span></div>`
+    : `<fieldset class="grid gap-2" data-field><legend class="${LEGEND}">${t("Où avez-vous publié ce clip ?")}</legend>
+        <div class="grid gap-2 sm:grid-cols-2">
+          ${choice("all", t("Sur toutes les plateformes de la campagne"), `<span class="mt-2 flex flex-wrap gap-1.5">${plats.map(platformTag).join("")}</span>`)}
+          ${choice("one", t("Sur une seule plateforme"), `<span class="mt-0.5 block text-xs text-fg-subtle">${t("Vous choisissez laquelle juste après.")}</span>`)}
+        </div>
+        ${modeErr ? clErr(esc(modeErr)) : ""}</fieldset>`;
+
+  const which = !single && mode === "one"
+    ? `<fieldset class="grid gap-2" data-field><legend class="${LEGEND}">${t("Sur quelle plateforme ?")}</legend>
+        <div class="grid grid-cols-2 gap-2 ${CL_COLS[plats.length] || ""}">${plats.map((p) => `<label class="block min-w-0"><input type="radio" name="platform" value="${p}" data-rerender class="peer sr-only" ${p === platform ? "checked" : ""}${platformErr ? ' aria-invalid="true"' : ""}/><span class="${SEG_CHOICE} h-11 peer-aria-[invalid=true]:border-danger-solid">${icon(PLATFORM_ICON[p] || "film")}<span class="truncate">${p}</span></span></label>`).join("")}</div>
+        ${platformErr ? clErr(esc(platformErr)) : ""}</fieldset>`
+    : "";
+
+  const links = targets.length
+    ? `<div class="grid gap-4">
+        ${targets.length > 1 ? `<p class="text-xs text-fg-subtle">${t("Un lien par plateforme : chaque publication est vérifiée, puis payée selon ses propres vues.")}</p>` : ""}
+        ${targets.map((p) => clUrlField(p, d[`url-${p}`], errOf(`url-${p}`))).join("")}</div>`
+    : `<div class="flex items-center gap-2.5 rounded-tile border border-dashed border-line-strong px-3.5 py-3 text-small text-fg-subtle">${icon("link", "size-4 shrink-0")}<span>${mode === "one" ? t("Choisissez la plateforme pour coller le lien de votre clip.") : t("Les champs de lien s'affichent selon votre choix.")}</span></div>`;
+
+  return modalShell({
+    title: t("Soumettre un clip"), description: t("Le clip sera vérifié par l'équipe ClipBoost avant validation."), form: "submit", live: "clip", size: "lg",
+    body: `<div class="grid gap-5">
+      ${field(t("Campagne"), `<span class="relative block"><select name="campaign" data-rerender class="${selectCls}"${campaignErr ? ' aria-invalid="true"' : ""}>${joined.map((x) => `<option value="${x.id}" ${x.id === c.id ? "selected" : ""}>${esc(x.title)} · ${rateShort(x.rate)}</option>`).join("")}</select>${CHEVRON}</span>`, "", campaignErr ? esc(campaignErr) : "")}
+      <div class="grid gap-1.5" data-field><label class="contents"><span class="text-small font-medium text-fg">${t("Titre du clip")}</span><input name="title" required maxlength="100" value="${esc(d.title || "")}" placeholder="${t("Ex. Le but de l'année")}" autocomplete="off" autofocus class="${inputCls}"${titleErr ? ' aria-invalid="true"' : ""}/></label>${titleErr ? clErr(esc(titleErr)) : ""}</div>
+      ${where}
+      ${which}
+      ${links}
+    </div>`,
+    footer: `<button type="button" data-action="close-modal" class="${btn("ghost")}">${t("Annuler")}</button><button class="${btn("primary")}">${icon("send", "rtl:-scale-x-100")}${t("Envoyer pour validation")}</button>`,
+  });
+}
 
 function clipperModal() {
   const m = state.modal;
@@ -632,124 +856,72 @@ function clipperModal() {
   const u = me();
   if (m.type === "campaign") {
     const c = campaignById(m.id);
-    if (!c) return "";
-    // Une campagne en pause ou terminée reste consultable (lien d'une notification) : statut affiché, sans action.
-    const joined = u.joinedCampaigns.has(c.id), remaining = Math.max(0, c.budget - c.spent), open = c.status === "Active";
-    const tile = (label, value, extra = "", cls = "") => `<div class="${TILE} ${cls}"><p class="text-xs text-fg-subtle">${label}</p><p class="mt-0.5 text-sm font-semibold tabular-nums text-fg">${value}</p>${extra}</div>`;
-    return modalShell({
-      // Lien vers l'organisateur : la fiche se ferme (close-modal), puis la page de l'agence s'ouvre (ou reste affichée).
-      title: esc(c.title), description: `${clOrgLink(c, 'data-action="close-modal"', true)} · ${esc(c.category)} · créée le ${date(c.createdAt)}`, size: "lg",
-      body: `<div class="cover relative grid aspect-[16/9] place-items-center overflow-hidden rounded-tile sm:aspect-[5/2]" ${coverAttr(c)}>
-          <span class="text-6xl drop-shadow-[0_6px_14px_rgb(0_0_0/0.22)]" aria-hidden="true">${c.emoji}</span>
-          ${c.top ? `<span class="absolute bottom-3 left-3 inline-flex items-center gap-1 rounded-badge bg-on-brand/90 px-1.5 py-0.5 text-[11px] font-semibold text-night">${icon("star", "size-3", true)}Top campagne</span>` : ""}</div>
-        <div class="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3">
-          ${tile("Tarif", rate(c.rate))}
-          ${tile("Clippers", fmt(c.clippers))}
-          ${open
-            ? tile("Budget restant", da(remaining), `<div class="mt-2">${progress(c.spent, c.budget, { label: false })}</div>`, "col-span-2 sm:col-span-1")
-            : `<div class="${TILE} col-span-2 sm:col-span-1"><p class="text-xs text-fg-subtle">Statut</p><p class="mt-1">${statusBadge(c.status)}</p></div>`}
-        </div>
-        <div class="mt-4">${open ? alertBox("info", `Vous êtes payé à partir de <strong class="font-semibold">${plural(clThresholdViews(c), "vue", "vues")}</strong> (${da(c.minPayout)}) et jusqu'à <strong class="font-semibold">${plural(viewsFor(c, c.maxPayout), "vue", "vues")}</strong> (${da(c.maxPayout)}) par clip.`)
-          : alertBox("warning", c.status === "En pause"
-            ? `Cette campagne est <strong class="font-semibold">en pause</strong> : elle n'accepte ni nouveaux clippers ni nouveaux clips pour le moment.`
-            : `Cette campagne est <strong class="font-semibold">terminée</strong> : elle n'accepte plus de clippers ni de clips.`)}</div>
-        <h3 class="mt-6 text-section text-fg">Règles de la campagne</h3>
-        <ul class="mt-2 grid gap-2">${c.rules.map((r) => `<li class="flex gap-2.5 text-sm text-fg-muted">${icon("check", "mt-0.5 size-4 shrink-0 text-income")}<span>${esc(r)}</span></li>`).join("")}</ul>
-        <h3 class="mt-6 text-section text-fg">Plateformes</h3>
-        <div class="mt-2 flex flex-wrap gap-2">${c.platforms.map(platformTag).join("")}</div>`,
-      footer: `<button type="button" data-action="close-modal" class="${btn(open ? "ghost" : "secondary")}">Fermer</button>${!open ? "" : joined
-        ? `<button type="button" data-action="submit-clip" data-id="${c.id}" class="${btn("primary")}">${icon("plus")}Soumettre un clip</button>`
-        : `<button type="button" data-action="join" data-id="${c.id}" class="${btn("primary")}">Rejoindre la campagne</button>`}`,
-    });
+    return c ? clCampaignSheet(c, u) : "";
   }
-  if (m.type === "submit") {
-    const joined = activeCampaigns().filter((c) => u.joinedCampaigns.has(c.id));
-    if (!joined.length) {
-      return modalShell({
-        title: "Soumettre un clip",
-        body: emptyState("target", "Aucune campagne rejointe", "Rejoignez d'abord une campagne pour pouvoir soumettre un clip.", "", { inCard: true }),
-        footer: `<button type="button" data-action="close-modal" class="${btn("ghost")}">Annuler</button><a href="#/clipper/campagnes" data-action="close-modal" class="${btn("primary")}">Voir les campagnes</a>`,
-      });
-    }
-    const v = m.values || {}, e = m.errors || {};
-    const campaignId = v.campaign || (joined.some((c) => c.id === m.id) ? m.id : joined[0].id);
-    const platform = v.platform || "TikTok";
-    const inv = (k) => (e[k] ? ' aria-invalid="true"' : "");
-    return modalShell({
-      title: "Soumettre un clip", description: "Le clip sera vérifié par l'équipe ClipBoost avant validation.", form: "submit", live: "clip",
-      body: `<div class="grid gap-4">
-        ${field("Campagne", `<span class="relative block"><select name="campaign" class="${selectCls}">${joined.map((c) => `<option value="${c.id}" ${c.id === campaignId ? "selected" : ""}>${esc(c.title)} · ${rateShort(c.rate)}</option>`).join("")}</select>${CHEVRON}</span>`)}
-        ${field("Titre du clip", `<input name="title" maxlength="80" value="${esc(v.title || "")}" placeholder="Ex. Le but de l'année" autocomplete="off" autofocus class="${inputCls}"${inv("title")}/>`, "", e.title)}
-        ${field("Lien de la vidéo", `<span class="relative block">${icon("link", "pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-fg-subtle")}<input name="url" type="url" inputmode="url" value="${esc(v.url || "")}" placeholder="https://www.tiktok.com/@…" autocomplete="off" class="${inputCls} pl-9"${inv("url")}/></span>`, "", e.url)}
-        <fieldset><legend class="mb-1.5 text-small font-medium text-fg">Plateforme</legend>
-          <div class="grid grid-cols-3 gap-2">${["TikTok", "Instagram", "YouTube"].map((p) => `<label class="block min-w-0"><input type="radio" name="platform" value="${p}" ${p === platform ? "checked" : ""} class="peer sr-only"/><span class="${SEG_CHOICE}"><span class="hidden sm:contents">${icon(PLATFORM_ICON[p])}</span><span class="truncate">${p}</span></span></label>`).join("")}</div>
-          <p class="mt-1.5" data-live-out="platforms" role="status">${LIVE.clip({ campaign: campaignId, platform }).platforms}</p></fieldset>
-      </div>`,
-      footer: `<button type="button" data-action="close-modal" class="${btn("ghost")}">Annuler</button><button class="${btn("primary")}">Envoyer pour validation</button>`,
-    });
-  }
+  if (m.type === "submit") return clSubmitModal(m);
   if (m.type === "withdraw") {
     const set = db.settings, min = set.minWithdraw, bal = Math.floor(balance());
     const blocked = !u.payoutMethod
-      ? alertBox("info", `Ajoutez d'abord le compte sur lequel vous voulez être payé (BaridiMob, CCP ou RIB). <a href="#/clipper/parametres" class="${btn("link")}">Ajouter un moyen de retrait</a>`)
+      ? alertBox("info", t("Ajoutez d'abord le compte sur lequel vous voulez être payé (BaridiMob, CCP ou RIB). {link}", { link: `<a href="#/clipper/parametres" class="${btn("link")}">${t("Ajouter un moyen de retrait")}</a>` }))
       : bal < min
-        ? alertBox("info", `Votre solde disponible (${da(bal)}) est inférieur au minimum de retrait, fixé à <strong class="font-semibold">${da(min)}</strong>.${pendingAmount() ? ` ${da(pendingAmount())} deviendront retirables à la fin de leur période de rétention.` : ""}`)
+        ? alertBox("info", `${t("Votre solde disponible ({balance}) est inférieur au minimum de retrait, fixé à {min}.", { balance: da(bal), min: `<strong class="font-semibold">${da(min)}</strong>` })}${pendingAmount() ? ` ${t("{amount} deviendront retirables à la fin de leur période de rétention.", { amount: da(pendingAmount()) })}` : ""}`)
         : "";
     if (blocked) {
       return modalShell({
-        title: "Demander un retrait", description: `Solde disponible${NB}: ${da(bal)}`,
+        title: t("Demander un retrait"), description: t("Solde disponible : {amount}", { amount: da(bal) }),
         body: blocked,
-        footer: `<button type="button" data-action="close-modal" class="${btn("ghost")}">Fermer</button><button type="button" class="${btn("primary")}" disabled>Confirmer le retrait</button>`,
+        footer: `<button type="button" data-action="close-modal" class="${btn("ghost")}">${t("Fermer")}</button><button type="button" class="${btn("primary")}" disabled>${t("Confirmer le retrait")}</button>`,
       });
     }
     const amount = m.amount !== undefined ? String(m.amount) : fmt(bal), speed = m.speed === "instant" ? "instant" : "standard";
     const init = LIVE.withdraw({ amount, speed });
-    const choice = (value, title, text, right) => `<label class="${CHOICE}"><input type="radio" name="speed" value="${value}" class="${RADIO}" ${speed === value ? "checked" : ""}/><span class="min-w-0 flex-1"><span class="block text-sm font-medium text-fg">${title}</span><span class="block text-xs text-fg-subtle">${text}</span></span><span class="shrink-0 text-right text-small font-medium tabular-nums text-fg">${right}</span></label>`;
+    const choice = (value, title, text, right) => `<label class="${CHOICE}"><input type="radio" name="speed" value="${value}" class="${RADIO}" ${speed === value ? "checked" : ""}/><span class="min-w-0 flex-1"><span class="block text-sm font-medium text-fg">${title}</span><span class="block text-xs text-fg-subtle">${text}</span></span><span class="shrink-0 text-end text-small font-medium tabular-nums text-fg">${right}</span></label>`;
     return modalShell({
-      title: "Demander un retrait", description: `Solde disponible${NB}: ${da(bal)}`, form: "withdraw", live: "withdraw",
-      body: `${field("Montant", `<div class="flex gap-2"><div class="min-w-0 flex-1">${unitInput(`name="amount" value="${esc(amount)}" autocomplete="off" autofocus aria-describedby="wd-hint"${m.error ? ' aria-invalid="true"' : ""}`, "DA", { lg: true })}</div><button type="button" data-action="wd-max" class="${btn("secondary", "lg")}">Tout retirer</button></div>`, `<span id="wd-hint">Minimum ${da(min)} · maximum ${da(bal)}</span>`, m.error ? esc(m.error) : "")}
-        <fieldset class="mt-5 grid gap-2"><legend class="mb-1.5 text-small font-medium text-fg">Délai</legend>
-          ${choice("standard", "Standard", `Traité sous 48${NB}h ouvrées`, "Gratuit")}
-          ${choice("instant", "Instantané", "Traité en priorité", `${pct(set.instantFeePercent)}<span class="block text-xs font-normal text-fg-subtle">min. ${da(set.instantMinFee)}</span>`)}
+      title: t("Demander un retrait"), description: t("Solde disponible : {amount}", { amount: da(bal) }), form: "withdraw", live: "withdraw",
+      body: `${field(t("Montant"), `<div class="flex gap-2"><div class="min-w-0 flex-1">${unitInput(`name="amount" value="${esc(amount)}" autocomplete="off" autofocus aria-describedby="wd-hint"${m.error ? ' aria-invalid="true"' : ""}`, t("DA"), { lg: true })}</div><button type="button" data-action="wd-max" class="${btn("secondary", "lg")}">${t("Tout retirer")}</button></div>`, `<span id="wd-hint">${t("Minimum {min} · maximum {max}", { min: da(min), max: da(bal) })}</span>`, m.error ? esc(m.error) : "")}
+        <fieldset class="mt-5 grid gap-2"><legend class="mb-1.5 text-small font-medium text-fg">${t("Délai")}</legend>
+          ${choice("standard", t("Standard"), t("Traité sous 48 h ouvrées"), t("Gratuit"))}
+          ${choice("instant", t("Instantané"), t("Traité en priorité"), `${pct(set.instantFeePercent)}<span class="block text-xs font-normal text-fg-subtle">${t("min. {amount}", { amount: da(set.instantMinFee) })}</span>`)}
         </fieldset>
         <div data-live-out>${init[""]}</div>
-        <p class="mt-4 flex items-center gap-2 text-small text-fg-muted">${icon(CL_PAYOUT_ICON[u.payoutMethod] || "bank", "size-4 shrink-0 text-fg-subtle")}<span class="min-w-0 truncate">Vers ${esc(u.payoutMethod)} <span class="font-mono">${maskAccount(u.payoutAccount)}</span></span></p>`,
-      footer: `<button type="button" data-action="close-modal" class="${btn("ghost")}">Annuler</button><button class="${btn("primary")}" data-live-out="btn">${init.btn}</button>`,
+        <p class="mt-4 flex items-center gap-2 text-small text-fg-muted">${icon(CL_PAYOUT_ICON[u.payoutMethod] || "bank", "size-4 shrink-0 text-fg-subtle")}<span class="min-w-0 truncate">${t("Vers {method} {account}", { method: esc(t(u.payoutMethod)), account: `<span class="font-mono" dir="ltr">${maskAccount(u.payoutAccount)}</span>` })}</span></p>`,
+      footer: `<button type="button" data-action="close-modal" class="${btn("ghost")}">${t("Annuler")}</button><button class="${btn("primary")}" data-live-out="btn">${init.btn}</button>`,
     });
   }
   return "";
 }
 
-function handleClipperAction(action, t) {
-  const u = me(), { id, value } = t.dataset;
+// el : l'élément cliqué (data-action). Les toasts reçoivent du texte brut : toast() l'échappe.
+function handleClipperAction(action, el) {
+  const u = me(), { id, value } = el.dataset;
   switch (action) {
     case "toggle-fav": {
       const fav = !u.favorites.has(id);
-      return act("POST", `/api/campaigns/${id}/membership`, { favorite: fav }, fav ? "Ajoutée aux favoris" : "Retirée des favoris");
+      return act("POST", `/api/campaigns/${id}/membership`, { favorite: fav }, fav ? t("Ajoutée aux favoris") : t("Retirée des favoris"));
     }
     case "join": {
       const c = campaignById(id);
-      return act("POST", `/api/campaigns/${id}/membership`, { joined: true }, `Vous avez rejoint «${NB}${c.title}${NB}»`);
+      return act("POST", `/api/campaigns/${id}/membership`, { joined: true }, c ? t("Vous avez rejoint « {title} »", { title: c.title }) : t("Campagne rejointe"));
     }
     case "open-campaign": state.modal = { type: "campaign", id }; return render();
-    case "submit-clip": state.modal = { type: "submit", id }; state.notifOpen = false; state.drawer = false; return render();
+    case "submit-clip": state.modal = { type: "submit", id }; state.notifOpen = false; state.menuOpen = false; state.drawer = false; return render();
     case "withdraw": state.modal = { type: "withdraw" }; return render();
     case "wd-max": {
       const i = root.querySelector('[name="amount"]');
       if (i) { i.value = fmt(Math.floor(balance())); i.dispatchEvent(new Event("input", { bubbles: true })); i.focus(); }
       return;
     }
-    // Bascule Agences / Campagnes ; depuis la page d'une agence (lien « Campagnes »), le lien fait la navigation.
-    case "camp-tab": state.camp.tab = value === "campagnes" ? "campagnes" : "agences"; return state.route.view === "campagnes" ? render() : undefined;
+    // Toutes / Rejointes / Favoris ; une puce (data-toggle) déjà active revient à « Toutes ».
+    case "camp-scope": state.camp.scope = "toggle" in el.dataset && state.camp.scope === value ? "Toutes" : CL_SCOPES.includes(value) ? value : "Toutes"; return render();
     case "reset-agencies": state.camp.aq = ""; return render();
-    case "fav-only": state.camp.favOnly = !state.camp.favOnly; return render();
     case "camp-cat": state.camp.category = value; return render();
     case "layout": state.camp.layout = value; return render();
-    case "reset-filters": state.camp = { ...state.camp, q: "", category: "Toutes", favOnly: false }; return render();
+    case "reset-filters": state.camp = { ...state.camp, q: "", category: "Toutes" }; return render();
     case "pub-status": state.pub.status = value; return render();
     case "tx-type": state.tx.type = { Tous: "tous", Gains: "gain", Retraits: "retrait" }[value]; return render();
     case "period": state.period = parseInt(value, 10); return render();
     case "cl-chart": state.clChart = value; return render();
+    case "cl-clips": state.clClips = value; return render();
   }
   return false;
 }
@@ -762,33 +934,49 @@ function clModalErrors(patch) {
   if (el) el.focus();
 }
 
+// Messages d'erreur et toasts : texte brut (clErr, field et toast les échappent), paramètres non échappés.
 function handleClipperSubmit(form, data) {
   if (form === "submit") {
-    const title = String(data.title || "").trim(), url = String(data.url || "").trim(), errors = {};
-    if (!title) errors.title = "Donnez un titre à votre clip.";
-    if (!url) errors.url = "Collez le lien de la vidéo publiée.";
-    else {
-      let ok = false;
-      try { const x = new URL(url); ok = x.protocol === "https:" && CL_HOSTS[data.platform].test(x.hostname); } catch (e) {}
-      if (!ok) errors.url = `Le lien doit être un lien ${esc(data.platform)} (https://…).`;
-    }
-    if (Object.keys(errors).length) return clModalErrors({ values: data, errors });
-    return act("POST", "/api/clips", { campaignId: data.campaign, title: data.title, platform: data.platform, url: data.url }, "Clip envoyé pour validation", () => {
+    // Mêmes contrôles que le serveur (lib/server/services/clips.ts), champ par champ, avant tout envoi.
+    const c = clJoinedOpen().find((x) => x.id === data.campaign), errors = {};
+    const title = String(data.title || "").trim();
+    if (!c) errors.campaign = t("Cette campagne n'accepte plus de clips : choisissez-en une autre.");
+    if (!title) errors.title = t("Donnez un titre à votre clip.");
+    const plats = c ? PLATFORMS.filter((p) => c.platforms.includes(p)) : [], single = plats.length === 1;
+    const mode = single ? "one" : data.mode, platform = single ? plats[0] : data.platform;
+    if (c && mode !== "all" && mode !== "one") errors.mode = t("Indiquez où vous avez publié ce clip.");
+    else if (c && mode === "one" && !plats.includes(platform)) errors.platform = t("Choisissez la plateforme sur laquelle vous avez publié ce clip.");
+    const targets = mode === "all" ? plats : plats.includes(platform) ? [platform] : [];
+    const submitted = new Set(myPubs().map((p) => clUrlKey(p.url))), seen = new Set();
+    const links = targets.map((p) => {
+      const k = `url-${p}`, url = String(data[k] || "").trim(), key = clUrlKey(url);
+      if (!url) errors[k] = t("Collez le lien {platform} de votre clip.", { platform: p });
+      else if (!clUrlOk(p, url)) errors[k] = t("Le lien doit être un lien {platform} (https://…).", { platform: p });
+      else if (submitted.has(key)) errors[k] = t("Vous avez déjà soumis ce lien.");
+      else if (seen.has(key)) errors[k] = t("Le même lien est indiqué deux fois.");
+      seen.add(key);
+      return { platform: p, url };
+    });
+    if (Object.keys(errors).length) return clModalErrors({ errors, errorValues: data, draft: { ...(state.modal && state.modal.draft), ...data } });
+    const sent = links.length > 1 ? t("Clip envoyé pour validation sur {platforms}", { platforms: plural(links.length, "plateforme", "plateformes") }) : t("Clip envoyé pour validation");
+    return act("POST", "/api/clips", { campaignId: c.id, title, links }, sent, (res) => {
       state.modal = null; state.pub.status = "Toutes";
-      navigate("#/clipper/publications");
+      // Les publications s'ouvrent sur le nouveau clip (mis en évidence, voir applyRouteItem dans main.js).
+      navigate(res && res.id ? `#/clipper/publications/${encodeURIComponent(res.id)}` : "#/clipper/publications");
     });
   }
   if (form === "withdraw") {
     const amount = Math.floor(Number(String(data.amount || "").replace(/\D/g, ""))) || 0, min = db.settings.minWithdraw, bal = Math.floor(balance());
-    const error = amount < min ? `Le retrait minimum est de ${da(min)}.` : amount > bal ? `Montant supérieur à votre solde disponible (${da(bal)}).` : "";
+    const error = amount < min ? t("Le retrait minimum est de {amount}.", { amount: da(min) }) : amount > bal ? t("Montant supérieur à votre solde disponible ({amount}).", { amount: da(bal) }) : "";
     if (error) return clModalErrors({ amount: data.amount, speed: data.speed, error });
-    return act("POST", "/api/withdrawals", { amount, instant: data.speed === "instant" }, `Demande de retrait de ${da(amount)} envoyée`, () => { state.modal = null; });
+    return act("POST", "/api/withdrawals", { amount, instant: data.speed === "instant" }, t("Demande de retrait de {amount} envoyée", { amount: da(amount) }), () => { state.modal = null; });
   }
   if (form === "profile") {
     const at = (v) => { const s = String(v || "").trim().replace(/^@+/, ""); return s ? `@${s}` : ""; };
-    return act("PATCH", "/api/me", { name: data.name, country: data.country, bio: data.bio, handles: { tiktok: at(data.tiktok), instagram: at(data.instagram), youtube: at(data.youtube) } }, "Profil mis à jour");
+    // avatar : data URL (nouvelle photo), adresse actuelle (inchangée) ou "" (retirée), voir imageField (ui.js).
+    return act("PATCH", "/api/me", { name: data.name, country: data.country, bio: data.bio, avatar: data.avatar, handles: { tiktok: at(data.tiktok), instagram: at(data.instagram), youtube: at(data.youtube) } }, t("Profil mis à jour"));
   }
   if (form === "payout") {
-    return act("PATCH", "/api/me", { payoutMethod: data.payoutMethod, payoutAccount: data.payoutAccount }, "Moyen de retrait enregistré");
+    return act("PATCH", "/api/me", { payoutMethod: data.payoutMethod, payoutAccount: data.payoutAccount }, t("Moyen de retrait enregistré"));
   }
 }

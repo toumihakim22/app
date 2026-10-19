@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
-import { and, eq, gt } from "drizzle-orm";
+import { and, eq, gt, ne } from "drizzle-orm";
 import { cookies } from "next/headers";
 import { getDb, schema } from "./db";
 import type { Role } from "./db/schema";
@@ -34,6 +34,14 @@ export async function destroySession() {
     await db.delete(schema.sessions).where(eq(schema.sessions.id, hashToken(token)));
   }
   jar.delete(COOKIE);
+}
+
+/** Ferme les autres sessions de l'utilisateur (après un changement de mot de passe) ; la session en cours reste ouverte. */
+export async function endOtherSessions(userId: string) {
+  const db = await getDb();
+  const token = (await cookies()).get(COOKIE)?.value;
+  const mine = eq(schema.sessions.userId, userId);
+  await db.delete(schema.sessions).where(token ? and(mine, ne(schema.sessions.id, hashToken(token))) : mine);
 }
 
 export async function currentUser(): Promise<User | null> {

@@ -6,6 +6,9 @@
 // sans React), ce bouton est piloté par web/theme.js via l'attribut data-theme-toggle.
 export function toggleTheme() {
   const dark = document.documentElement.classList.toggle("dark");
+  document.documentElement.style.colorScheme = dark ? "dark" : "light";
+  // Barre du navigateur mobile : même couleur que le fond de la page.
+  document.querySelectorAll('meta[name="theme-color"]').forEach((m) => m.setAttribute("content", dark ? "#0b0d12" : "#f5f6f8"));
   try {
     localStorage.setItem("clipboost-theme", dark ? "dark" : "light");
   } catch {

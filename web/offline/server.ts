@@ -4,8 +4,8 @@
 import { z, ZodError, type ZodType } from "zod";
 import {
   amountSchema, approveSchema, campaignSchema, campaignStatusSchema, changePasswordSchema, clipSchema, creditSchema, forgotSchema,
-  loginSchema, membershipSchema, profileSchema, resetSchema, reviewClipSchema, settingsSchema, signupSchema, userStatusSchema,
-  verifySchema, viewsSchema, withdrawSchema,
+  loginSchema, membershipSchema, oauthDemoSchema, profileSchema, resetSchema, reviewClipSchema, settingsSchema, signupSchema,
+  userStatusSchema, verificationRequestSchema, verificationReviewSchema, verifySchema, viewsSchema, withdrawSchema,
 } from "../../lib/server/validation";
 import { ApiError, badRequest, clear, forbidden, load, logActivity, save } from "./db";
 import * as svc from "./services";
@@ -52,6 +52,13 @@ const routes: Record<string, Record<string, Handler>> = {
     POST: async (req) => {
       const { email, password } = body(req, loginSchema);
       const user = await svc.login(req, email, password);
+      return ok({ role: user.role });
+    },
+  },
+  // Connexion Google, Apple ou Discord simulée (le serveur passe par /api/auth/oauth/<fournisseur> et son callback).
+  "/api/auth/oauth/demo": {
+    POST: (req) => {
+      const user = svc.oauthDemo(req, body(req, oauthDemoSchema));
       return ok({ role: user.role });
     },
   },
@@ -105,14 +112,26 @@ const routes: Record<string, Record<string, Handler>> = {
     },
   },
   "/api/campaigns/:id": {
+    // Modification (en attente) ou correction et relance (refusée), par l'agence propriétaire.
+    PUT: (req) => {
+      const user = svc.requireUser(req.db, "agence");
+      svc.updateCampaign(req, user, req.params.id, body(req, campaignSchema));
+      return ok();
+    },
     PATCH: (req) => {
       const user = svc.requireUser(req.db, "agence", "admin");
-      const { status, top } = body(req, campaignStatusSchema);
+      const { status, top, reason } = body(req, campaignStatusSchema);
       if (top !== undefined) {
         if (user.role !== "admin") throw forbidden();
         svc.setTop(req, req.params.id, top);
       }
-      if (status) svc.setCampaignStatus(req, user, req.params.id, status);
+      if (status) svc.setCampaignStatus(req, user, req.params.id, status, reason);
+      return ok();
+    },
+    // Annulation avant la vérification ou suppression après un refus, par l'agence propriétaire.
+    DELETE: (req) => {
+      const user = svc.requireUser(req.db, "agence");
+      svc.deleteCampaign(req, user, req.params.id);
       return ok();
     },
   },
@@ -134,7 +153,8 @@ const routes: Record<string, Record<string, Handler>> = {
   "/api/clips": {
     POST: (req) => {
       const user = svc.requireUser(req.db, "clipper");
-      return ok({ id: svc.submitClip(req, user, body(req, clipSchema)) }, 201);
+      const ids = svc.submitClip(req, user, body(req, clipSchema));
+      return ok({ id: ids[0], ids }, 201);
     },
   },
   "/api/clips/:id/review": {
@@ -163,8 +183,16 @@ const routes: Record<string, Record<string, Handler>> = {
   "/api/credit": {
     POST: (req) => {
       const user = svc.requireUser(req.db, "agence");
-      const { amount, method } = body(req, creditSchema);
-      return ok({ ref: svc.requestCredit(req, user, amount, method) }, 201);
+      const { amount, method, card } = body(req, creditSchema);
+      return ok({ ref: svc.requestCredit(req, user, amount, method, card) }, 201);
+    },
+  },
+  "/api/verification": {
+    POST: (req) => {
+      const user = svc.requireUser(req.db, "agence");
+      const { message } = body(req, verificationRequestSchema);
+      svc.requestVerification(req, user, message);
+      return ok();
     },
   },
   "/api/transactions/:id/review": {
@@ -180,6 +208,13 @@ const routes: Record<string, Record<string, Handler>> = {
       const admin = svc.requireUser(req.db, "admin");
       const { status } = body(req, userStatusSchema);
       svc.setUserStatus(req, admin, req.params.id, status);
+      return ok();
+    },
+  },
+  "/api/admin/users/:id/verification": {
+    POST: (req) => {
+      const admin = svc.requireUser(req.db, "admin");
+      svc.reviewVerification(req, admin, req.params.id, body(req, verificationReviewSchema));
       return ok();
     },
   },

@@ -16,8 +16,12 @@
   }
 
   window.__CLIPBOOST_LANDING__ = {
+    // L'accueil reste en français, de gauche à droite, quelle que soit la langue choisie dans l'application
+    // (render() de web/src/main.js réapplique cette langue en revenant à l'application, voir applyLangAttrs()).
     show: function () {
       document.title = title;
+      document.documentElement.lang = "fr";
+      document.documentElement.dir = "ltr";
       if (!setView("landing")) return;
       var id = location.hash.slice(1), target = id && document.getElementById(id);
       if (target) target.scrollIntoView();

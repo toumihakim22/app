@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { belowMin, fundingCost, instantFee, payoutDelta, payoutFor, validateCampaignNumbers, viewsFor } from "../lib/server/rules";
+import { belowMin, fundingCost, instantFee, payoutDelta, payoutFor, sentence, validateCampaignNumbers, viewsFor } from "../lib/server/rules";
 
 const derby = { rate: 150, minPayout: 300, maxPayout: 30000 };
 
@@ -42,4 +42,10 @@ test("validation des montants d'une campagne", () => {
   assert.match(validateCampaignNumbers({ rate: 150, budget: 60000, minPayout: 300, maxPayout: 300 }, 50000) ?? "", /supérieur/);
   assert.match(validateCampaignNumbers({ rate: 150, budget: 60000, minPayout: 300, maxPayout: 70000 }, 50000) ?? "", /dépasser le budget/);
   assert.equal(validateCampaignNumbers({ rate: 150, budget: 60000, minPayout: 300, maxPayout: 30000 }, 50000), null);
+});
+
+test("motif d'un refus cité avec un seul signe final", () => {
+  assert.equal(sentence("Logo officiel manquant"), "Logo officiel manquant.");
+  assert.equal(sentence("Logo officiel manquant."), "Logo officiel manquant.");
+  assert.equal(sentence("Dates absentes !"), "Dates absentes !");
 });
