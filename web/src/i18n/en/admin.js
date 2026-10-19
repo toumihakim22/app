@@ -232,7 +232,7 @@ Object.assign(I18N.en, {
   "Type de paiement": "Payment type",
   "Approuvez après avoir effectué le virement vers le compte indiqué.": "Approve once you've sent the transfer to the account shown.",
   "{count} · {amount} à virer": "{count} · {amount} to transfer",
-  "Confirmez à réception du paiement (virement, carte Edahabia, CIB, Visa ou Mastercard) : le montant est alors ajouté au crédit de l'agence.": "Confirm once the payment is received (bank transfer, Edahabia, CIB, Visa or Mastercard card): the amount is then added to the agency's credit.",
+  "Confirmez à réception du paiement (virement, carte Visa ou Mastercard) : le montant est alors ajouté au crédit de l'agence. Les paiements en ligne par carte Edahabia ou CIB sont confirmés automatiquement par Chargily.": "Confirm once the payment is received (bank transfer, Visa or Mastercard card): the amount is then added to the agency's credit. Online Edahabia or CIB card payments are confirmed automatically by Chargily.",
   "{count} · {amount} annoncés": "{count} · {amount} declared",
   "Aucune demande de retrait": "No withdrawal requests",
   "Les demandes des clippers apparaîtront ici.": "Clipper requests will appear here.",
@@ -582,4 +582,12 @@ Object.assign(I18N.en, {
   "Recours accepté : clip validé, le clipper est prévenu": "Appeal accepted: clip approved, the clipper has been notified",
   "Recours refusé, le clipper est prévenu": "Appeal rejected, the clipper has been notified",
   "recours à examiner": { one: "appeal to review", other: "appeals to review" },
+
+  // Paiements en ligne (Chargily Pay)
+  "Paiement en ligne : confirmé automatiquement par Chargily": "Online payment: confirmed automatically by Chargily",
+  "Confirmé automatiquement par Chargily.": "Confirmed automatically by Chargily.",
+  "Identifiant Chargily": "Chargily ID",
+  "Copier l'identifiant": "Copy ID",
+  "Identifiant copié": "ID copied",
+  "Montant payé en ligne": "Amount paid online",
 });

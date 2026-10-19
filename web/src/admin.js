@@ -24,7 +24,9 @@ const ADMIN_NAV = [
 const clippers = () => db.users.filter((u) => u.role === "clipper");
 const pendingPubs = () => db.publications.filter((p) => p.status === "En attente");
 const pendingWithdrawals = () => db.transactions.filter((tx) => tx.type === "retrait" && tx.status === "En cours");
-const pendingRecharges = () => db.transactions.filter((tx) => tx.type === "recharge" && tx.status === "En cours");
+// Recharges à confirmer : celles annoncées (virement, Visa / Mastercard). Un paiement en ligne en cours (Chargily) se confirme seul.
+const admOnlinePay = (tx) => tx.provider === "chargily";
+const pendingRecharges = () => db.transactions.filter((tx) => tx.type === "recharge" && tx.status === "En cours" && !admOnlinePay(tx));
 // Agences qui attendent une décision sur leur demande de badge de vérification.
 const admPendingBadges = () => db.users.filter((u) => u.role === "agence" && u.verification === "pending");
 // Recours des clippers (contestation d'un refus), du plus récent au plus ancien ; en attente : à examiner.
@@ -369,9 +371,9 @@ function admTxList(list) {
     return `<li data-row="${tx.id}" class="flex items-center gap-3 px-4 py-3 sm:px-5">
       <span class="grid size-8 shrink-0 place-items-center rounded-full bg-muted text-fg-muted" aria-hidden="true">${card_ ? icon("card", "size-4") : icon(out ? "arrowUpRight" : "arrowDownLeft", "size-4 rtl:-scale-x-100")}</span>
       <div class="min-w-0 flex-1"><p class="truncate text-sm font-medium text-fg">${esc(tServer(tx.label))}</p>
-        <p class="truncate text-xs tabular-nums text-fg-subtle">${admWhen(tx)}${how ? ` · ${how}` : ""} · ${code(tx.ref)}${tx.fee ? ` · ${t("frais {amount}", { amount: da(tx.fee) })}` : ""}</p></div>
+        <p class="truncate text-xs tabular-nums text-fg-subtle">${admWhen(tx)}${how ? ` · ${how}` : ""}${admOnlinePay(tx) ? " · Chargily" : ""} · ${code(tx.ref)}${tx.fee ? ` · ${t("frais {amount}", { amount: da(tx.fee) })}` : ""}</p></div>
       <div class="flex shrink-0 flex-col items-end gap-1"><span class="text-sm font-medium">${money(Math.abs(tx.amount))}</span>
-        ${tx.status === "En cours" ? `<a href="#/admin/retraits/${encodeURIComponent(tx.id)}" class="${btn("link", "", "text-xs")}">${t("À traiter")}</a>` : statusBadge(tx.status)}</div>
+        ${tx.status === "En cours" ? (admOnlinePay(tx) ? admOnlineWaiting() : `<a href="#/admin/retraits/${encodeURIComponent(tx.id)}" class="${btn("link", "", "text-xs")}">${t("À traiter")}</a>`) : statusBadge(tx.status)}</div>
     </li>`;
   }).join("")}</ul>`;
 }
@@ -437,7 +439,7 @@ function aUtilisateur() {
   if (agency) {
     const running = camps.filter((c) => c.status === "Active" || c.status === "En pause"), clips = db.publications.filter((p) => camps.some((c) => c.id === p.campaign));
     const waiting = camps.filter((c) => c.status === "En attente").length, toModerate = clips.filter((p) => p.status === "En attente").length;
-    const toConfirm = admSum(txs.filter((tx) => tx.status === "En cours"), (tx) => tx.amount);
+    const toConfirm = admSum(txs.filter((tx) => tx.status === "En cours" && !admOnlinePay(tx)), (tx) => tx.amount);
     const kpis = [
       kpi({ label: t("Crédit disponible"), value: bigMoney(u.credit || 0), sub: toConfirm ? t("{amount} de recharge à confirmer", { amount: da(toConfirm) }) : t("pour financer ses campagnes") }),
       kpi({ label: t("Campagnes en cours"), value: kpiValue(fmt(running.length)), sub: waiting ? t("{n} en attente de vérification", { n: fmt(waiting) }) : t("sur {count}", { count: plural(camps.length, "campagne", "campagnes") }) }),
@@ -716,8 +718,11 @@ function aModeration() {
 
 // ---------- Paiements ----------
 
-// approveLabel : texte déjà traduit.
-const admPayActions = (tx, size, approveLabel) => (tx.status === "En cours"
+// Paiement en ligne (Chargily Pay) : pastille du moyen ; en cours, il attend la confirmation de Chargily (aucune action).
+const admChargilyTag = () => badge("Chargily", "brand", { ic: "globe" });
+const admOnlineWaiting = () => `<span title="${esc(t("Paiement en ligne : confirmé automatiquement par Chargily"))}">${badge(t("Paiement en ligne en attente"), "warning", { ic: "clock" })}</span>`;
+// approveLabel : texte déjà traduit. Une recharge payée en ligne ne se valide ni ne se rejette à la main.
+const admPayActions = (tx, size, approveLabel) => (tx.status === "En cours" && !admOnlinePay(tx)
   ? `<button type="button" data-action="adm-tx-reject" data-id="${tx.id}" class="${btn("dangerSoft", size)}">${t("Rejeter")}</button><button type="button" data-action="adm-tx-approve" data-id="${tx.id}" class="${btn("primary", size)}">${approveLabel}</button>`
   : "");
 // Ligne mono + Copier (compte, référence) des cartes : valeur de gauche à droite, y compris en arabe.
@@ -738,6 +743,7 @@ const admPayer = (u, tx) => `<div class="flex min-w-0 items-center gap-2.5">${av
 const admRechargeMethod = (tx) => {
   const card_ = admCardOf(tx);
   if (card_) return `<span class="flex flex-wrap items-center gap-1.5">${badge(card_.brand, "idle", { ic: "card" })}${admCardNumber(card_)}</span>`;
+  if (admOnlinePay(tx)) return `<span class="flex flex-wrap items-center gap-1.5">${tx.method ? badge(admMethod(tx.method), "idle") : ""}${admChargilyTag()}</span>`;
   return tx.method ? badge(admMethod(tx.method), "idle") : admDash;
 };
 
@@ -770,7 +776,7 @@ function admWithdrawals(list) {
 // Recharges : tableau à partir de xl (5 colonnes), cartes en dessous. Carte Visa / Mastercard : marque et •••• 4242.
 function admRecharges(list) {
   const rows = list.map((tx) => {
-    const u = admUser(tx.userId), pending = tx.status === "En cours", card_ = admCardOf(tx);
+    const u = admUser(tx.userId), pending = tx.status === "En cours", card_ = admCardOf(tx), online = admOnlinePay(tx);
     const how = card_ ? `<span dir="ltr">${card_.brand} •••• ${card_.last4}</span>` : admMethod(tx.method);
     return {
       tr: `<tr data-row="${tx.id}" class="${TBL.tr}">
@@ -778,12 +784,14 @@ function admRecharges(list) {
         <td class="${TBL.td}">${admRechargeMethod(tx)}</td>
         <td class="${TBL.td}"><span class="flex items-center gap-0.5"><span class="whitespace-nowrap text-small text-fg">${code(tx.ref)}</span>${admCopyBtn(tx.ref, t("Copier la référence"), t("Référence copiée"))}</span></td>
         <td class="${TBL.td} ${TBL.tdNum}">${money(tx.amount, { cls: "font-semibold" })}</td>
-        <td class="${TBL.td} ${TBL.tdActions}"><div class="flex items-center justify-end gap-2">${admPayActions(tx, "sm", t("Paiement reçu")) || statusBadge(tx.status)}</div></td>
+        <td class="${TBL.td} ${TBL.tdActions}"><div class="flex items-center justify-end gap-2">${admPayActions(tx, "sm", t("Paiement reçu")) || (pending && online ? admOnlineWaiting() : statusBadge(tx.status))}</div></td>
       </tr>`,
-      li: admPayItem(u, `${how || t("Recharge")} · ${admWhen(tx)}`, pending ? badge(t("À confirmer"), "info", { dot: true }) : statusBadge(tx.status),
+      li: admPayItem(u, `${how || t("Recharge")} · ${admWhen(tx)}`, pending ? (online ? admOnlineWaiting() : badge(t("À confirmer"), "info", { dot: true })) : statusBadge(tx.status),
         (card_ ? `<div class="grid gap-0.5"><dt class="text-xs text-fg-subtle">${t("Carte")}</dt><dd class="flex items-center gap-1.5">${badge(card_.brand, "idle", { ic: "card" })}${admCardNumber(card_)}</dd></div>` : "")
-        + admMonoLine(t("Référence du paiement"), esc(tx.ref), tx.ref, t("Copier la référence"), t("Référence copiée")),
-        admMoneyRows([[t("Montant annoncé"), money(tx.amount), true]]),
+        + (online ? `<div class="grid gap-0.5"><dt class="text-xs text-fg-subtle">${t("Paiement en ligne")}</dt><dd class="flex flex-wrap items-center gap-1.5">${admChargilyTag()}<span class="text-xs text-fg-muted">${t("Confirmé automatiquement par Chargily.")}</span></dd></div>` : "")
+        + admMonoLine(t("Référence du paiement"), esc(tx.ref), tx.ref, t("Copier la référence"), t("Référence copiée"))
+        + (online && tx.providerRef ? admMonoLine(t("Identifiant Chargily"), esc(tx.providerRef), tx.providerRef, t("Copier l'identifiant"), t("Identifiant copié")) : ""),
+        admMoneyRows([[online ? t("Montant payé en ligne") : t("Montant annoncé"), money(tx.amount), true]]),
         admPayActions(tx, "md", t("Paiement reçu")), tx.id),
     };
   });
@@ -802,7 +810,7 @@ function aRetraits() {
   const list = byType(tab === "retraits" ? "retrait" : "recharge");
   const intro = tab === "retraits"
     ? [t("Approuvez après avoir effectué le virement vers le compte indiqué."), pw.length ? t("{count} · {amount} à virer", { count: plural(pw.length, "demande", "demandes"), amount: da(admSum(pw, admNet)) }) : ""]
-    : [t("Confirmez à réception du paiement (virement, carte Edahabia, CIB, Visa ou Mastercard) : le montant est alors ajouté au crédit de l'agence."), pr.length ? t("{count} · {amount} annoncés", { count: plural(pr.length, "recharge", "recharges"), amount: da(admSum(pr, (tx) => tx.amount)) }) : ""];
+    : [t("Confirmez à réception du paiement (virement, carte Visa ou Mastercard) : le montant est alors ajouté au crédit de l'agence. Les paiements en ligne par carte Edahabia ou CIB sont confirmés automatiquement par Chargily."), pr.length ? t("{count} · {amount} annoncés", { count: plural(pr.length, "recharge", "recharges"), amount: da(admSum(pr, (tx) => tx.amount)) }) : ""];
   const body = list.length
     ? (tab === "retraits" ? admWithdrawals(list) : admRecharges(list))
     : tab === "retraits"
@@ -998,7 +1006,7 @@ function admCampSheet(m) {
     </dl>`;
 
   // Financement : ce qui sera débité à l'approbation (et le crédit de l'agence), ou ce qui a été consommé.
-  const waiting = o ? admSum(db.transactions.filter((tx) => tx.type === "recharge" && tx.status === "En cours" && tx.userId === o.id), (tx) => tx.amount) : 0;
+  const waiting = o ? admSum(pendingRecharges().filter((tx) => tx.userId === o.id), (tx) => tx.amount) : 0;
   const payLink = `<a href="#/admin/retraits" data-action="adm-focus" data-value="recharges" class="${btn("link")}">${t("Voir dans Paiements")}</a>`;
   let money_;
   if (pending || refused) {

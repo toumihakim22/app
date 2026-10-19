@@ -29,11 +29,13 @@ function hostOf(origin: string) {
 /**
  * Enveloppe commune des routes : erreurs JSON homogènes et protection CSRF
  * (une requête qui modifie des données doit venir du site lui-même).
+ * `crossSite` : route appelée par un autre serveur (webhook de Chargily), sans contrôle de l'origine ; elle doit
+ * authentifier la requête elle-même (signature).
  */
-export function route<C>(handler: Handler<C>): Handler<C> {
+export function route<C>(handler: Handler<C>, { crossSite = false } = {}): Handler<C> {
   return async (req, ctx) => {
     try {
-      if (req.method !== "GET" && req.method !== "HEAD") {
+      if (!crossSite && req.method !== "GET" && req.method !== "HEAD") {
         const origin = req.headers.get("origin");
         // « Origin: null » (page locale, iframe isolée, redirection d'un autre site) n'est pas une adresse : refusée aussi.
         if (origin && hostOf(origin) !== req.headers.get("host")) throw forbidden("Origine non autorisée");
@@ -55,7 +57,8 @@ export function route<C>(handler: Handler<C>): Handler<C> {
 const MAX_BODY_BYTES = 8_000_000;
 const tooLarge = () => new ApiError(413, "Requête trop volumineuse");
 
-async function readText(req: NextRequest): Promise<string> {
+/** Corps brut de la requête (texte UTF-8), limité à MAX_BODY_BYTES : sert aussi à vérifier la signature d'un webhook. */
+export async function readText(req: NextRequest): Promise<string> {
   if (Number(req.headers.get("content-length") ?? 0) > MAX_BODY_BYTES) throw tooLarge();
   if (!req.body) return "";
   // Lecture par morceaux : un envoi sans Content-Length (« chunked ») est arrêté dès qu'il dépasse la limite.

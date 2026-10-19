@@ -54,8 +54,11 @@ const agOptional = () => `<span class="font-normal text-fg-subtle">${t("(faculta
 const agList = (arr) => { try { return new Intl.ListFormat(LOCALES[LANG].intl, { type: "conjunction" }).format(arr); } catch (e) { return arr.join(", "); } };
 // Référence de paiement : toujours de gauche à droite, même en arabe.
 const agRef = (ref) => `<span dir="ltr">${code(ref)}</span>`;
-// Recharges annoncées, pas encore confirmées par l'équipe.
-const agPendingCredit = () => myTx().filter((x) => x.type === "recharge" && x.status === "En cours").reduce((s, x) => s + x.amount, 0);
+// Recharges annoncées, pas encore confirmées par l'équipe (un paiement en ligne en cours n'est pas encore un paiement).
+const agPendingCredit = () => myTx().filter((x) => x.type === "recharge" && x.status === "En cours" && !agOnline(x)).reduce((s, x) => s + x.amount, 0);
+// Recharge payée en ligne (carte Edahabia ou CIB, Chargily Pay) : validée par la passerelle, jamais par l'équipe.
+const agOnline = (x) => x.provider === "chargily";
+const agPendingOnline = () => myTx().filter((x) => x.type === "recharge" && x.status === "En cours" && agOnline(x));
 // Engagé = consommé + restant. Une campagne terminée n'engage plus que ce qu'elle a consommé (le reste est rendu) ;
 // une campagne refusée n'engage rien.
 function agTotals(list) {
@@ -102,7 +105,9 @@ const agReasonBox = (c) => (c.reviewNote
 // Montant d'une recharge : vert une fois le crédit reçu, neutre en attente, barré si refusée.
 const agRechargeAmount = (x) =>
   x.status === "Validé" ? money(x.amount, { signed: true }) : x.status === "Refusé" ? `<span class="line-through">${money(x.amount)}</span>` : money(x.amount);
-const agRechargeStatus = (x) => statusBadge(x.status === "En cours" ? "En attente" : x.status);
+// Paiement en ligne en cours : « Paiement en ligne en attente » ; compact (liste mobile) : « En attente » avec l'horloge.
+const agRechargeStatus = (x, compact = false) => (x.status === "En cours" && agOnline(x) ? badge(compact ? t("En attente") : t("Paiement en ligne en attente"), "warning", { ic: "clock" })
+  : statusBadge(x.status === "En cours" ? "En attente" : x.status));
 // Moyen d'une recharge : « Virement bancaire », « Carte CIB »… ; carte internationale : « Carte Visa •••• 4242 »
 // (marque et 4 derniers chiffres ajoutés au libellé par l'API). La valeur (français) sert de clé, le libellé est traduit.
 const agMethod = (x) => {
@@ -312,6 +317,86 @@ function gClips() {
     <div class="${all.length ? "mt-4" : "mt-6"}">${body}</div>`;
 }
 
+// ---------- Paiement en ligne (carte Edahabia ou CIB, Chargily Pay) ----------
+// La recharge est créée « En cours » par POST /api/credit/checkout, puis l'agence paie sur la page de Chargily Pay et
+// revient sur Budget (#/agence/budget/<id>) ; le webhook de Chargily valide la recharge. Sans clé Chargily (et toujours
+// dans la version autonome), la page de paiement est simulée dans l'app : #/agence/paiement/<id> (gPaiement).
+
+// Ouvre la page de paiement : adresse de Chargily (autre site) ou page simulée de l'app (« #/agence/paiement/<id> »).
+const agGoPay = (url) => { if (!url) return; if (url.startsWith("#")) navigate(url); else location.assign(url); };
+const agOnlineLabel = (x) => { const m = AG_METHODS.find(([v]) => v === x.method); return esc(m ? t(m[1]) : t("Paiement en ligne")); };
+
+// Bandeau de Budget : paiements en ligne commencés mais pas encore confirmés (page de paiement quittée, webhook en route).
+function agOnlineBanner() {
+  const list = agPendingOnline();
+  if (!list.length) return "";
+  const simulated = !!(db.payments || {}).simulated;
+  return `<div class="mt-6 grid gap-3">${list.map((x) => `<div data-row="pay-${x.id}" class="flex flex-col gap-3 rounded-card border border-warning-border bg-warning-bg px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+      <div class="flex min-w-0 items-start gap-3">${icon("clock", "mt-0.5 size-5 shrink-0 text-warning-fg")}
+        <div class="min-w-0"><p class="text-sm font-semibold text-warning-fg">${t("Paiement en ligne en attente")}</p>
+          <p class="mt-0.5 text-small text-fg-muted">${t("{amount} par {method} · référence {ref}", { amount: `<span class="font-medium tabular-nums text-fg">${da(x.amount)}</span>`, method: esc(t(x.method || "")), ref: agRef(x.ref) })}</p>
+          <p class="mt-0.5 text-xs text-fg-subtle">${t("Le crédit est ajouté dès que Chargily Pay confirme le paiement.")}</p></div></div>
+      <div class="flex shrink-0 flex-wrap gap-2">${simulated ? `<button type="button" data-action="ag-pay-cancel" data-id="${x.id}" class="${btn("secondary", "sm")}">${t("Annuler")}</button>` : ""}
+        <button type="button" data-action="ag-pay-resume" data-id="${x.id}" class="${btn("primary", "sm")}">${icon("lock")}${t("Reprendre le paiement")}</button></div>
+    </div>`).join("")}</div>`;
+}
+
+// Retour de la page de paiement de Chargily : le webhook arrive en général en quelques secondes. Tant que la page Budget
+// est affichée, l'état est relu toutes les 3 secondes (une minute au plus) ; l'issue est annoncée dès qu'elle est connue.
+let agPayTimer = null;
+function agWatchPayment(id) {
+  clearTimeout(agPayTimer);
+  if ((db.payments || {}).simulated) return;
+  let tries = 0;
+  const pending = () => { const x = myTx().find((y) => y.id === id); return x && x.status === "En cours" && agOnline(x) ? x : null; };
+  const tick = async () => {
+    if (!pending() || state.route.area !== "agence" || state.route.view !== "budget" || ++tries > 20) return;
+    try { await refresh(); } catch (e) { return; }
+    const x = myTx().find((y) => y.id === id);
+    if (x && x.status !== "En cours") { render(); return agPayOutcome(x); }
+    agPayTimer = setTimeout(tick, 3000);
+  };
+  if (pending()) agPayTimer = setTimeout(tick, 3000);
+}
+// Issue d'un paiement en ligne, annoncée à l'agence.
+const agPayOutcome = (x) => (x.status === "Validé"
+  ? toast(t("Paiement confirmé : {amount} ajoutés à votre crédit", { amount: da(x.amount) }))
+  : toast(t("Paiement annulé ou refusé : la recharge n'a pas été créditée"), "danger"));
+
+// Page de paiement simulée (mode simulé) : rôle de la page de Chargily Pay, l'agence choisit l'issue du paiement.
+function gPaiement() {
+  const id = state.route.item || "", x = myTx().find((y) => y.id === id && y.type === "recharge" && agOnline(y));
+  const back = `<a href="#/agence/budget" class="${HIT} inline-flex items-center gap-1 rounded-sm text-small font-medium text-fg-muted transition-colors duration-150 hover:text-fg ${FOCUS}">${icon("arrowLeft", "size-4 rtl:-scale-x-100")}${t("Budget")}</a>`;
+  const head = `<nav aria-label="${esc(t("Fil d'Ariane"))}">${back}</nav><div class="mt-3">${pageHeader(t("Paiement en ligne"), t("Recharge du crédit de votre agence par carte Edahabia ou CIB."))}</div>`;
+  if (!x) return `${head}<div class="mt-6">${emptyState("card", t("Paiement introuvable"), t("Ce paiement n'existe pas ou ne concerne pas votre agence."), `<a href="#/agence/budget" class="${btn("secondary")}">${t("Retour au budget")}</a>`)}</div>`;
+  const simulated = !!(db.payments || {}).simulated, open = x.status === "En cours";
+  const mark = x.method === "carte CIB" ? "CIB" : "Edahabia";
+  const rows = [
+    [t("Marchand"), `<span class="font-medium text-fg">ClipBoost</span>`],
+    [t("Moyen de paiement"), `<span class="inline-flex items-center gap-2"><span class="hidden sm:inline-flex">${agBrandMark(mark)}</span><span class="whitespace-nowrap">${agOnlineLabel(x)}</span></span>`],
+    [t("Référence"), `<span class="inline-flex items-center gap-1 text-fg">${agRef(x.ref)}${agCopyBtn(x.ref)}</span>`],
+    [t("Date"), `<span class="tabular-nums">${date(x.date)}</span>`],
+  ];
+  const actions = !open
+    ? `<div class="grid gap-3">${alertBox(x.status === "Validé" ? "success" : "danger", x.status === "Validé" ? t("Paiement reçu : le montant a été ajouté à votre crédit.") : t("Paiement annulé ou refusé : la recharge n'a pas été créditée."))}
+        <a href="#/agence/budget" class="${btn("secondary", "md", "w-full")}">${t("Retour au budget")}</a></div>`
+    : simulated
+      ? `<div class="flex flex-col-reverse gap-2 sm:grid sm:grid-cols-[auto_minmax(0,1fr)]"><button type="button" data-action="ag-pay-sim" data-id="${x.id}" data-value="cancel" class="${btn("secondary", "lg", "w-full")}">${t("Annuler")}</button>
+          <button type="button" data-action="ag-pay-sim" data-id="${x.id}" data-value="pay" class="${btn("primary", "lg", "w-full")}">${icon("lock")}${t("Payer {amount}", { amount: da(x.amount) })}</button></div>`
+      : `<button type="button" data-action="ag-pay-resume" data-id="${x.id}" class="${btn("primary", "lg", "w-full")}">${icon("lock")}${t("Reprendre le paiement")}</button>`;
+  const body = `<div class="flex items-center justify-between gap-3">
+      <p class="flex items-center gap-2 text-sm font-semibold text-fg">${icon("lock", "size-4 text-fg-subtle")}Chargily Pay</p>
+      ${open ? (simulated ? badge(t("Mode simulé"), "warning", { ic: "alert" }) : badge(t("En attente"), "warning", { dot: true })) : statusBadge(x.status)}</div>
+    <div class="mt-5 text-center"><p class="text-small text-fg-muted">${t("Montant à payer")}</p><p class="mt-1">${bigMoney(x.amount, "money")}</p></div>
+    <dl class="mt-5 grid gap-2.5 rounded-tile bg-subtle p-4 text-sm">${rows.map(([l, v]) => `<div class="flex items-center justify-between gap-4"><dt class="shrink-0 text-fg-muted">${l}</dt><dd class="min-w-0 text-end">${v}</dd></div>`).join("")}</dl>
+    ${open && simulated ? `<div class="mt-4">${alertBox("warning", `<strong class="font-semibold">${t("Mode simulé")}</strong> · ${t("Aucune carte n'est débitée. Choisissez « Payer » pour simuler un paiement accepté (le crédit est ajouté), ou « Annuler » pour un paiement abandonné.")}`)}</div>` : ""}
+    <div class="mt-5">${actions}</div>
+    <p class="mt-4 flex items-start justify-center gap-1.5 text-center text-xs text-fg-subtle">${icon("shield", "mt-px size-3.5 shrink-0")}<span>${simulated
+      ? t("Sans clé Chargily, cette page remplace la page de paiement sécurisée de Chargily Pay.")
+      : t("Le paiement se fait sur la page sécurisée de Chargily Pay.")}</span></p>`;
+  return `${head}<div class="mx-auto mt-6 max-w-md">${card(body, "p-5 sm:p-6")}</div>`;
+}
+
 // ---------- Budget ----------
 
 function gBudget() {
@@ -361,25 +446,26 @@ function gBudget() {
         <thead><tr class="${TBL.headRow}"><th scope="col" class="${TBL.th}">${t("Date")}</th><th scope="col" class="${TBL.th}">${t("Moyen")}</th><th scope="col" class="${TBL.th}">${t("Référence")}</th><th scope="col" class="${TBL.th}">${t("Statut")}</th><th scope="col" class="${TBL.th} ${TBL.thNum}">${t("Montant")}</th></tr></thead>
         <tbody>${recharges.map((x) => `<tr data-row="${x.id}" class="${TBL.tr}">
           <td class="${TBL.td} whitespace-nowrap tabular-nums">${date(x.date)}<span class="${TBL.tdSub}" dir="ltr">${esc(x.time || "")}</span></td>
-          <td class="${TBL.td}">${agMethod(x)}</td>
+          <td class="${TBL.td}">${agMethod(x)}${agOnline(x) ? `<span class="${TBL.tdSub}">${t("Paiement en ligne")}</span>` : ""}</td>
           <td class="${TBL.td}"><span class="inline-flex items-center gap-1 text-fg">${agRef(x.ref)}${agCopyBtn(x.ref)}</span></td>
           <td class="${TBL.td}">${agRechargeStatus(x)}</td>
           <td class="${TBL.td} ${TBL.tdNum}">${agRechargeAmount(x)}</td></tr>`).join("")}</tbody>
       </table>
       <ul class="${TBL.list}">${recharges.map((x) => `<li data-row="${x.id}" class="flex items-center gap-3 px-4 py-3">
-        <span class="grid size-8 shrink-0 place-items-center rounded-full ${x.status === "Validé" ? "bg-income-soft text-income" : "bg-muted text-fg-muted"}" aria-hidden="true">${icon(x.method === AG_CARD ? "card" : "arrowDownLeft", "size-4")}</span>
+        <span class="grid size-8 shrink-0 place-items-center rounded-full ${x.status === "Validé" ? "bg-income-soft text-income" : "bg-muted text-fg-muted"}" aria-hidden="true">${icon(x.method === AG_CARD || agOnline(x) ? "card" : "arrowDownLeft", "size-4")}</span>
         <div class="min-w-0 flex-1"><p class="truncate text-sm font-medium text-fg">${agMethod(x)}</p><p class="flex items-center gap-1 truncate text-xs text-fg-subtle">${date(x.date)} · ${agRef(x.ref)}</p></div>
-        <div class="shrink-0 text-end"><p class="text-sm font-medium">${agRechargeAmount(x)}</p>${x.status === "Validé" ? "" : `<div class="mt-1 flex justify-end">${agRechargeStatus(x)}</div>`}</div>
+        <div class="shrink-0 text-end"><p class="text-sm font-medium">${agRechargeAmount(x)}</p>${x.status === "Validé" ? "" : `<div class="mt-1 flex justify-end">${agRechargeStatus(x, true)}</div>`}</div>
         ${agCopyBtn(x.ref)}
       </li>`).join("")}</ul>
     </div>`;
 
   return `${pageHeader(t("Budget"), t("Suivez la consommation de vos campagnes et rechargez votre crédit."))}
+    ${agOnlineBanner()}
     <div class="mt-6">${summaryCard}</div>
     ${sectionHeader(t("Par campagne"))}
     ${perCampaign}
     ${recharges.length ? `${sectionHeader(t("Recharges"))}${history}
-      <p class="mt-3 text-xs text-fg-subtle">${t("Le crédit est ajouté dès que l'équipe ClipBoost confirme la réception de votre paiement.")}</p>` : ""}`;
+      <p class="mt-3 text-xs text-fg-subtle">${t("Carte Edahabia ou CIB : le crédit est ajouté dès que le paiement en ligne est confirmé. Virement ou carte Visa / Mastercard : dès que l'équipe ClipBoost confirme la réception de votre paiement.")}</p>` : ""}`;
 }
 
 // ---------- Profil de l'agence ----------
@@ -502,7 +588,8 @@ function gParametres() {
     </div>`;
 }
 
-const AGENCY_VIEWS = { apercu: gApercu, campagnes: gCampagnes, clips: gClips, budget: gBudget, profil: gProfil, parametres: gParametres };
+// paiement : page hors navigation (ITEM_PAGES dans main.js), « Budget » y reste l'entrée courante.
+const AGENCY_VIEWS = { apercu: gApercu, campagnes: gCampagnes, clips: gClips, budget: gBudget, paiement: gPaiement, profil: gProfil, parametres: gParametres };
 
 // ---------- Formulaire de campagne (partagé avec admin.js) ----------
 
@@ -741,26 +828,34 @@ LIVE.budget = (d) => {
   };
 };
 
-// Recharger le crédit : rien n'est débité, le crédit arrive à la confirmation du paiement par l'équipe.
+// Recharger le crédit : rien n'est débité ici. Edahabia, CIB : paiement en ligne sur la page de Chargily Pay (page simulée
+// sans clé), crédit ajouté dès le paiement confirmé ; virement, Visa / Mastercard : à la confirmation de l'équipe.
 LIVE.recharge = (d) => {
-  const a = agNum(d.amount), u = me(), brand = agCardBrand(agDigits(d.cardNumber));
+  const a = agNum(d.amount), u = me(), brand = agCardBrand(agDigits(d.cardNumber)), online = AG_ONLINE.includes(d.method);
+  const hint = (ic, html) => `<p class="mt-3 flex items-start gap-2 text-small text-fg-muted">${icon(ic, "mt-0.5 size-4 shrink-0 text-fg-subtle")}<span>${html}</span></p>`;
   return {
-    "": summary([[t("Crédit actuel"), money(u.credit)], [t("Recharge demandée"), money(a)], [t("Crédit après confirmation"), money(u.credit + a), true]]),
-    btn: a ? t("Demander {amount}", { amount: da(a) }) : t("Envoyer la demande de recharge"),
+    "": summary([[t("Crédit actuel"), money(u.credit)], [t("Recharge demandée"), money(a)], [online ? t("Crédit après paiement") : t("Crédit après confirmation"), money(u.credit + a), true]]),
+    btn: online ? (a ? `${icon("lock")}${t("Payer {amount} en ligne", { amount: da(a) })}` : `${icon("lock")}${t("Payer en ligne")}`)
+      : a ? t("Demander {amount}", { amount: da(a) }) : t("Envoyer la demande de recharge"),
     presets: agPresets(AG_RECHARGES.map((v) => [v, da(v)]), a),
     brand: brand ? agBrandMark(brand) : "",
-    note: d.method === AG_CARD ? "" : `<p class="mt-3 flex items-start gap-2 text-small text-fg-muted">${icon("info", "mt-0.5 size-4 shrink-0 text-fg-subtle")}${t("Après l'envoi, vous recevez une référence à indiquer dans votre paiement.")}</p>`,
+    note: online
+      ? `${hint("lock", t("Vous saisissez votre carte sur la page de paiement sécurisée de Chargily Pay ; le crédit est ajouté dès que le paiement est confirmé."))}${(db.payments || {}).simulated
+        ? `<div class="mt-3">${alertBox("warning", `<strong class="font-semibold">${t("Mode simulé")}</strong> · ${t("Aucune carte n'est débitée : vous choisissez l'issue du paiement sur la page suivante.")}`)}</div>` : ""}`
+      : d.method === AG_CARD ? "" : hint("info", t("Après l'envoi, vous recevez une référence à indiquer dans votre paiement.")),
   };
 };
 
 // Moyens de recharge : [valeur envoyée à l'API (français), libellé, icône, précision] ; libellé et précision sont
-// traduits à l'affichage (t).
+// traduits à l'affichage (t). Edahabia et CIB se paient en ligne (Chargily Pay, AG_ONLINE) ; virement et carte
+// Visa / Mastercard sont confirmés à la main par l'équipe.
 const AG_METHODS = [
   ["virement bancaire", "Virement bancaire", "bank", "Indiquez la référence reçue dans le libellé du virement."],
-  ["carte Edahabia", "Carte Edahabia", "wallet", "Carte Algérie Poste."],
-  ["carte CIB", "Carte CIB", "wallet", "Carte bancaire interbancaire."],
+  ["carte Edahabia", "Carte Edahabia", "wallet", "Carte Algérie Poste, paiement en ligne."],
+  ["carte CIB", "Carte CIB", "wallet", "Carte bancaire interbancaire, paiement en ligne."],
   [AG_CARD, "Carte Visa / Mastercard", "card", "Carte bancaire internationale."],
 ];
+const AG_ONLINE = ["carte Edahabia", "carte CIB"];
 
 // Fiche de retrait (annuler une campagne en attente, supprimer une campagne refusée) : rappel de la campagne.
 const agCampaignSummary = (c) => `<div class="flex items-center gap-3 rounded-tile bg-muted p-3">${coverThumb(c, "md")}
@@ -880,7 +975,7 @@ function agencyModal() {
   if (m.type === "ag-credit") {
     const init = LIVE.recharge({ amount: fmt(250000), method: AG_METHODS[0][0] });
     return modalShell({
-      title: t("Recharger le crédit"), description: t("Le crédit est ajouté dès que l'équipe ClipBoost confirme la réception de votre paiement."), form: "ag-credit", live: "recharge",
+      title: t("Recharger le crédit"), description: t("Carte Edahabia ou CIB : paiement en ligne, crédit ajouté aussitôt. Virement ou carte Visa / Mastercard : crédit ajouté à la confirmation de l'équipe ClipBoost."), form: "ag-credit", live: "recharge",
       body: `<div class="group/pay grid gap-5">
           <div class="grid gap-3">
             ${field(t("Montant"), unitInput(`name="amount" value="${fmt(250000)}" autocomplete="off" autofocus`, t("DA"), { lg: true }), t("Minimum {amount}.", { amount: da(10000) }))}
@@ -952,6 +1047,17 @@ function handleAgencyAction(action, el) {
     case "ag-credit": return agOpen({ type: "ag-credit" });
     case "ag-verify": return agOpen({ type: "ag-verify" });
     case "ag-copy": return copy(el.dataset.value, t("Référence copiée"));
+    // Paiement en ligne : page simulée (« Payer » ou « Annuler »), reprise d'un paiement en cours, annulation (mode simulé).
+    case "ag-pay-sim": case "ag-pay-cancel": {
+      const x = myTx().find((y) => y.id === id), paid = action === "ag-pay-sim" && el.dataset.value === "pay";
+      return act("POST", `/api/payments/simulate/${id}`, { paid }, null, () => { navigate(`#/agence/budget/${id}`); if (x) agPayOutcome({ ...x, status: paid ? "Validé" : "Refusé" }); });
+    }
+    case "ag-pay-resume":
+      return act("POST", `/api/credit/checkout/${id}`, null, null, (r) => {
+        if (r.checkoutUrl) return agGoPay(r.checkoutUrl);
+        const x = myTx().find((y) => y.id === id);
+        if (x) agPayOutcome(x);
+      });
     case "ag-amount": {
       const input = root.querySelector('[aria-modal="true"] [name="amount"]');
       if (input) { input.value = fmt(+el.dataset.value); input.dispatchEvent(new Event("input", { bubbles: true })); }
@@ -1017,6 +1123,8 @@ function handleAgencySubmit(form, data) {
       const digits = agDigits(data.cardNumber);
       card = { brand: agCardBrand(digits), last4: digits.slice(-4) };
     }
+    // Edahabia, CIB : paiement en ligne. La page de paiement de Chargily (ou la page simulée de l'app) s'ouvre.
+    if (AG_ONLINE.includes(method)) return act("POST", "/api/credit/checkout", { amount, method }, null, (r) => { state.modal = null; agGoPay(r.checkoutUrl); });
     // Recharge empilée (depuis un formulaire de campagne, un ajout de budget ou une fiche) : ce qui était ouvert revient.
     return act("POST", "/api/credit", card ? { amount, method, card } : { amount, method },
       (r) => (card ? t("Demande envoyée · {brand} •••• {last4} · référence {ref}", { brand: card.brand, last4: card.last4, ref: r.ref })

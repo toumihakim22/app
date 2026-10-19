@@ -151,7 +151,6 @@ Object.assign(I18N.en, {
   "Suivez la consommation de vos campagnes et rechargez votre crédit.": "Track your campaigns' spending and top up your credit.",
   "Par campagne": "By campaign",
   "Recharges": "Top-ups",
-  "Le crédit est ajouté dès que l'équipe ClipBoost confirme la réception de votre paiement.": "Credit is added as soon as the ClipBoost team confirms receipt of your payment.",
 
   // Profil de l'agence et badge de vérification
   "Agence": "Agency",
@@ -371,8 +370,8 @@ Object.assign(I18N.en, {
   "Carte CIB": "CIB card",
   "Carte Visa / Mastercard": "Visa / Mastercard",
   "Indiquez la référence reçue dans le libellé du virement.": "Include the reference you receive in the transfer description.",
-  "Carte Algérie Poste.": "Algérie Poste card.",
-  "Carte bancaire interbancaire.": "Algerian interbank card.",
+  "Carte Algérie Poste, paiement en ligne.": "Algérie Poste card, online payment.",
+  "Carte bancaire interbancaire, paiement en ligne.": "Algerian interbank card, online payment.",
   "Carte bancaire internationale.": "International bank card.",
 
   // Pluriels : plural(n, "singulier", "pluriel")
@@ -383,4 +382,31 @@ Object.assign(I18N.en, {
   "jours": { one: "day", other: "days" },
   "derniers jours": { one: "day", other: "days" },
   "jours actifs": { one: "active day", other: "active days" },
+
+  // Paiement en ligne (Edahabia, CIB) : fenêtre de recharge, Budget, page de paiement simulée
+  "Carte Edahabia ou CIB : paiement en ligne, crédit ajouté aussitôt. Virement ou carte Visa / Mastercard : crédit ajouté à la confirmation de l'équipe ClipBoost.": "Edahabia or CIB card: online payment, credit added right away. Bank transfer or Visa / Mastercard: credit added once the ClipBoost team confirms it.",
+  "Crédit après paiement": "Credit after payment",
+  "Payer {amount} en ligne": "Pay {amount} online",
+  "Payer en ligne": "Pay online",
+  "Vous saisissez votre carte sur la page de paiement sécurisée de Chargily Pay ; le crédit est ajouté dès que le paiement est confirmé.": "You enter your card on Chargily Pay's secure payment page; the credit is added as soon as the payment is confirmed.",
+  "Mode simulé": "Simulated mode",
+  "Aucune carte n'est débitée : vous choisissez l'issue du paiement sur la page suivante.": "No card is charged: you choose the payment outcome on the next page.",
+  "Carte Edahabia ou CIB : le crédit est ajouté dès que le paiement en ligne est confirmé. Virement ou carte Visa / Mastercard : dès que l'équipe ClipBoost confirme la réception de votre paiement.": "Edahabia or CIB card: the credit is added as soon as the online payment is confirmed. Bank transfer or Visa / Mastercard: as soon as the ClipBoost team confirms receipt of your payment.",
+  "{amount} par {method} · référence {ref}": "{amount} by {method} · reference {ref}",
+  "Le crédit est ajouté dès que Chargily Pay confirme le paiement.": "The credit is added as soon as Chargily Pay confirms the payment.",
+  "Reprendre le paiement": "Resume payment",
+  "Paiement confirmé : {amount} ajoutés à votre crédit": "Payment confirmed: {amount} added to your credit",
+  "Paiement annulé ou refusé : la recharge n'a pas été créditée": "Payment cancelled or declined: the top-up was not credited",
+  "Paiement annulé ou refusé : la recharge n'a pas été créditée.": "Payment cancelled or declined: the top-up was not credited.",
+  "Recharge du crédit de votre agence par carte Edahabia ou CIB.": "Top up your agency's credit with an Edahabia or CIB card.",
+  "Paiement introuvable": "Payment not found",
+  "Ce paiement n'existe pas ou ne concerne pas votre agence.": "This payment doesn't exist or doesn't belong to your agency.",
+  "Retour au budget": "Back to budget",
+  "Marchand": "Merchant",
+  "Montant à payer": "Amount to pay",
+  "Payer {amount}": "Pay {amount}",
+  "Paiement reçu : le montant a été ajouté à votre crédit.": "Payment received: the amount has been added to your credit.",
+  "Aucune carte n'est débitée. Choisissez « Payer » pour simuler un paiement accepté (le crédit est ajouté), ou « Annuler » pour un paiement abandonné.": "No card is charged. Choose “Pay” to simulate an accepted payment (the credit is added), or “Cancel” for an abandoned payment.",
+  "Sans clé Chargily, cette page remplace la page de paiement sécurisée de Chargily Pay.": "Without a Chargily key, this page stands in for Chargily Pay's secure payment page.",
+  "Le paiement se fait sur la page sécurisée de Chargily Pay.": "Payment takes place on Chargily Pay's secure page.",
 });

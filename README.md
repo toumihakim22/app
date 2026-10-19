@@ -29,7 +29,7 @@ Ouvrir http://localhost:3000 (accueil) et http://localhost:3000/espace (applicat
 | `yacine@clipboost.dz` | Clipper | Gains, retraits, un clip publié sur TikTok et Instagram en un seul envoi, comptes TikTok, Instagram et YouTube vérifiés |
 | `amira@clipboost.dz`, `lina@clipboost.dz` | Clipper | Clips en attente, validés ou refusés ; Amira a aussi un compte TikTok en attente de vérification (code à coller dans sa bio) ; Lina conteste le refus de « Sketch du marché » (recours en cours, avec sa capture d'écran) |
 | `admin@clipboost.dz` | Administration | Modération avec le score de risque de chaque clip : « Quand ta mère trouve ton bulletin » (Lina) a un pic de vues soudain et très peu de likes (risque élevé), l'Instagram du but de la 89e peu de likes (risque moyen) ; historique des vues sur 14 jours dans la fiche d'un clip, dernier relevé automatique il y a 2 heures ; onglet « Recours » avec le recours de Lina à accepter ou refuser |
-| `agence@clipboost.dz` | Agence (Tassili Sport) | Campagnes actives et en pause, une campagne refusée avec son motif (à modifier et relancer, ou à supprimer) |
+| `agence@clipboost.dz` | Agence (Tassili Sport) | Campagnes actives et en pause, une campagne refusée avec son motif (à modifier et relancer, ou à supprimer), une recharge payée en ligne par carte Edahabia (Chargily) ; « Recharger le crédit » par Edahabia ou CIB ouvre la page de paiement simulée |
 | `hoggar@clipboost.dz` | Agence (Hoggar Boissons) | Campagne en attente de vérification, recharge à confirmer, badge de vérification demandé |
 | `djurdjura@clipboost.dz` | Agence (Djurdjura Médias) | Agence vérifiée (badge bleu), campagne active sur YouTube, Facebook et Instagram |
 
@@ -58,6 +58,7 @@ En local, le relevé automatique des vues se lance à la main (`npm run cron:vie
 | `INSTAGRAM_ACCESS_TOKEN`, `INSTAGRAM_BUSINESS_ID` | Vérification des comptes Instagram et relevé des vues : jeton d'accès de la Graph API de Meta et identifiant du compte Instagram professionnel de ClipBoost qui interroge la Business Discovery. |
 | `FACEBOOK_ACCESS_TOKEN` | Vérification des pages Facebook et relevé des vues des vidéos : jeton d'accès de la Graph API de Meta. |
 | `TIKTOK_CLIENT_KEY`, `TIKTOK_CLIENT_SECRET` | Vérification des comptes TikTok et relevé des vues : clé et secret d'une application TikTok qui a accès à l'API Research. |
+| `CHARGILY_SECRET_KEY` | Paiement en ligne des recharges par carte Edahabia ou CIB via [Chargily Pay](https://chargily.com) : clé secrète `test_sk_…` (mode test de Chargily) ou `live_sk_…`. Elle signe aussi les webhooks. Sans elle, le paiement en ligne est simulé en développement et refusé en production (voir « Paiement en ligne des recharges »). |
 | `CRON_SECRET` | Secret de la tâche planifiée du relevé des vues : `GET /api/cron/views` exige l'en-tête `Authorization: Bearer <CRON_SECRET>` (Vercel Cron l'envoie de lui-même). **Obligatoire en production** pour ce relevé (sans lui, la route est refusée) ; facultatif en développement. |
 
 Un bouton « Continuer avec … » n'apparaît que si les variables de son fournisseur sont toutes définies. Une plateforme sans toutes ses variables est vérifiée, et ses vues relevées, en **mode simulé** (voir ci-dessous).
@@ -120,6 +121,21 @@ Trois façons de le lancer (même relevé, `lib/server/services/tracking.ts`) :
 
 Niveaux : faible sous 30, moyen de 30 à 59, élevé à partir de 60. Le score aide l'équipe à choisir quoi vérifier : il ne refuse ni ne bloque rien.
 
+## Paiement en ligne des recharges (Edahabia, CIB)
+
+Une agence recharge son crédit par carte Edahabia ou CIB en ligne, via Chargily Pay (`lib/server/chargily.ts`, API v2 sans SDK ; parcours dans `lib/server/services/payments.ts`) :
+
+1. « Recharger le crédit » → « Payer en ligne » : `POST /api/credit/checkout` crée la recharge « En cours » (colonnes `provider` = `chargily` et `provider_ref` = identifiant du paiement chez Chargily), puis `POST /checkouts` chez Chargily (montant en DA, `payment_method` `edahabia` ou `cib`, langue du compte, transaction dans `metadata`). L'agence est envoyée sur la page de paiement de Chargily.
+2. Après le paiement (réussi ou non), Chargily ramène l'agence sur `<APP_URL>/espace#/agence/budget/<recharge>` : la recharge y est mise en évidence et son état relu toutes les 3 secondes pendant une minute.
+3. Chargily appelle le webhook `POST <APP_URL>/api/payments/chargily/webhook`. L'en-tête `signature` (HMAC-SHA256 hexadécimal du corps brut avec `CHARGILY_SECRET_KEY`, comparé à temps constant) est vérifié, sinon 401. `checkout.paid` valide la recharge et ajoute le montant au crédit de l'agence (`settleOnlinePayment`, avec la même validation qu'une confirmation par l'équipe : `validateRecharge`, `services/wallet.ts`) ; l'agence et les admins sont prévenus. `checkout.failed`, `checkout.canceled` et `checkout.expired` la refusent (« Paiement en ligne annulé ou refusé »). Un webhook reçu deux fois ne crédite qu'une fois (200 sans effet) ; un montant différent de la recharge est refusé (400, détail dans les journaux).
+4. Une recharge restée en cours (page de paiement quittée, webhook perdu) a un bouton « Reprendre le paiement » dans Budget (`POST /api/credit/checkout/<id>`) : l'état est relu chez Chargily (`GET /checkouts/<id>`) ; payé, annulé ou expiré, la recharge est réglée aussitôt, sinon l'agence retourne sur la page de paiement.
+
+À déclarer dans le tableau de bord de Chargily Pay (Developers Corner) : l'adresse du webhook `https://<domaine>/api/payments/chargily/webhook`, en mode test comme en mode réel (`APP_URL` doit être l'adresse publique : elle sert aux adresses de retour et à celle du webhook ; en local, Chargily ne peut pas joindre `localhost`, passez par un tunnel HTTPS). Avec une clé `test_sk_…`, l'API de test de Chargily est utilisée (`https://pay.chargily.net/test/api/v2`) : aucune carte n'est débitée. Le crédit ajouté est toujours le montant de la recharge.
+
+**Mode simulé** (sans `CHARGILY_SECRET_KEY` en développement, et toujours dans la version autonome) : aucune requête vers Chargily ; « Payer en ligne » ouvre une page de paiement simulée dans l'app (`#/agence/paiement/<recharge>`, bien signalée « Mode simulé ») avec « Payer » et « Annuler » (`POST /api/payments/simulate/<id>`, permis seulement sans clé et seulement à l'agence de la recharge). Le webhook répond 503 sans clé. En production (`NODE_ENV=production`, dont `npm start`), le mode simulé permettrait à une agence de se créditer sans payer : sans clé, le paiement en ligne y est refusé (« Paiement en ligne non configuré ») ; virement et carte Visa / Mastercard restent possibles.
+
+Les recharges payées en ligne apparaissent dans Paiements (onglet Recharges) avec la pastille « Chargily » ; l'équipe ne peut ni les confirmer ni les refuser à la main (« Paiement en ligne : confirmé automatiquement par Chargily »), ce qui évite de créditer deux fois le même paiement. Le virement bancaire et la carte Visa / Mastercard restent confirmés par l'équipe à réception du paiement ; `POST /api/credit` refuse désormais Edahabia et CIB (paiement en ligne).
+
 ## Mettre en ligne
 
 1. Créer une base PostgreSQL (Neon, Supabase ou un serveur PostgreSQL).
@@ -129,7 +145,7 @@ Niveaux : faible sous 30, moyen de 30 à 59, élevé à partir de 60. Le score a
    DATABASE_URL=postgres://… ADMIN_EMAIL=… ADMIN_PASSWORD=… npm run db:seed
    ```
    À chaque mise à jour, relancez `npm run db:migrate` (migrations SQL de `drizzle/`, appliquées une seule fois). En développement avec la base embarquée, elles s'appliquent au démarrage.
-3. Déployer (Vercel ou tout hébergeur Node.js) avec `DATABASE_URL`, `RESEND_API_KEY`, `EMAIL_FROM`, `APP_URL`, `CRON_SECRET`, les clés des API des plateformes (vérification des comptes sociaux, relevé des vues) et, si besoin, les identifiants Google, Apple et Discord, puis `npm run build` et `npm start`.
+3. Déployer (Vercel ou tout hébergeur Node.js) avec `DATABASE_URL`, `RESEND_API_KEY`, `EMAIL_FROM`, `APP_URL`, `CRON_SECRET`, `CHARGILY_SECRET_KEY` (et l'adresse du webhook déclarée chez Chargily), les clés des API des plateformes (vérification des comptes sociaux, relevé des vues) et, si besoin, les identifiants Google, Apple et Discord, puis `npm run build` et `npm start`.
 4. Planifier le relevé des vues toutes les 6 heures : sur Vercel, `vercel.json` s'en charge ; ailleurs, une crontab (voir « Relevé automatique des vues et score de risque »).
 
 ## Images
@@ -144,7 +160,7 @@ npm run build:offline        # next build, puis web/dist/clipboost-site.html
 
 Produit un seul fichier HTML (accueil, connexion, espaces Clipper, Agence et Admin) qui s'ouvre directement depuis le disque, sans serveur ni connexion internet : pratique pour une démonstration. L'API y est simulée dans le navigateur (`web/offline/`) avec les mêmes règles (`lib/server/rules.ts`) et les mêmes contrôles (`lib/server/validation.ts`) que le serveur ; les données sont enregistrées dans le `localStorage` du navigateur.
 
-Au premier lancement, le fichier contient les données d'exemple de `db:seed:demo` et le compte `admin@clipboost.dz` (mot de passe `AdminClip2026`). Les codes de vérification sont affichés à l'écran. Les connexions Google, Apple et Discord y sont simulées (fenêtre de consentement fictive, aucun échange avec le fournisseur), avec les mêmes règles que sur le serveur ; les images sont gardées dans la base du navigateur, et une requête qui dépasserait la place disponible est refusée sans rien perdre des données déjà enregistrées. Le relevé des vues y est simulé et lancé à l'ouverture de l'app quand le dernier a plus de 6 heures (ou avec le bouton de la modération). « Réinitialiser la démo », dans les réglages de l'administration, efface les données du navigateur.
+Au premier lancement, le fichier contient les données d'exemple de `db:seed:demo` et le compte `admin@clipboost.dz` (mot de passe `AdminClip2026`). Les codes de vérification sont affichés à l'écran. Les connexions Google, Apple et Discord y sont simulées (fenêtre de consentement fictive, aucun échange avec le fournisseur), avec les mêmes règles que sur le serveur ; les images sont gardées dans la base du navigateur, et une requête qui dépasserait la place disponible est refusée sans rien perdre des données déjà enregistrées. Le relevé des vues y est simulé et lancé à l'ouverture de l'app quand le dernier a plus de 6 heures (ou avec le bouton de la modération). Le paiement en ligne des recharges (Edahabia, CIB) y passe toujours par la page de paiement simulée. « Réinitialiser la démo », dans les réglages de l'administration, efface les données du navigateur.
 
 Si l'accueil a déjà été construit (`.next/`), `node web/build.mjs --offline [fichier]` suffit.
 
@@ -162,7 +178,7 @@ Les réglages sont modifiables par l'administrateur (page « Réglages du site �
 - **Score de risque de fraude** : pic de vues soudain (45), beaucoup de vues pour peu de likes (35), compte récent (20), plafonné à 100 ; faible sous 30, moyen jusqu'à 59, élevé au-delà. Réservé à l'équipe (voir « Relevé automatique des vues et score de risque »).
 - **Gains** : 3 jours de rétention avant d'être retirables.
 - **Retraits** : minimum 2 000 DA vers BaridiMob, CCP ou RIB. Standard gratuit, ou instantané avec 2 % de frais (100 DA minimum).
-- **Crédit agence** : demande de recharge (virement, Edahabia, CIB ou carte Visa / Mastercard) avec une référence, confirmée par l'administrateur à réception du paiement. Pour une carte, seuls la marque et les 4 derniers chiffres sont transmis et ajoutés au libellé.
+- **Crédit agence** : recharge de 10 000 DA minimum. Carte Edahabia ou CIB : paiement en ligne via Chargily Pay, crédit ajouté automatiquement dès la confirmation du paiement (webhook), recharge refusée si le paiement échoue, est annulé ou expire (voir « Paiement en ligne des recharges »). Virement bancaire ou carte Visa / Mastercard : demande avec une référence, confirmée par l'administrateur à réception du paiement ; pour une carte, seuls la marque et les 4 derniers chiffres sont transmis et ajoutés au libellé.
 - **Badge de vérification** : une agence le demande (message facultatif) ; l'équipe l'accorde, le refuse avec un motif (l'agence peut redemander) ou le retire. Le badge bleu s'affiche à côté du nom de l'agence.
 - **Agences côté clipper** : « Découvrir » présente toutes les campagnes ouvertes ; la page « Agences » liste celles qui les organisent (l'agence propriétaire, ou la marque pour une campagne créée par ClipBoost), puis chaque agence a sa page (`#/clipper/agence/<clé>`) avec sa couverture, son logo, sa présentation et ses projets de clipping. Le clipper ne reçoit que leur profil public (nom, photo, couverture, pays, présentation, date d'inscription, badge de vérification).
 
@@ -193,20 +209,24 @@ Les routes répondent en JSON (`{ ok: true, … }` ou `{ error: "message" }`), s
 | `POST /api/appeals/<id>/review` | admin | Décision sur un recours : `{ approve, reason }` (motif obligatoire) ; accepté, le clip est validé et payé |
 | `POST /api/admin/track-views` | admin | Relève tout de suite les vues des clips suivis → bilan `{ by, total, updated, simulated, failed, at }` |
 | `GET /api/cron/views` | tâche planifiée | Relevé des vues toutes les 6 heures (Vercel Cron), avec `Authorization: Bearer <CRON_SECRET>` → même bilan |
-| `POST /api/credit`, `/api/withdrawals` | agence, clipper | Recharge du crédit ; demande de retrait |
+| `POST /api/credit`, `/api/withdrawals` | agence, clipper | Recharge annoncée (virement bancaire ou carte Visa / Mastercard, confirmée par l'équipe) ; demande de retrait |
+| `POST /api/credit/checkout` | agence | Paiement en ligne d'une recharge : `{ amount, method: "carte Edahabia" \| "carte CIB" }` → `{ id, ref, checkoutUrl, simulated }` (page de Chargily Pay, ou page simulée `#/agence/paiement/<id>`) ; 10 par quart d'heure |
+| `POST /api/credit/checkout/<id>` | agence | « Reprendre le paiement » : état relu chez Chargily → `{ status, checkoutUrl }` (réglée : `checkoutUrl` null) |
+| `POST /api/payments/chargily/webhook` | Chargily Pay | Webhook signé (en-tête `signature`) : `checkout.paid` crédite l'agence, `checkout.failed` / `canceled` / `expired` refusent la recharge ; idempotent |
+| `POST /api/payments/simulate/<id>` | agence | Mode simulé seulement (sans clé Chargily) : `{ paid }`, issue du paiement choisie sur la page simulée |
 | `POST /api/verification` | agence | Demande du badge de vérification |
 | `POST /api/admin/users/<id>/verification` | admin | Badge : `{ decision: "approve" \| "reject" \| "revoke", reason? }` |
-| `PATCH /api/admin/users/<id>`, `/api/admin/settings` ; `POST /api/transactions/<id>/review` | admin | Suspension, réglages, retraits et recharges |
+| `PATCH /api/admin/users/<id>`, `/api/admin/settings` ; `POST /api/transactions/<id>/review` | admin | Suspension, réglages, retraits et recharges annoncées (pas les recharges payées en ligne) |
 
 ## Tests
 
 ```bash
-npm test                                   # règles de calcul et score de risque, API simulée hors ligne (relevé des vues et recours compris), lecture des bios et des statistiques (API des plateformes simulées)
+npm test                                   # règles de calcul et score de risque, API simulée hors ligne (relevé des vues, recours et paiement en ligne compris), lecture des bios et des statistiques (API des plateformes simulées), paiement Chargily (signature et webhook sur une base PGlite temporaire, API de Chargily simulée)
 npm run dev                                # puis, dans un autre terminal :
 BASE_URL=http://localhost:3000 npx tsx tests/api-flow.mts   # parcours API complet
 ```
 
-Le parcours API crée une agence et un clipper, envoie des images, finance et approuve une campagne, en modifie, refuse, relance et supprime une autre, traite une demande de badge, vérifie les comptes TikTok et Instagram du clipper (mode simulé : lancez-le sans les clés des API), valide un clip publié sur deux plateformes et vérifie les paiements, les rôles et la protection CSRF. Il lit le code de vérification renvoyé en développement : lancez-le contre `npm run dev`, pas contre `npm start`.
+Le parcours API crée une agence et un clipper, envoie des images, finance et approuve une campagne, en modifie, refuse, relance et supprime une autre, traite une demande de badge, vérifie les comptes TikTok et Instagram du clipper (mode simulé : lancez-le sans les clés des API), valide un clip publié sur deux plateformes et vérifie les paiements (dont le paiement en ligne simulé : lancez-le sans `CHARGILY_SECRET_KEY`), les rôles et la protection CSRF. Il lit le code de vérification renvoyé en développement : lancez-le contre `npm run dev`, pas contre `npm start`.
 
 ## Structure
 
@@ -222,7 +242,7 @@ tests/               tests des règles et du parcours API
 
 ## Reste à faire avant un lancement public
 
-- Paiement en ligne des recharges par carte Edahabia, CIB, Visa ou Mastercard via une passerelle de paiement (aujourd'hui confirmées à la main).
+- Paiement en ligne des recharges par carte Visa ou Mastercard (Edahabia et CIB passent par Chargily Pay ; Visa / Mastercard sont encore confirmées à la main par l'équipe).
 - Vérification de fond des agences avant le badge (documents, registre du commerce).
 - Pages « Mentions légales » et « Aide et support » du menu du compte.
 - Accès de production aux API des plateformes pour la vérification des comptes sociaux et le relevé des vues (examen de l'application par Meta, accès à l'API Research de TikTok ou, à défaut, connexion du clipper avec TikTok Login Kit).

@@ -3,13 +3,14 @@
 // les mêmes contrôles d'accès et les mêmes réponses. web/src/data.js l'appelle à la place de fetch().
 import { z, ZodError, type ZodType } from "zod";
 import {
-  amountSchema, appealSchema, approveSchema, campaignSchema, campaignStatusSchema, changePasswordSchema, clipSchema, creditSchema, forgotSchema,
-  loginSchema, membershipSchema, oauthDemoSchema, profileSchema, resetSchema, reviewAppealSchema, reviewClipSchema, settingsSchema, signupSchema, socialAccountSchema,
-  userStatusSchema, verificationRequestSchema, verificationReviewSchema, verifySchema, viewsSchema, withdrawSchema,
+  amountSchema, appealSchema, approveSchema, campaignSchema, campaignStatusSchema, changePasswordSchema, checkoutSchema, clipSchema, creditSchema, forgotSchema,
+  loginSchema, membershipSchema, oauthDemoSchema, profileSchema, resetSchema, reviewAppealSchema, reviewClipSchema, settingsSchema, signupSchema, simulatePaymentSchema,
+  socialAccountSchema, userStatusSchema, verificationRequestSchema, verificationReviewSchema, verifySchema, viewsSchema, withdrawSchema,
 } from "../../lib/server/validation";
 import { ApiError, badRequest, clear, forbidden, load, logActivity, save } from "./db";
 import * as svc from "./services";
 import { reviewAppeal, submitAppeal } from "./appeals";
+import { resumeOnlineTopUp, simulatePayment, startOnlineTopUp } from "./payments";
 import { publicState, stateFor } from "./state";
 import { runDueJobs, trackViews } from "./tracking";
 import { viewsTrackedText } from "../../lib/server/rules";
@@ -248,6 +249,34 @@ const routes: Record<string, Record<string, Handler>> = {
       const user = svc.requireUser(req.db, "agence");
       const { amount, method, card } = body(req, creditSchema);
       return ok({ ref: svc.requestCredit(req, user, amount, method, card) }, 201);
+    },
+  },
+  // Paiement en ligne des recharges (Edahabia, CIB) : toujours simulé hors ligne, la page de paiement simulée de l'app.
+  "/api/credit/checkout": {
+    POST: (req) => {
+      const user = svc.requireUser(req.db, "agence");
+      const { amount, method } = body(req, checkoutSchema);
+      return ok(startOnlineTopUp(req, user, amount, method), 201);
+    },
+  },
+  "/api/credit/checkout/:id": {
+    POST: (req) => {
+      const user = svc.requireUser(req.db, "agence");
+      return ok(resumeOnlineTopUp(req, user, req.params.id));
+    },
+  },
+  "/api/payments/simulate/:id": {
+    POST: (req) => {
+      const user = svc.requireUser(req.db, "agence");
+      const { paid } = body(req, simulatePaymentSchema);
+      simulatePayment(req, user, req.params.id, paid);
+      return ok();
+    },
+  },
+  // Webhook de Chargily : sans clé (comme ici, toujours), le serveur le refuse de la même façon.
+  "/api/payments/chargily/webhook": {
+    POST: () => {
+      throw new ApiError(503, "Paiement en ligne non configuré");
     },
   },
   "/api/verification": {

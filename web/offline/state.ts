@@ -135,10 +135,13 @@ export function stateFor(db: Store, user: UserRow) {
       id: a.id, publicationId: a.publicationId, userId: a.userId, message: a.message, proof: a.proof, status: a.status, decisionNote: a.decisionNote,
       decidedAt: a.decidedAt === null ? null : new Date(a.decidedAt).toISOString(), createdAt: new Date(a.createdAt).toISOString(), ...(isAdmin ? { decidedBy: a.decidedBy } : {}),
     })),
-    transactions: txRows.map((t) => ({ id: t.id, ref: t.ref, userId: t.userId, type: t.type, label: t.label, amount: t.amount, fee: t.fee, status: t.status, method: t.method, date: day(t.createdAt), time: time(t.createdAt), availableAt: t.availableAt === null ? null : new Date(t.availableAt).toISOString() })),
+    transactions: txRows.map((t) => ({ id: t.id, ref: t.ref, userId: t.userId, type: t.type, label: t.label, amount: t.amount, fee: t.fee, status: t.status, method: t.method, date: day(t.createdAt), time: time(t.createdAt), availableAt: t.availableAt === null ? null : new Date(t.availableAt).toISOString(),
+      provider: t.provider, ...(isAdmin ? { providerRef: t.providerRef } : {}) })),
     notifications: notifRows.map((n) => ({ id: n.id, icon: n.icon, text: n.text, link: n.link ?? inferLink(user.role, n.text, linkCtx), unread: !n.read, at: new Date(n.createdAt).toISOString() })),
     activity: activityRows.map((a) => ({ icon: a.icon, text: a.text, at: new Date(a.createdAt).toISOString() })),
     series,
+    // Paiement en ligne des recharges : toujours simulé hors ligne (page de paiement simulée de l'app).
+    ...(isAdmin || isAgency ? { payments: { simulated: true } } : {}),
     // Relevé des vues (admin) : dernière exécution, son bilan, plateformes en mode simulé (toutes, hors ligne).
     ...(isAdmin ? { tracking: { everyHours: TRACK_EVERY_HOURS, lastRunAt: viewsRun ? new Date(viewsRun.lastRunAt).toISOString() : null, summary: viewsRun?.summary ?? null, simulated: simulatedPlatforms() } } : {}),
   };

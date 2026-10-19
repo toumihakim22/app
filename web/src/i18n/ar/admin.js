@@ -233,7 +233,7 @@ Object.assign(I18N.ar, {
   "Type de paiement": "نوع الدفع",
   "Approuvez après avoir effectué le virement vers le compte indiqué.": "وافق بعد إجراء التحويل إلى الحساب المحدد.",
   "{count} · {amount} à virer": "{count} · {amount} للتحويل",
-  "Confirmez à réception du paiement (virement, carte Edahabia, CIB, Visa ou Mastercard) : le montant est alors ajouté au crédit de l'agence.": "أكّد عند استلام الدفع (تحويل بنكي، أو بطاقة Edahabia أو CIB أو Visa أو Mastercard): يُضاف المبلغ حينها إلى رصيد الوكالة.",
+  "Confirmez à réception du paiement (virement, carte Visa ou Mastercard) : le montant est alors ajouté au crédit de l'agence. Les paiements en ligne par carte Edahabia ou CIB sont confirmés automatiquement par Chargily.": "أكّد عند استلام الدفع (تحويل بنكي، أو بطاقة Visa أو Mastercard): يُضاف المبلغ حينها إلى رصيد الوكالة. أما الدفع الإلكتروني ببطاقة Edahabia أو CIB فتؤكده Chargily تلقائيًا.",
   "{count} · {amount} annoncés": "{count} · {amount} مصرّح بها",
   "Aucune demande de retrait": "لا توجد طلبات سحب",
   "Les demandes des clippers apparaîtront ici.": "ستظهر هنا طلبات صنّاع المقاطع.",
@@ -583,4 +583,12 @@ Object.assign(I18N.ar, {
   "Recours accepté : clip validé, le clipper est prévenu": "قُبل الاعتراض: تمت الموافقة على المقطع وأُبلغ صانع المقاطع",
   "Recours refusé, le clipper est prévenu": "رُفض الاعتراض وأُبلغ صانع المقاطع",
   "recours à examiner": { zero: "اعتراض للمراجعة", one: "اعتراض للمراجعة", two: "اعتراضان للمراجعة", few: "اعتراضات للمراجعة", many: "اعتراضًا للمراجعة", other: "اعتراض للمراجعة" },
+
+  // Paiements en ligne (Chargily Pay)
+  "Paiement en ligne : confirmé automatiquement par Chargily": "دفع إلكتروني: تؤكده Chargily تلقائيًا",
+  "Confirmé automatiquement par Chargily.": "تؤكده Chargily تلقائيًا.",
+  "Identifiant Chargily": "معرّف Chargily",
+  "Copier l'identifiant": "نسخ المعرّف",
+  "Identifiant copié": "تم نسخ المعرّف",
+  "Montant payé en ligne": "المبلغ المدفوع إلكترونيًا",
 });

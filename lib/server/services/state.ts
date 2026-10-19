@@ -5,6 +5,7 @@ import { getSettings } from "../settings";
 import { balances } from "./money";
 import { inferLink, type LinkContext } from "../links";
 import { configuredProviders } from "../oauth";
+import { chargilyConfigured } from "../chargily";
 import { OAUTH_PROVIDERS } from "../validation";
 import { PLATFORMS } from "../gradients";
 import { socialView } from "./social";
@@ -148,10 +149,15 @@ export async function stateFor(user: User) {
       id: a.id, publicationId: a.publicationId, userId: a.userId, message: a.message, proof: a.proof, status: a.status, decisionNote: a.decisionNote,
       decidedAt: a.decidedAt?.toISOString() ?? null, createdAt: a.createdAt.toISOString(), ...(isAdmin ? { decidedBy: a.decidedBy } : {}),
     })),
-    transactions: txRows.map((t) => ({ id: t.id, ref: t.ref, userId: t.userId, type: t.type, label: t.label, amount: t.amount, fee: t.fee, status: t.status, method: t.method, date: day(t.createdAt), time: time(t.createdAt), availableAt: t.availableAt?.toISOString() ?? null })),
+    transactions: txRows.map((t) => ({ id: t.id, ref: t.ref, userId: t.userId, type: t.type, label: t.label, amount: t.amount, fee: t.fee, status: t.status, method: t.method, date: day(t.createdAt), time: time(t.createdAt), availableAt: t.availableAt?.toISOString() ?? null,
+      // Paiement en ligne : passerelle (« chargily ») ; son identifiant chez Chargily pour l'équipe seulement (support).
+      provider: t.provider, ...(isAdmin ? { providerRef: t.providerRef } : {}) })),
     notifications: notifRows.map((n) => ({ id: n.id, icon: n.icon, text: n.text, link: n.link ?? inferLink(user.role, n.text, linkCtx), unread: !n.read, at: n.createdAt.toISOString() })),
     activity: activityRows.map((a) => ({ icon: a.icon, text: a.text, at: a.createdAt.toISOString() })),
     series,
+    // Paiement en ligne des recharges (agence, admin) : simulated, sans clé Chargily (page de paiement simulée de l'app,
+    // en développement ; en production, le paiement en ligne est alors refusé).
+    ...(isAdmin || isAgency ? { payments: { simulated: !chargilyConfigured() } } : {}),
     // Relevé automatique des vues (admin) : dernière exécution, son bilan, plateformes en mode simulé.
     ...(isAdmin ? { tracking: { everyHours: TRACK_EVERY_HOURS, lastRunAt: viewsRun?.lastRunAt.toISOString() ?? null, summary: viewsRun?.summary ?? null, simulated: simulatedPlatforms() } } : {}),
   };

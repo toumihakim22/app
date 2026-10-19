@@ -152,7 +152,6 @@ Object.assign(I18N.ar, {
   "Suivez la consommation de vos campagnes et rechargez votre crédit.": "تابع استهلاك حملاتك واشحن رصيدك.",
   "Par campagne": "حسب الحملة",
   "Recharges": "عمليات الشحن",
-  "Le crédit est ajouté dès que l'équipe ClipBoost confirme la réception de votre paiement.": "يُضاف الرصيد بمجرد أن يؤكد فريق ClipBoost استلام دفعتك.",
 
   // Profil de l'agence et badge de vérification
   "Agence": "وكالة",
@@ -372,8 +371,8 @@ Object.assign(I18N.ar, {
   "Carte CIB": "بطاقة CIB",
   "Carte Visa / Mastercard": "بطاقة Visa / Mastercard",
   "Indiquez la référence reçue dans le libellé du virement.": "اذكر المرجع الذي تتلقاه في بيان التحويل.",
-  "Carte Algérie Poste.": "بطاقة بريد الجزائر.",
-  "Carte bancaire interbancaire.": "بطاقة بنكية ما بين البنوك.",
+  "Carte Algérie Poste, paiement en ligne.": "بطاقة بريد الجزائر، دفع إلكتروني.",
+  "Carte bancaire interbancaire, paiement en ligne.": "بطاقة بنكية ما بين البنوك، دفع إلكتروني.",
   "Carte bancaire internationale.": "بطاقة بنكية دولية.",
 
   // Pluriels : plural(n, "singulier", "pluriel")
@@ -384,4 +383,31 @@ Object.assign(I18N.ar, {
   "jours": { zero: "يوم", one: "يوم", two: "يومان", few: "أيام", many: "يومًا", other: "يوم" },
   "derniers jours": { zero: "يوم", one: "يوم", two: "يومين", few: "أيام", many: "يومًا", other: "يوم" },
   "jours actifs": { zero: "يوم نشط", one: "يوم نشط", two: "يومان نشطان", few: "أيام نشطة", many: "يومًا نشطًا", other: "يوم نشط" },
+
+  // Paiement en ligne (Edahabia, CIB) : fenêtre de recharge, Budget, page de paiement simulée
+  "Carte Edahabia ou CIB : paiement en ligne, crédit ajouté aussitôt. Virement ou carte Visa / Mastercard : crédit ajouté à la confirmation de l'équipe ClipBoost.": "بطاقة Edahabia أو CIB: دفع إلكتروني ويُضاف الرصيد فورًا. التحويل البنكي أو بطاقة Visa / Mastercard: يُضاف الرصيد بعد تأكيد فريق ClipBoost.",
+  "Crédit après paiement": "الرصيد بعد الدفع",
+  "Payer {amount} en ligne": "ادفع {amount} إلكترونيًا",
+  "Payer en ligne": "ادفع إلكترونيًا",
+  "Vous saisissez votre carte sur la page de paiement sécurisée de Chargily Pay ; le crédit est ajouté dès que le paiement est confirmé.": "تُدخل بيانات بطاقتك في صفحة الدفع الآمنة لـ Chargily Pay، ويُضاف الرصيد فور تأكيد الدفع.",
+  "Mode simulé": "وضع المحاكاة",
+  "Aucune carte n'est débitée : vous choisissez l'issue du paiement sur la page suivante.": "لا تُخصم أي بطاقة: تختار نتيجة الدفع في الصفحة التالية.",
+  "Carte Edahabia ou CIB : le crédit est ajouté dès que le paiement en ligne est confirmé. Virement ou carte Visa / Mastercard : dès que l'équipe ClipBoost confirme la réception de votre paiement.": "بطاقة Edahabia أو CIB: يُضاف الرصيد فور تأكيد الدفع الإلكتروني. التحويل البنكي أو بطاقة Visa / Mastercard: بمجرد أن يؤكد فريق ClipBoost استلام دفعتك.",
+  "{amount} par {method} · référence {ref}": "{amount} عبر {method} · المرجع {ref}",
+  "Le crédit est ajouté dès que Chargily Pay confirme le paiement.": "يُضاف الرصيد بمجرد أن تؤكد Chargily Pay الدفع.",
+  "Reprendre le paiement": "استئناف الدفع",
+  "Paiement confirmé : {amount} ajoutés à votre crédit": "تم تأكيد الدفع: أُضيف {amount} إلى رصيدك",
+  "Paiement annulé ou refusé : la recharge n'a pas été créditée": "أُلغي الدفع أو رُفض: لم يُضف الشحن إلى رصيدك",
+  "Paiement annulé ou refusé : la recharge n'a pas été créditée.": "أُلغي الدفع أو رُفض: لم يُضف الشحن إلى رصيدك.",
+  "Recharge du crédit de votre agence par carte Edahabia ou CIB.": "شحن رصيد وكالتك ببطاقة Edahabia أو CIB.",
+  "Paiement introuvable": "الدفعة غير موجودة",
+  "Ce paiement n'existe pas ou ne concerne pas votre agence.": "هذه الدفعة غير موجودة أو لا تخص وكالتك.",
+  "Retour au budget": "العودة إلى الميزانية",
+  "Marchand": "التاجر",
+  "Montant à payer": "المبلغ المستحق",
+  "Payer {amount}": "ادفع {amount}",
+  "Paiement reçu : le montant a été ajouté à votre crédit.": "تم استلام الدفع: أُضيف المبلغ إلى رصيدك.",
+  "Aucune carte n'est débitée. Choisissez « Payer » pour simuler un paiement accepté (le crédit est ajouté), ou « Annuler » pour un paiement abandonné.": "لا تُخصم أي بطاقة. اختر «ادفع» لمحاكاة دفع مقبول (يُضاف الرصيد)، أو «إلغاء» لدفع متروك.",
+  "Sans clé Chargily, cette page remplace la page de paiement sécurisée de Chargily Pay.": "بدون مفتاح Chargily، تحلّ هذه الصفحة محلّ صفحة الدفع الآمنة لـ Chargily Pay.",
+  "Le paiement se fait sur la page sécurisée de Chargily Pay.": "يتم الدفع على الصفحة الآمنة لـ Chargily Pay.",
 });

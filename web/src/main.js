@@ -51,7 +51,8 @@ function parseRoute() {
   // Propriété propre seulement : #/clipper/constructor n'est pas une page.
   if (!view || !Object.prototype.hasOwnProperty.call(views[0], view)) return { area, view: views[1], rewrite: true };
   let item = "";
-  try { item = raw ? decodeURIComponent(raw) : ""; } catch (e) {}
+  // « ?… » après l'élément : paramètres qu'un site extérieur ajoute à l'adresse de retour (page de paiement), ignorés.
+  try { item = raw ? decodeURIComponent(raw.split("?")[0]) : ""; } catch (e) {}
   const r = { area, view };
   if (item) r.item = item;
   if (alias) r.rewrite = true;
@@ -60,7 +61,7 @@ function parseRoute() {
 
 // Pages hors navigation dont le 3e segment est l'objet de la page (gardé dans l'adresse, rechargement possible) :
 // la valeur est l'entrée de navigation affichée comme courante.
-const ITEM_PAGES = { "clipper/agence": "agences", "admin/utilisateur": "utilisateurs" };
+const ITEM_PAGES = { "clipper/agence": "agences", "admin/utilisateur": "utilisateurs", "agence/paiement": "budget" };
 const navView = (area, view) => ITEM_PAGES[`${area}/${view}`] || view;
 
 function navigate(hash) {
@@ -101,6 +102,8 @@ function applyRouteItem(area, view, id) {
   } else if (area === "agence") {
     Object.assign(state.ag, { q: "", status: "Toutes", clipStatus: "Toutes" });
     if (view === "campagnes") { if (myCampaigns().some((c) => c.id === id)) state.modal = { type: "ag-open", id }; return ""; }
+    // Retour de la page de paiement de Chargily : la recharge en évidence, son état relu jusqu'à la confirmation.
+    if (view === "budget") agWatchPayment(id);
   } else if (area === "admin") {
     state.adm.campQ = ""; state.adm.campStatus = "Toutes";
     // Campagne à examiner : sa fiche d'examen, la liste derrière montre toutes les campagnes.

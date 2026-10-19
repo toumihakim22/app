@@ -1,7 +1,7 @@
 import { eq, sql } from "drizzle-orm";
 import { getDb, schema } from "../db";
 import type { User } from "../auth";
-import { logActivity, notify, notifyRole } from "../events";
+import { logActivity, notify, notifyRole, type Tx } from "../events";
 import { badRequest, notFound } from "../http";
 import { newId, newRef } from "../ids";
 import { link } from "../links";
@@ -36,7 +36,8 @@ export async function requestWithdrawal(user: User, amount: number, instant: boo
 export type CardInfo = { brand: "Visa" | "Mastercard"; last4: string };
 
 /**
- * Une agence demande à recharger son crédit (virement ou carte). Le crédit est ajouté quand l'équipe confirme la réception.
+ * Une agence annonce une recharge de son crédit (virement ou carte Visa / Mastercard ; Edahabia et CIB se paient en ligne,
+ * services/payments.ts). Le crédit est ajouté quand l'équipe confirme la réception.
  * Carte Visa / Mastercard : seules la marque et les 4 derniers chiffres sont connus, ajoutés au libellé (« … · Visa •••• 4242 »).
  */
 export async function requestCredit(user: User, amount: number, method: string, card?: CardInfo) {
@@ -50,17 +51,31 @@ export async function requestCredit(user: User, amount: number, method: string, 
   return ref;
 }
 
-/** L'équipe traite un retrait ou confirme une recharge. */
+type Transaction = typeof schema.transactions.$inferSelect;
+
+/**
+ * Validation d'une recharge, dans la transaction de l'appelant (ligne déjà verrouillée, encore « En cours ») : seul endroit
+ * où une recharge devient « Validé » et où le crédit de l'agence augmente, que la confirmation vienne de l'équipe
+ * (reviewTransaction) ou de Chargily Pay (settleOnlinePayment, services/payments.ts). Les notifications restent à l'appelant.
+ */
+export async function validateRecharge(tx: Tx, t: Transaction) {
+  await tx.update(schema.transactions).set({ status: "Validé" }).where(eq(schema.transactions.id, t.id));
+  await tx.update(schema.users).set({ credit: sql`${schema.users.credit} + ${t.amount}` }).where(eq(schema.users.id, t.userId));
+}
+
+/**
+ * L'équipe traite un retrait ou confirme une recharge annoncée (virement, carte Visa / Mastercard). Une recharge payée en
+ * ligne ne se traite pas à la main : Chargily la confirme (webhook), ce qui évite de créditer deux fois le même paiement.
+ */
 export async function reviewTransaction(admin: User, id: string, approve: boolean) {
   const db = await getDb();
   await db.transaction(async (tx) => {
     const [t] = await tx.select().from(schema.transactions).where(eq(schema.transactions.id, id)).for("update");
     if (!t) throw notFound("Transaction introuvable");
     if (t.status !== "En cours" || t.type === "gain") throw badRequest("Cette transaction a déjà été traitée");
-    await tx.update(schema.transactions).set({ status: approve ? "Validé" : "Refusé" }).where(eq(schema.transactions.id, id));
-    if (t.type === "recharge" && approve) {
-      await tx.update(schema.users).set({ credit: sql`${schema.users.credit} + ${t.amount}` }).where(eq(schema.users.id, t.userId));
-    }
+    if (t.provider === "chargily") throw badRequest("Paiement en ligne : confirmé automatiquement par Chargily");
+    if (t.type === "recharge" && approve) await validateRecharge(tx, t);
+    else await tx.update(schema.transactions).set({ status: approve ? "Validé" : "Refusé" }).where(eq(schema.transactions.id, id));
     const what = t.type === "retrait" ? `retrait de ${fmt(-t.amount)}` : `recharge de ${fmt(t.amount)}`;
     // Accord du participe : « le retrait » est validé, « la recharge » est validée.
     const done = `${approve ? "validé" : "refusé"}${t.type === "recharge" ? "e" : ""}`;

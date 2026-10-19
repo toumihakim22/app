@@ -90,7 +90,7 @@ test("inscription avec code, campagne financée, clip payé et retrait instantan
   assert.equal((await call("POST", "/api/auth/verify", { email: "atlas@test.dz", code: signup.data.devCode })).status, 200);
   const campaign = { title: "Défi Sahara", category: "Sport", rate: 150, budget: 200000, minPayout: 300, maxPayout: 20000, platforms: ["TikTok"], rules: [] };
   const { data: { id: campaignId } } = await call("POST", "/api/campaigns", campaign);
-  const { data: { ref } } = await call("POST", "/api/credit", { amount: 250000, method: "carte CIB" });
+  const { data: { ref } } = await call("POST", "/api/credit", { amount: 250000, method: "virement bancaire" });
   assert.match(ref, /^T-[0-9A-Z]{6}$/);
 
   await login("admin@clipboost.dz", "AdminClip2026");
@@ -171,8 +171,8 @@ test("anciennes notifications sans lien : lien déduit du texte", async () => {
   };
   const before = await linksOf();
   const store = JSON.parse(storage.get(STORAGE_KEY)!);
-  // Les demandes de badge et les recours sont postérieurs aux liens : une ancienne copie n'en contient pas.
-  for (const n of store.notifications) if (!/badge de vérification| conteste le refus du clip /.test(n.text)) delete n.link;
+  // Les demandes de badge, les recours et les paiements en ligne sont postérieurs aux liens : une ancienne copie n'en contient pas.
+  for (const n of store.notifications) if (!/badge de vérification| conteste le refus du clip | a payé en ligne une recharge /.test(n.text)) delete n.link;
   storage.set(STORAGE_KEY, JSON.stringify(store));
   const after = await linksOf();
   let exact = 0, total = 0;
@@ -336,6 +336,7 @@ test("ancienne copie du navigateur : colonnes ajoutées complétées ; stockage 
   for (const u of store.users) for (const k of ["avatar", "cover", "verification", "verificationNote", "locale"]) delete u[k];
   for (const c of store.campaigns) for (const k of ["image", "reviewNote", "updatedAt"]) delete c[k];
   for (const p of store.publications) for (const k of ["batch", "likes", "checkedAt", "riskScore", "riskFlags"]) delete p[k];
+  for (const t of store.transactions) for (const k of ["provider", "providerRef"]) delete t[k];
   delete store.snapshots;
   delete store.jobRuns;
   delete store.appeals;
@@ -343,6 +344,7 @@ test("ancienne copie du navigateur : colonnes ajoutées complétées ; stockage 
   await login("agence@clipboost.dz");
   const s = await state();
   assert.deepEqual([s.me.avatar, s.me.verification, s.me.locale, s.me.providers], [null, "none", "fr", []]);
+  assert.ok(s.transactions.every((t: { provider: string | null }) => t.provider === null));
   await login("yacine@clipboost.dz");
   assert.deepEqual([(await state()).me.socialAccounts, (await state()).appeals], [[], []]);
   await login("agence@clipboost.dz");
@@ -614,6 +616,73 @@ test("recours : un clip refusé contesté une seule fois, accepté (clip validé
   assert.deepEqual((await state()).appeals, []);
   await login("yacine@clipboost.dz");
   assert.deepEqual((await state()).appeals, []);
+});
+
+test("paiement en ligne Edahabia / CIB (simulé) : crédit ajouté au paiement, annulation, pas de confirmation manuelle", async () => {
+  type Tx = { id: string; ref: string; type: string; status: string; method: string; label: string; provider: string | null; providerRef?: string | null; amount: number };
+  await login("agence@clipboost.dz");
+  let s = await state();
+  const credit = s.me.credit;
+  assert.deepEqual(s.payments, { simulated: true });
+  // Recharge en ligne d'exemple : payée par carte Edahabia, validée par Chargily.
+  assert.ok(s.transactions.some((t: Tx) => t.provider === "chargily" && t.status === "Validé" && t.method === "carte Edahabia"));
+  // Edahabia et CIB ne s'annoncent plus à la main ; le paiement en ligne n'accepte qu'elles.
+  assert.deepEqual(await call("POST", "/api/credit", { amount: 50000, method: "carte CIB" }), { status: 400, data: { error: "Carte Edahabia ou CIB : utilisez le paiement en ligne" } });
+  assert.deepEqual(await call("POST", "/api/credit/checkout", { amount: 50000, method: "virement bancaire" }), { status: 400, data: { error: "Paiement en ligne : carte Edahabia ou CIB" } });
+  assert.deepEqual(await call("POST", "/api/credit/checkout", { amount: 5000, method: "carte CIB" }), { status: 400, data: { error: "Recharge minimum : 10 000 DA" } });
+
+  // 1. Paiement accepté : la recharge est créée en cours, la page simulée la valide et crédite l'agence.
+  const paid = await call("POST", "/api/credit/checkout", { amount: 120000, method: "carte CIB" });
+  assert.equal(paid.status, 201);
+  assert.equal(paid.data.checkoutUrl, `#/agence/paiement/${paid.data.id}`);
+  assert.equal(paid.data.simulated, true);
+  s = await state();
+  let tx = s.transactions.find((t: Tx) => t.id === paid.data.id);
+  assert.deepEqual([tx.status, tx.provider, tx.label, tx.ref, s.me.credit], ["En cours", "chargily", "Recharge par carte CIB", paid.data.ref, credit]);
+  assert.equal("providerRef" in tx, false);
+  assert.deepEqual(await call("POST", `/api/credit/checkout/${paid.data.id}`), { status: 200, data: { ok: true, status: "En cours", checkoutUrl: `#/agence/paiement/${paid.data.id}` } });
+  // Seule l'agence propriétaire paie sa recharge.
+  await login("djurdjura@clipboost.dz");
+  assert.deepEqual(await call("POST", `/api/payments/simulate/${paid.data.id}`, { paid: true }), { status: 404, data: { error: "Paiement introuvable" } });
+  await login("agence@clipboost.dz");
+  assert.deepEqual(await call("POST", `/api/payments/simulate/${paid.data.id}`, { paid: true }), { status: 200, data: { ok: true } });
+  s = await state();
+  tx = s.transactions.find((t: Tx) => t.id === paid.data.id);
+  assert.deepEqual([tx.status, s.me.credit], ["Validé", credit + 120000]);
+  assert.deepEqual([s.notifications[0].text, s.notifications[0].link], ["Votre recharge de 120 000 DA a été validée.", `#/agence/budget/${paid.data.id}`]);
+  // Déjà payée : ni deuxième paiement, ni deuxième crédit.
+  assert.deepEqual(await call("POST", `/api/payments/simulate/${paid.data.id}`, { paid: true }), { status: 400, data: { error: "Ce paiement a déjà été traité" } });
+  assert.deepEqual(await call("POST", `/api/credit/checkout/${paid.data.id}`), { status: 200, data: { ok: true, status: "Validé", checkoutUrl: null } });
+  assert.equal((await state()).me.credit, credit + 120000);
+
+  // 2. Paiement annulé : recharge refusée, aucun crédit.
+  const canceled = await call("POST", "/api/credit/checkout", { amount: 80000, method: "carte Edahabia" });
+  assert.deepEqual(await call("POST", `/api/payments/simulate/${canceled.data.id}`, { paid: false }), { status: 200, data: { ok: true } });
+  s = await state();
+  assert.deepEqual([s.transactions.find((t: Tx) => t.id === canceled.data.id).status, s.me.credit], ["Refusé", credit + 120000]);
+  assert.equal(s.notifications[0].text, "Paiement en ligne annulé ou refusé : votre recharge de 80 000 DA n'a pas été créditée.");
+  assert.deepEqual(await call("POST", `/api/payments/simulate/${canceled.data.id}`, { paid: true }), { status: 400, data: { error: "Ce paiement a déjà été traité" } });
+  // Le webhook n'existe pas sans clé Chargily (toujours le cas hors ligne).
+  assert.deepEqual(await call("POST", "/api/payments/chargily/webhook", { type: "checkout.paid" }), { status: 503, data: { error: "Paiement en ligne non configuré" } });
+
+  // 3. L'équipe : un paiement en ligne en cours ne se confirme ni ne se refuse à la main ; un virement, si.
+  const pending = await call("POST", "/api/credit/checkout", { amount: 60000, method: "carte CIB" });
+  const transfer = await call("POST", "/api/credit", { amount: 70000, method: "virement bancaire" });
+  await login("admin@clipboost.dz", "AdminClip2026");
+  s = await state();
+  assert.deepEqual(s.payments, { simulated: true });
+  assert.equal(s.transactions.find((t: Tx) => t.id === pending.data.id).providerRef, null);
+  assert.ok(s.notifications.some((n: { text: string; link: string }) => n.text === `Tassili Sport a payé en ligne une recharge de 120 000 DA par carte CIB (réf. ${paid.data.ref}).` && n.link === `#/admin/retraits/${paid.data.id}`));
+  assert.ok(s.activity.some((a: { text: string }) => a.text === "Recharge de 120 000 DA payée en ligne par Tassili Sport (carte CIB, Chargily)."));
+  for (const approve of [true, false]) {
+    assert.deepEqual(await call("POST", `/api/transactions/${pending.data.id}/review`, { approve }), { status: 400, data: { error: "Paiement en ligne : confirmé automatiquement par Chargily" } });
+  }
+  assert.equal((await call("POST", `/api/payments/simulate/${pending.data.id}`, { paid: true })).status, 403);
+  const manual = s.transactions.find((t: Tx) => t.ref === transfer.data.ref);
+  assert.deepEqual(await call("POST", `/api/transactions/${manual.id}/review`, { approve: true }), { status: 200, data: { ok: true } });
+  await login("agence@clipboost.dz");
+  s = await state();
+  assert.deepEqual([s.transactions.find((t: Tx) => t.id === pending.data.id).status, s.transactions.find((t: Tx) => t.id === manual.id).status, s.me.credit], ["En cours", "Validé", credit + 120000 + 70000]);
 });
 
 test("réinitialisation : retour aux données d'exemple", async () => {

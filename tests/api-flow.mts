@@ -94,6 +94,26 @@ ok(await admin("POST", `/api/transactions/${cardTx.id}/review`, { approve: false
 assert.equal((await agency("GET", "/api/state")).data.me.credit, 5000);
 step("recharge par carte en attente de confirmation");
 
+// 3 bis bis. Paiement en ligne Edahabia / CIB, en mode simulé (serveur lancé sans CHARGILY_SECRET_KEY) : la page simulée
+// règle le paiement ; l'équipe ne peut pas le confirmer à la main ; sans clé, le webhook est refusé.
+assert.equal((await agency("POST", "/api/credit", { amount: 20000, method: "carte CIB" })).status, 400);
+r = await agency("POST", "/api/credit/checkout", { amount: 20000, method: "carte Edahabia" }); ok(r, "paiement en ligne");
+assert.equal(r.data.simulated, true); assert.equal(r.data.checkoutUrl, `#/agence/paiement/${r.data.id}`);
+const onlineId = r.data.id;
+assert.equal((await admin("POST", `/api/transactions/${onlineId}/review`, { approve: true })).status, 400);
+assert.equal((await admin("POST", `/api/payments/simulate/${onlineId}`, { paid: true })).status, 403);
+ok(await agency("POST", `/api/payments/simulate/${onlineId}`, { paid: true }), "paiement simulé");
+assert.equal((await agency("POST", `/api/payments/simulate/${onlineId}`, { paid: true })).status, 400);
+r = await agency("GET", "/api/state");
+assert.equal(r.data.me.credit, 25000); assert.equal(r.data.payments.simulated, true);
+assert.equal(r.data.transactions.find((t: { id: string }) => t.id === onlineId).status, "Validé");
+r = await agency("POST", "/api/credit/checkout", { amount: 30000, method: "carte CIB" }); ok(r, "second paiement en ligne");
+ok(await agency("POST", `/api/payments/simulate/${r.data.id}`, { paid: false }), "paiement annulé");
+assert.equal((await agency("GET", "/api/state")).data.me.credit, 25000);
+r = await client()("POST", "/api/payments/chargily/webhook", { type: "checkout.paid", data: { id: "x" } });
+assert.equal(r.status, 503);
+step("paiement en ligne simulé : crédit ajouté au paiement, annulation sans crédit, webhook refusé sans clé");
+
 // 3 ter. Campagne modifiée avant vérification, refusée avec motif, modifiée et relancée, puis supprimée ; annulation avant vérification.
 const draft = { title: "Nuit du Sahara", category: "Événementiel", rate: 180, budget: 80000, minPayout: 360, maxPayout: 18000, emoji: "🌙", platforms: ["TikTok", "Facebook"], rules: ["Montrer le coucher du soleil"] };
 assert.equal((await agency("POST", "/api/campaigns", { ...draft, category: "Autre" })).status, 400);

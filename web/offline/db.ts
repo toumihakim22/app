@@ -97,6 +97,10 @@ function upgrade(s: Store): Store {
     c.reviewNote ??= null;
     c.updatedAt ??= c.createdAt;
   }
+  for (const t of s.transactions) {
+    t.provider ??= null;
+    t.providerRef ??= null;
+  }
   for (const p of s.publications) {
     p.batch ??= null;
     p.likes ??= null;
@@ -244,7 +248,7 @@ export function insertPublication(db: Store, v: Pick<PubRow, "id" | "userId" | "
 }
 
 export function insertTransaction(db: Store, v: Pick<TxRow, "id" | "ref" | "userId" | "type" | "label" | "amount" | "status"> & Partial<TxRow>) {
-  const row: TxRow = { fee: 0, method: null, availableAt: null, publicationId: null, createdAt: Date.now(), ...v };
+  const row: TxRow = { fee: 0, method: null, availableAt: null, publicationId: null, provider: null, providerRef: null, createdAt: Date.now(), ...v };
   db.transactions.push(row);
   return row;
 }

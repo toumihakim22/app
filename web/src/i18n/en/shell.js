@@ -321,4 +321,8 @@ Object.assign(I18N.en, {
   "Voir le recours": "View appeal",
   "Envoyé le {date}": "Sent on {date}",
   "Capture d'écran jointe au recours": "Screenshot attached to the appeal",
+
+  // Paiement en ligne des recharges (Chargily Pay) : espaces Agence et Admin
+  "Paiement en ligne": "Online payment",
+  "Paiement en ligne en attente": "Online payment pending",
 });

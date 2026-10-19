@@ -141,6 +141,12 @@ export async function seed(): Promise<Store> {
   const rechargeRef = newRef();
   insertTransaction(db, { id: rechargeId, ref: rechargeRef, userId: hoggar.id, type: "recharge", label: "Recharge par virement bancaire", amount: 600000, status: "En cours", method: "virement bancaire", createdAt: daysAgo(1) });
   const admin = db.users[0];
+  // Recharge payée en ligne par carte Edahabia (Chargily Pay), validée automatiquement par le webhook.
+  const onlineId = newId(), onlineRef = newRef();
+  insertTransaction(db, { id: onlineId, ref: onlineRef, userId: tassili.id, type: "recharge", label: "Recharge par carte Edahabia", amount: 300000, status: "Validé", method: "carte Edahabia", provider: "chargily", providerRef: newId(26), createdAt: daysAgo(11) });
+  notes.push([tassili, 11, "✅", `Votre recharge de ${fmt(300000)} a été validée.`, link.agencyBudget(onlineId)],
+    [admin, 11, "💳", `${tassili.name} a payé en ligne une recharge de ${fmt(300000)} par carte Edahabia (réf. ${onlineRef}).`, link.adminPayment(onlineId)]);
+  acts.push([11, "💳", `Recharge de ${fmt(300000)} payée en ligne par ${tassili.name} (carte Edahabia, Chargily).`]);
   acts.push([1, "💸", `${amira.name} a demandé un retrait de ${fmt(2000)}.`]);
   notes.push([admin, 2, "🏢", `${hoggar.name} a soumis la campagne « ${soirees.title} ».`, link.adminCampaign(soirees.id)], [admin, 1, "💸", `${amira.name} demande un retrait de ${fmt(2000)}.`, link.adminPayment(withdrawalId)],
     [admin, 0.9, "🏦", `${hoggar.name} annonce une recharge de ${fmt(600000)} par virement bancaire (réf. ${rechargeRef}).`, link.adminPayment(rechargeId)],

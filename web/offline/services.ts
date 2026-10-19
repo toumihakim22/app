@@ -7,7 +7,7 @@ import { belowMin, clipRisk, fundingCost, instantFee, normalizeHandle, payoutDel
 import { IMAGE_DATA_URL, type OAuthProvider } from "../../lib/server/validation";
 import {
   ApiError, badRequest, forbidden, getSettings, insertCampaign, insertPublication, insertTransaction, insertUser, logActivity,
-  newId, newRef, newSocialCode, notFound, notify, notifyRole, randomInt, type CampaignRow, type PubRow, type Store, type UserRow,
+  newId, newRef, newSocialCode, notFound, notify, notifyRole, randomInt, type CampaignRow, type PubRow, type Store, type TxRow, type UserRow,
 } from "./db";
 import { hashPassword, sha256Hex, strongEnough, verifyPassword } from "./password";
 
@@ -572,8 +572,8 @@ export function requestWithdrawal({ db }: Ctx, user: UserRow, amount: number, in
 }
 
 /**
- * Une agence demande à recharger son crédit. Le crédit est ajouté quand l'équipe confirme la réception,
- * quel que soit le moyen de paiement. Carte Visa / Mastercard : la marque et les 4 derniers chiffres dans le libellé.
+ * Une agence annonce une recharge de son crédit (virement ou carte Visa / Mastercard ; Edahabia et CIB se paient en ligne,
+ * payments.ts). Le crédit est ajouté quand l'équipe confirme la réception. Carte : la marque et les 4 derniers chiffres dans le libellé.
  */
 export function requestCredit({ db }: Ctx, user: UserRow, amount: number, method: string, card?: { brand: string; last4: string }) {
   const id = newId(), ref = newRef();
@@ -583,13 +583,26 @@ export function requestCredit({ db }: Ctx, user: UserRow, amount: number, method
   return ref;
 }
 
-/** L'équipe traite un retrait ou confirme une recharge. */
+/**
+ * Validation d'une recharge encore « En cours » : seul endroit où une recharge devient « Validé » et où le crédit de
+ * l'agence augmente, confirmation de l'équipe (reviewTransaction) ou paiement en ligne (settleOnlinePayment, payments.ts).
+ */
+export function validateRecharge(db: Store, t: TxRow) {
+  t.status = "Validé";
+  userOf(db, t.userId).credit += t.amount;
+}
+
+/**
+ * L'équipe traite un retrait ou confirme une recharge annoncée (virement, carte Visa / Mastercard). Une recharge payée en
+ * ligne ne se traite pas à la main : Chargily la confirme (ici, la page de paiement simulée).
+ */
 export function reviewTransaction({ db }: Ctx, admin: UserRow, id: string, approve: boolean) {
   const t = db.transactions.find((x) => x.id === id);
   if (!t) throw notFound("Transaction introuvable");
   if (t.status !== "En cours" || t.type === "gain") throw badRequest("Cette transaction a déjà été traitée");
-  t.status = approve ? "Validé" : "Refusé";
-  if (t.type === "recharge" && approve) userOf(db, t.userId).credit += t.amount;
+  if (t.provider === "chargily") throw badRequest("Paiement en ligne : confirmé automatiquement par Chargily");
+  if (t.type === "recharge" && approve) validateRecharge(db, t);
+  else t.status = approve ? "Validé" : "Refusé";
   const what = t.type === "retrait" ? `retrait de ${fmt(-t.amount)}` : `recharge de ${fmt(t.amount)}`;
   // Accord du participe : « le retrait » est validé, « la recharge » est validée.
   const done = `${approve ? "validé" : "refusé"}${t.type === "recharge" ? "e" : ""}`;

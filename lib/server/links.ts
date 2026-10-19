@@ -9,6 +9,8 @@ export const link = {
   agencyCampaign: (campaignId: string) => `#/agence/campagnes/${campaignId}`,
   /** Budget rendu à l'agence : la ligne de la campagne dans Budget. */
   agencyBudget: (id: string) => `#/agence/budget/${id}`,
+  /** Paiement en ligne d'une recharge en mode simulé : la page de paiement simulée de l'app (« Payer » ou « Annuler »). */
+  agencyPayment: (transactionId: string) => `#/agence/paiement/${transactionId}`,
   /** Campagne soumise, modifiée ou relancée par une agence : sa fiche d'examen dans l'administration. */
   adminCampaign: (campaignId: string) => `#/admin/campagnes/${campaignId}`,
   /** Clip à examiner : sa fiche dans la modération. */

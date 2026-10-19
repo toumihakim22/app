@@ -123,6 +123,8 @@ export const socialAccountSchema = z.object({
 export const viewsSchema = z.object({ views: z.coerce.number().int().min(0).max(1_000_000_000), likes: z.coerce.number().int().min(0).max(1_000_000_000).nullish() });
 export const withdrawSchema = z.object({ amount: money("Montant").pipe(z.number().min(1, "Montant invalide")), instant: z.boolean().default(false) });
 export const CREDIT_METHODS = ["virement bancaire", "carte Edahabia", "carte CIB", "carte Visa / Mastercard"] as const;
+/** Moyens de recharge payés en ligne via Chargily Pay (les autres sont confirmés à la main par l'équipe). */
+export const ONLINE_CREDIT_METHODS = ["carte Edahabia", "carte CIB"] as const satisfies readonly (typeof CREDIT_METHODS)[number][];
 /**
  * Recharge du crédit d'une agence. Carte Visa / Mastercard : seules la marque et les 4 derniers chiffres sont transmis
  * (le numéro complet ne quitte jamais le navigateur ; en production, le paiement passe par la page sécurisée d'une passerelle).
@@ -131,7 +133,16 @@ export const creditSchema = z.object({
   amount: money("Montant").pipe(z.number().min(10000, "Recharge minimum : 10 000 DA")),
   method: z.enum(CREDIT_METHODS, { error: "Moyen de paiement inconnu" }),
   card: z.object({ brand: z.enum(["Visa", "Mastercard"]), last4: z.string().regex(/^\d{4}$/, "Carte invalide") }).optional(),
-}).refine((d) => d.method !== "carte Visa / Mastercard" || !!d.card, { message: "Indiquez votre carte Visa ou Mastercard", path: ["card"] });
+}).refine((d) => d.method !== "carte Visa / Mastercard" || !!d.card, { message: "Indiquez votre carte Visa ou Mastercard", path: ["card"] })
+  // Edahabia et CIB se paient en ligne (POST /api/credit/checkout) : le crédit arrive avec la confirmation de Chargily.
+  .refine((d) => !(ONLINE_CREDIT_METHODS as readonly string[]).includes(d.method), { message: "Carte Edahabia ou CIB : utilisez le paiement en ligne", path: ["method"] });
+/** Paiement en ligne d'une recharge : montant et carte (Edahabia ou CIB), puis page de paiement de Chargily Pay. */
+export const checkoutSchema = z.object({
+  amount: money("Montant").pipe(z.number().min(10000, "Recharge minimum : 10 000 DA")),
+  method: z.enum(ONLINE_CREDIT_METHODS, { error: "Paiement en ligne : carte Edahabia ou CIB" }),
+});
+/** Mode simulé : issue du paiement choisie sur la page de paiement simulée (payé ou annulé). */
+export const simulatePaymentSchema = z.object({ paid: z.boolean() });
 export const approveSchema = z.object({ approve: z.boolean() });
 export const userStatusSchema = z.object({ status: z.enum(["Actif", "Suspendu"]) });
 /** Badge de vérification : demande d'une agence (message facultatif pour l'équipe), puis décision de l'admin. */

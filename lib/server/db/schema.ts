@@ -214,6 +214,8 @@ export const jobRuns = pgTable("job_runs", {
 
 export type TransactionType = "gain" | "retrait" | "recharge";
 export type TransactionStatus = "Validé" | "En cours" | "Refusé";
+/** Passerelle d'un paiement en ligne (recharge payée par carte Edahabia ou CIB) ; null : confirmé à la main par l'équipe. */
+export type PaymentProvider = "chargily";
 
 export const transactions = pgTable("transactions", {
   id: id(),
@@ -229,8 +231,11 @@ export const transactions = pgTable("transactions", {
   // Date à partir de laquelle un gain devient retirable (période de rétention anti-fraude).
   availableAt: timestamp("available_at", { withTimezone: true }),
   publicationId: text("publication_id").references(() => publications.id, { onDelete: "set null" }),
+  // Recharge payée en ligne : passerelle (« chargily ») et identifiant du paiement chez elle (checkout Chargily Pay).
+  provider: text("provider").$type<PaymentProvider>(),
+  providerRef: text("provider_ref"),
   createdAt: createdAt(),
-}, (t) => [index("transactions_user_idx").on(t.userId), uniqueIndex("transactions_ref_idx").on(t.ref)]);
+}, (t) => [index("transactions_user_idx").on(t.userId), uniqueIndex("transactions_ref_idx").on(t.ref), uniqueIndex("transactions_provider_ref_idx").on(t.providerRef)]);
 
 export const notifications = pgTable("notifications", {
   id: id(),
