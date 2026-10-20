@@ -10,7 +10,7 @@ import { OAUTH_PROVIDERS } from "../validation";
 import { PLATFORMS } from "../gradients";
 import { documentNumbers } from "./documents";
 import { socialView } from "./social";
-import { dailyGains, RISK_WINDOW_DAYS, utcDay } from "../rules";
+import { dailyGains, isTeamCampaign, messageThreads, RISK_WINDOW_DAYS, utcDay } from "../rules";
 import { simulatedPlatforms, TRACK_EVERY_HOURS, VIEWS_JOB } from "./tracking";
 
 const day = (d: Date) => d.toISOString().slice(0, 10);
@@ -69,10 +69,23 @@ export async function stateFor(user: User) {
     isAdmin ? undefined : isAgency ? (campaignIds.length ? inArray(P.campaignId, campaignIds) : sql`false`) : eq(P.userId, user.id),
   ).orderBy(desc(P.createdAt));
 
-  // Utilisateurs visibles : tous pour l'admin, les auteurs des clips pour une agence, soi-même pour un clipper.
+  // Conversations de campagne : les siennes pour un clipper (campagnes qu'il voit), celles de ses campagnes pour une
+  // agence, celles des campagnes de ClipBoost pour l'admin (une agence répond seule à ses clippers).
+  const MS = schema.messages;
+  let msgRows: (typeof MS.$inferSelect)[] = [];
+  if (isClipper) msgRows = (await db.select().from(MS).where(eq(MS.clipperId, user.id))).filter((m) => campaignIds.includes(m.campaignId));
+  else if (isAgency) msgRows = campaignIds.length ? await db.select().from(MS).where(inArray(MS.campaignId, campaignIds)) : [];
+  else {
+    const admins = new Set((await db.select({ id: schema.users.id }).from(schema.users).where(eq(schema.users.role, "admin"))).map((r) => r.id));
+    const team = campaignRows.filter((c) => isTeamCampaign(c.ownerId, c.ownerId && admins.has(c.ownerId) ? "admin" : null)).map((c) => c.id);
+    msgRows = team.length ? await db.select().from(MS).where(inArray(MS.campaignId, team)) : [];
+  }
+
+  // Utilisateurs visibles : tous pour l'admin, les auteurs des clips et des conversations pour une agence, soi-même pour un clipper.
+  const seenIds = [...new Set([...pubRows.map((p) => p.userId), ...(isAgency ? msgRows.map((m) => m.clipperId) : [])])];
   const userRows = isAdmin
     ? await db.select().from(schema.users).orderBy(desc(schema.users.createdAt))
-    : await db.select().from(schema.users).where(or(eq(schema.users.id, user.id), pubRows.length ? inArray(schema.users.id, [...new Set(pubRows.map((p) => p.userId))]) : sql`false`));
+    : await db.select().from(schema.users).where(or(eq(schema.users.id, user.id), seenIds.length ? inArray(schema.users.id, seenIds) : sql`false`));
 
   // Clipper : les agences qui organisent les campagnes visibles (page « Agences » de l'espace Clipper).
   const ownerIds = isClipper ? [...new Set(campaignRows.flatMap((c) => (c.ownerId ? [c.ownerId] : [])))] : [];
@@ -152,6 +165,8 @@ export async function stateFor(user: User) {
       id: a.id, publicationId: a.publicationId, userId: a.userId, message: a.message, proof: a.proof, status: a.status, decisionNote: a.decisionNote,
       decidedAt: a.decidedAt?.toISOString() ?? null, createdAt: a.createdAt.toISOString(), ...(isAdmin ? { decidedBy: a.decidedBy } : {}),
     })),
+    // Conversations (messages dans l'ordre, non lus, réponse attendue), de la plus récente à la plus ancienne.
+    threads: messageThreads(msgRows.map((m) => ({ ...m, createdAt: m.createdAt.getTime(), readAt: m.readAt?.getTime() ?? null })), isClipper),
     transactions: txRows.map((t) => ({ id: t.id, ref: t.ref, userId: t.userId, type: t.type, label: t.label, amount: t.amount, fee: t.fee, status: t.status, method: t.method, date: day(t.createdAt), time: time(t.createdAt), availableAt: t.availableAt?.toISOString() ?? null,
       // Paiement en ligne : passerelle (« chargily ») ; son identifiant chez Chargily pour l'équipe seulement (support).
       provider: t.provider, ...(isAdmin ? { providerRef: t.providerRef } : {}), document: docOf.get(t.id) ?? null })),

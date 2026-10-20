@@ -3,6 +3,7 @@ import { randomBytes } from "node:crypto";
 import { eq } from "drizzle-orm";
 import * as schema from "../lib/server/db/schema";
 import { DEMO_APPEAL_MESSAGE, DEMO_PROOF_JPEG_BASE64 } from "../lib/server/demo-appeal";
+import { demoThreads } from "../lib/server/demo-messages";
 import { numberDocuments } from "../lib/server/documents";
 import { newId, newRef } from "../lib/server/ids";
 import { link } from "../lib/server/links";
@@ -198,6 +199,12 @@ if (process.argv.includes("--demo")) {
         [admin, 1.5, "🛡️", `${hoggar.name} demande le badge de vérification.`, link.adminUser(hoggar.id)],
         [admin, 0.6, "⚖️", `${lina.name} conteste le refus du clip « Sketch du marché ».`, link.adminAppeal(appealId)]);
     }
+    // Conversations de campagne (lib/server/demo-messages.ts), réponses de l'équipe signées par le premier administrateur.
+    const admins = await db.select({ id: schema.users.id, name: schema.users.name }).from(schema.users).where(eq(schema.users.role, "admin"));
+    const threads = demoThreads({ yacine, amira, lina, tassili, admin: admins[0], derby, kahwa, rire });
+    await db.insert(schema.messages).values(threads.messages.map((m) => ({ id: newId(), campaignId: m.campaignId, clipperId: m.clipperId, senderId: m.senderId, body: m.body, readAt: m.read ? daysAgo(m.days - 0.05) : null, createdAt: daysAgo(m.days) })));
+    await db.insert(schema.notifications).values(threads.notes.flatMap((n) => (n.to === "admins" ? admins.map((a) => a.id) : [n.to])
+      .map((userId) => ({ id: newId(), userId, icon: "💬", text: n.text, link: n.link, read: n.read, createdAt: daysAgo(n.days) }))));
     // Les événements de plus de 2 jours sont déjà lus ; les plus récents restent à lire.
     await db.insert(schema.activity).values(acts.map(([days, icon, text]) => ({ id: newId(), icon, text, createdAt: daysAgo(days) })));
     await db.insert(schema.notifications).values(notes.map(([u, days, icon, text, href]) => ({ id: newId(), userId: u.id, icon, text, link: href, read: days > 2, createdAt: daysAgo(days) })));

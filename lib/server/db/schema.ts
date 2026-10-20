@@ -205,6 +205,22 @@ export const appeals = pgTable("appeals", {
   createdAt: createdAt(),
 }, (t) => [uniqueIndex("appeals_publication_idx").on(t.publicationId), index("appeals_user_idx").on(t.userId), index("appeals_status_idx").on(t.status)]);
 
+/**
+ * Messagerie par campagne entre un clipper et l'organisateur : la conversation est la paire campagne × clipper
+ * (clipper_id), qu'elle soit écrite par le clipper ou par l'autre côté (sender_id : l'agence propriétaire, ou un admin
+ * pour une campagne de ClipBoost). Le clipper ouvre la conversation ; l'agence ou l'équipe ne peut que répondre.
+ * read_at : lu par le destinataire (l'autre côté) ; null : non lu.
+ */
+export const messages = pgTable("messages", {
+  id: id(),
+  campaignId: text("campaign_id").notNull().references(() => campaigns.id, { onDelete: "cascade" }),
+  clipperId: text("clipper_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  senderId: text("sender_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  body: text("body").notNull(),
+  readAt: timestamp("read_at", { withTimezone: true }),
+  createdAt: createdAt(),
+}, (t) => [index("messages_thread_idx").on(t.campaignId, t.clipperId), index("messages_clipper_idx").on(t.clipperId), index("messages_sender_idx").on(t.senderId, t.createdAt)]);
+
 /** Dernière exécution de chaque tâche planifiée (« views » : relevé des vues), avec son bilan. */
 export const jobRuns = pgTable("job_runs", {
   name: text("name").primaryKey(),

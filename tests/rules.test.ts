@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
-  viewRates, belowMin, bioHasCode, clipRisk, dailyGains, fraudRisk, fundingCost, handleInUrl, instantFee, normalizeHandle, payoutDelta, payoutFor, RISK_LOW_LIKES, RISK_NEW_ACCOUNT,
+  viewRates, belowMin, isTeamCampaign, messageExcerpt, messageThreads, replyText, bioHasCode, clipRisk, dailyGains, fraudRisk, fundingCost, handleInUrl, instantFee, normalizeHandle, payoutDelta, payoutFor, RISK_LOW_LIKES, RISK_NEW_ACCOUNT,
   RISK_SPIKE, RISK_WINDOW_DAYS, riskLevel, sentence, simulatedHistory, simulatedProfile, simulatedStats, socialCode, socialLinkError, utcDay, validateCampaignNumbers, viewsFor, viewsTrackedText,
 } from "../lib/server/rules";
 
@@ -204,4 +204,17 @@ test("score des données d'exemple stable à toute heure : un clip ordinaire n'a
     const createdAt = now - 2 * day, h = simulatedHistory("p_suspect", createdAt, now - 2 * 3_600_000, 52900, { spike: true, likeRate: 0.0007 });
     assert.equal(clipRisk({ createdAt, views: 52900, likes: h.at(-1)!.likes }, h, { userCreatedAt: createdAt - 60 * day, socialVerifiedAt: null }).score, 80, new Date(now).toISOString());
   }
+});
+
+test("messagerie : extrait des notifications, campagnes de ClipBoost, conversations et non lus", () => {
+  assert.equal(messageExcerpt("  Bonjour,\n  une question  "), "Bonjour, une question");
+  const long = messageExcerpt("Bonjour, le festival accepte-t-il des extraits sous-titrés en arabe et en français ?");
+  assert.ok(long.length <= 61 && long.endsWith("…") && !long.includes(" …"), long);
+  assert.equal(replyText(null, "Kahwa", "Oui."), "L'équipe ClipBoost a répondu sur « Kahwa » : « Oui. »");
+  assert.deepEqual([isTeamCampaign(null, null), isTeamCampaign("a1", "admin"), isTeamCampaign("a1", "agence")], [true, true, false]);
+  const m = (id: string, senderId: string, at: number, readAt: number | null = null) => ({ id, campaignId: "c1", clipperId: "k1", senderId, body: id, createdAt: at, readAt });
+  const rows = [m("r", "ag", 2), m("q", "k1", 1, 2), m("q2", "k1", 3), { ...m("o", "k2", 5), clipperId: "k2" }];
+  const [other, thread] = messageThreads(rows, false);
+  assert.deepEqual([other.id, thread.id, thread.unread, thread.awaiting, thread.messages.map((x) => x.id)], ["c1~k2", "c1~k1", 1, true, ["q", "r", "q2"]]);
+  assert.equal(messageThreads(rows, true)[1].unread, 1);
 });

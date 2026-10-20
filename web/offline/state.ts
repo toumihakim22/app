@@ -4,7 +4,7 @@ import { balances } from "./services";
 import { inferLink, type LinkContext } from "../../lib/server/links";
 import { OAUTH_PROVIDERS } from "../../lib/server/validation";
 import { PLATFORMS } from "../../lib/server/gradients";
-import { dailyGains, RISK_WINDOW_DAYS, utcDay } from "../../lib/server/rules";
+import { dailyGains, isTeamCampaign, messageThreads, RISK_WINDOW_DAYS, utcDay } from "../../lib/server/rules";
 import { lastJobRun, simulatedPlatforms, TRACK_EVERY_HOURS, VIEWS_JOB } from "./tracking";
 
 const day = (ms: number) => new Date(ms).toISOString().slice(0, 10);
@@ -59,8 +59,14 @@ export function stateFor(db: Store, user: UserRow) {
 
   const pubRows = newestFirst(db.publications.filter((p) => (isAdmin ? true : isAgency ? campaignIds.has(p.campaignId) : p.userId === user.id)));
 
-  // Utilisateurs visibles : tous pour l'admin, les auteurs des clips pour une agence, soi-même pour un clipper.
-  const authors = new Set(pubRows.map((p) => p.userId));
+  // Conversations de campagne : les siennes (clipper, campagnes visibles), celles de ses campagnes (agence), celles des
+  // campagnes de ClipBoost (admin).
+  const roleOf = new Map(db.users.map((u) => [u.id, u.role]));
+  const threadCampaigns = new Set(isAdmin ? campaignRows.filter((c) => isTeamCampaign(c.ownerId, c.ownerId ? roleOf.get(c.ownerId) : null)).map((c) => c.id) : campaignIds);
+  const msgRows = db.messages.filter((m) => threadCampaigns.has(m.campaignId) && (!isClipper || m.clipperId === user.id));
+
+  // Utilisateurs visibles : tous pour l'admin, les auteurs des clips et des conversations pour une agence, soi-même pour un clipper.
+  const authors = new Set([...pubRows.map((p) => p.userId), ...(isAgency ? msgRows.map((m) => m.clipperId) : [])]);
   const userRows = isAdmin ? newestFirst(db.users) : db.users.filter((u) => u.id === user.id || authors.has(u.id));
 
   // Clipper : les agences qui organisent les campagnes visibles (page « Agences » de l'espace Clipper).
@@ -137,6 +143,7 @@ export function stateFor(db: Store, user: UserRow) {
       id: a.id, publicationId: a.publicationId, userId: a.userId, message: a.message, proof: a.proof, status: a.status, decisionNote: a.decisionNote,
       decidedAt: a.decidedAt === null ? null : new Date(a.decidedAt).toISOString(), createdAt: new Date(a.createdAt).toISOString(), ...(isAdmin ? { decidedBy: a.decidedBy } : {}),
     })),
+    threads: messageThreads(msgRows, isClipper),
     transactions: txRows.map((t) => ({ id: t.id, ref: t.ref, userId: t.userId, type: t.type, label: t.label, amount: t.amount, fee: t.fee, status: t.status, method: t.method, date: day(t.createdAt), time: time(t.createdAt), availableAt: t.availableAt === null ? null : new Date(t.availableAt).toISOString(),
       provider: t.provider, ...(isAdmin ? { providerRef: t.providerRef } : {}), document: docOf.get(t.id) ?? null })),
     notifications: notifRows.map((n) => ({ id: n.id, icon: n.icon, text: n.text, link: n.link ?? inferLink(user.role, n.text, linkCtx), unread: !n.read, at: new Date(n.createdAt).toISOString() })),

@@ -602,4 +602,7 @@ Object.assign(I18N.en, {
   "Colonnes : référence, date et heure (UTC), type, utilisateur, email, rôle, libellé, montant, frais, statut, moyen et numéro de facture ou de reçu.": "Columns: reference, date and time (UTC), type, user, email, role, description, amount, fees, status, method and invoice or receipt number.",
   "La date de fin doit suivre la date de début.": "The end date must come after the start date.",
   "Export CSV téléchargé": "CSV export downloaded",
+  // Messagerie par campagne (Messages)
+  "Les questions des clippers sur les campagnes de ClipBoost. Les agences répondent elles-mêmes sur leurs campagnes.": "Clippers' questions about ClipBoost campaigns. Agencies answer on their own campaigns.",
+  "Les clippers peuvent poser une question depuis la fiche de chaque campagne de ClipBoost active ou en pause.": "Clippers can ask a question from the page of each active or paused ClipBoost campaign.",
 });

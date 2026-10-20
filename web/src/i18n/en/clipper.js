@@ -466,4 +466,16 @@ Object.assign(I18N.en, {
   "Expliquez votre contestation en 20 caractères au moins.": "Explain your appeal in at least 20 characters.",
   "Ajoutez une capture d'écran comme preuve.": "Add a screenshot as proof.",
   "Contestation envoyée : l'équipe ClipBoost va revoir votre clip": "Appeal sent: the ClipBoost team will review your clip again",
+  // Messagerie par campagne (Messages)
+  "l'équipe ClipBoost": "the ClipBoost team",
+  "Une question sur une campagne ? Ouvrez sa fiche et choisissez « Poser une question ».": "A question about a campaign? Open it and choose “Ask a question”.",
+  "Cette campagne n'est plus visible.": "This campaign is no longer visible.",
+  "Voir mes conversations": "See my conversations",
+  "Réponses de l'équipe ClipBoost": "Answered by the ClipBoost team",
+  "Posez votre question": "Ask your question",
+  "{name} vous répondra ici. Vous serez prévenu par une notification.": "{name} will answer here. You will get a notification.",
+  "Écrivez votre question…": "Write your question…",
+  "Cette campagne est terminée : vous ne pouvez plus envoyer de message.": "This campaign has ended: you can no longer send messages.",
+  "Vos questions aux agences sur leurs campagnes, et leurs réponses.": "Your questions to agencies about their campaigns, and their answers.",
+  "Poser une question": "Ask a question",
 });

@@ -42,7 +42,7 @@ test("données d'exemple, connexion et contrôle d'accès", async () => {
   const ids = new Set([...s.campaigns, ...s.publications, ...s.transactions].map((x: { id: string }) => x.id));
   assert.ok(s.notifications.length > 0);
   for (const n of s.notifications as Note[]) {
-    const m = n.link?.match(/^#\/clipper\/(decouvrir|publications|portefeuille)\/([0-9a-z]+)$/);
+    const m = n.link?.match(/^#\/clipper\/(decouvrir|publications|portefeuille|messages)\/([0-9a-z]+)$/);
     assert.ok(m && ids.has(m[2]), `lien de « ${n.text} » : ${n.link}`);
   }
   // Nouveaux champs : badge, photos, langue, lot de publications.
@@ -171,8 +171,8 @@ test("anciennes notifications sans lien : lien déduit du texte", async () => {
   };
   const before = await linksOf();
   const store = JSON.parse(storage.get(STORAGE_KEY)!);
-  // Les demandes de badge, les recours et les paiements en ligne sont postérieurs aux liens : une ancienne copie n'en contient pas.
-  for (const n of store.notifications) if (!/badge de vérification| conteste le refus du clip | a payé en ligne une recharge /.test(n.text)) delete n.link;
+  // Les demandes de badge, les recours, les paiements en ligne et les messages sont postérieurs aux liens : une ancienne copie n'en contient pas.
+  for (const n of store.notifications) if (!/badge de vérification| conteste le refus du clip | a payé en ligne une recharge |^(Nouvelle question|Nouveau message|Réponse) de |^L'équipe ClipBoost a répondu /.test(n.text)) delete n.link;
   storage.set(STORAGE_KEY, JSON.stringify(store));
   const after = await linksOf();
   let exact = 0, total = 0;
@@ -340,6 +340,7 @@ test("ancienne copie du navigateur : colonnes ajoutées complétées ; stockage 
   delete store.snapshots;
   delete store.jobRuns;
   delete store.appeals;
+  delete store.messages;
   storage.set(STORAGE_KEY, JSON.stringify(store));
   await login("agence@clipboost.dz");
   const s = await state();
@@ -749,6 +750,91 @@ test("factures et reçus PDF, export CSV des transactions", async () => {
   assert.deepEqual(await call("GET", "/api/admin/transactions/export?type=bonus"), { status: 400, data: { error: "Type de transaction invalide" } });
   assert.deepEqual(await call("GET", "/api/admin/transactions/export?from=2026-13-45"), { status: 400, data: { error: "Date de début invalide (AAAA-MM-JJ)" } });
   assert.deepEqual(await call("GET", "/api/admin/transactions/export?from=2026-10-02&to=2026-10-01"), { status: 400, data: { error: "La date de début doit précéder la date de fin" } });
+});
+
+test("messagerie par campagne : question du clipper, réponse de l'agence ou de l'équipe, lecture et accès", async () => {
+  type Thread = { id: string; campaignId: string; clipperId: string; unread: number; awaiting: boolean; messages: { senderId: string; fromClipper: boolean; body: string; read: boolean }[] };
+  type Note = { text: string; link: string | null; unread: boolean };
+  await offlineApi.reset();
+  // Données d'exemple : réponse de Tassili Sport pas encore lue par Yacine (et sa notification).
+  await login("yacine@clipboost.dz");
+  let s = await state();
+  const yacine = s.me.id, camp = (title: string) => s.campaigns.find((c: { title: string }) => c.title === title);
+  const derby = camp("Derby Algérois"), kahwa = camp("Kahwa du matin"), maillot = camp("Nouveau maillot 2027"), festival = camp("Festival du court-métrage");
+  assert.deepEqual(s.threads.map((t: Thread) => [t.campaignId, t.unread, t.awaiting]), [[derby.id, 1, false], [kahwa.id, 0, false]]);
+  assert.ok(s.notifications.some((n: Note) => n.unread && n.link === `#/clipper/messages/${derby.id}` && n.text.startsWith("Réponse de Tassili Sport sur « Derby Algérois » : « Bonjour Yacine")));
+  // Conversation ouverte : la réponse et sa notification sont lues.
+  assert.deepEqual(await call("POST", "/api/messages/read", { campaignId: derby.id }), { status: 200, data: { ok: true } });
+  s = await state();
+  assert.equal(s.threads.find((t: Thread) => t.campaignId === derby.id).unread, 0);
+  assert.ok(!s.notifications.some((n: Note) => n.unread && n.link === `#/clipper/messages/${derby.id}`));
+
+  // Question sur une campagne en pause, non rejointe, d'une agence : l'agence est prévenue (extrait, lien vers la conversation).
+  assert.deepEqual(await call("POST", `/api/campaigns/${festival.id}/messages`, { body: "   " }), { status: 400, data: { error: "Écrivez votre message" } });
+  assert.deepEqual(await call("POST", `/api/campaigns/${festival.id}/messages`, { body: "x".repeat(1001) }), { status: 400, data: { error: "Message trop long (1 000 caractères maximum)" } });
+  const question = "Bonjour, le festival accepte-t-il des extraits sous-titrés en arabe et en français pour la même vidéo publiée sur YouTube ?";
+  assert.equal((await call("POST", `/api/campaigns/${maillot.id}/messages`, { body: "Le maillot existe-t-il en taille enfant ?" })).status, 201);
+  assert.equal((await call("POST", `/api/campaigns/${festival.id}/messages`, { body: question })).status, 201);
+  assert.equal((await call("POST", `/api/campaigns/${festival.id}/messages`, { body: "Merci d'avance !" })).status, 201);
+  s = await state();
+  const mine: Thread = s.threads[0];
+  assert.deepEqual([mine.id, mine.awaiting, mine.messages.length, mine.messages[0].fromClipper], [`${festival.id}~${yacine}`, true, 2, true]);
+
+  await login("djurdjura@clipboost.dz");
+  s = await state();
+  const notes = s.notifications.filter((n: Note) => n.link === `#/agence/messages/${festival.id}~${yacine}`);
+  assert.deepEqual(notes.map((n: Note) => n.text), [
+    "Nouveau message de Yacine Benali sur « Festival du court-métrage » : « Merci d'avance ! »",
+    "Nouvelle question de Yacine Benali sur « Festival du court-métrage » : « Bonjour, le festival accepte-t-il des extraits sous-titrés… »",
+  ]);
+  assert.deepEqual([s.threads.length, s.threads[0].unread], [1, 2]);
+  // Les clippers des conversations sont visibles par l'agence (profil public seulement).
+  const author = s.users.find((u: { id: string }) => u.id === yacine);
+  assert.deepEqual([author.name, author.handle, "email" in author], ["Yacine Benali", "@yacine.clips", false]);
+  // Pas de premier message de l'agence : seulement une réponse à un clipper qui lui a écrit.
+  const amira = (await (async () => { await login("amira@clipboost.dz"); return (await state()).me.id; })());
+  await login("djurdjura@clipboost.dz");
+  assert.deepEqual(await call("POST", `/api/campaigns/${festival.id}/messages`, { body: "Rejoignez notre festival !", clipperId: amira }), { status: 400, data: { error: "Vous pouvez seulement répondre à un clipper qui vous a écrit" } });
+  assert.deepEqual(await call("POST", `/api/campaigns/${festival.id}/messages`, { body: "Bonjour" }), { status: 400, data: { error: "Conversation introuvable" } });
+  // Accès : la conversation d'une autre agence, ou d'une campagne de ClipBoost, n'existe pas pour elle.
+  assert.deepEqual(await call("POST", `/api/campaigns/${derby.id}/messages`, { body: "Bonjour", clipperId: yacine }), { status: 404, data: { error: "Campagne introuvable" } });
+  assert.deepEqual(await call("POST", "/api/messages/read", { campaignId: kahwa.id, clipperId: yacine }), { status: 404, data: { error: "Campagne introuvable" } });
+  // Réponse : vaut lecture ; le clipper est prévenu.
+  assert.equal((await call("POST", `/api/campaigns/${festival.id}/messages`, { body: "Oui, les sous-titres dans les deux langues sont bienvenus.", clipperId: yacine })).status, 201);
+  s = await state();
+  assert.deepEqual([s.threads[0].unread, s.threads[0].awaiting], [0, false]);
+  assert.ok(s.notifications.every((n: Note) => n.link !== `#/agence/messages/${festival.id}~${yacine}` || !n.unread));
+
+  await login("yacine@clipboost.dz");
+  s = await state();
+  assert.equal(s.notifications[0].text, "Réponse de Djurdjura Médias sur « Festival du court-métrage » : « Oui, les sous-titres dans les deux langues sont bienvenus. »");
+  assert.equal(s.notifications[0].link, `#/clipper/messages/${festival.id}`);
+  assert.deepEqual([s.threads[0].unread, s.threads[0].messages.map((m: { read: boolean }) => m.read)], [1, [true, true, false]]);
+  // Le clipper ne lit ni n'écrit pour un autre : clipperId ignoré, sa propre conversation.
+  assert.equal((await call("POST", `/api/campaigns/${festival.id}/messages`, { body: "Parfait, merci !", clipperId: amira })).status, 201);
+  assert.equal((await state()).threads[0].messages.length, 4);
+
+  // Campagne de ClipBoost : l'équipe répond (notification commune) ; l'admin n'écrit pas sur la campagne d'une agence.
+  await login("admin@clipboost.dz", "AdminClip2026");
+  s = await state();
+  assert.deepEqual(s.threads.map((t: Thread) => t.campaignId).sort(), [kahwa.id, camp("Les Sketchs du Bled").id].sort());
+  const lina: Thread = s.threads.find((t: Thread) => t.awaiting);
+  assert.equal(lina.unread, 1);
+  assert.deepEqual(await call("POST", `/api/campaigns/${festival.id}/messages`, { body: "Bonjour", clipperId: yacine }), { status: 403, data: { error: "Cette campagne appartient à une agence : c'est elle qui répond à ses clippers" } });
+  assert.equal((await call("POST", `/api/campaigns/${lina.campaignId}/messages`, { body: "Publiez-le en vidéo classique, c'est accepté.", clipperId: lina.clipperId })).status, 201);
+  await login("lina@clipboost.dz");
+  assert.equal((await state()).notifications[0].text, "L'équipe ClipBoost a répondu sur « Les Sketchs du Bled » : « Publiez-le en vidéo classique, c'est accepté. »");
+
+  // Agence : aucune conversation sur une campagne qui ne lui appartient pas ; non connecté : 401.
+  await login("hoggar@clipboost.dz");
+  assert.deepEqual((await state()).threads, []);
+  await call("POST", "/api/auth/logout", {});
+  assert.equal((await call("POST", `/api/campaigns/${festival.id}/messages`, { body: "Bonjour" })).status, 401);
+
+  // Anti-spam : 30 messages par 10 minutes.
+  await login("amira@clipboost.dz");
+  for (let i = 0; i < 30; i++) assert.equal((await call("POST", `/api/campaigns/${kahwa.id}/messages`, { body: `Question ${i}` })).status, 201);
+  assert.deepEqual(await call("POST", `/api/campaigns/${kahwa.id}/messages`, { body: "Encore une" }), { status: 429, data: { error: "Trop de messages envoyés, réessayez dans quelques minutes" } });
 });
 
 test("réinitialisation : retour aux données d'exemple", async () => {

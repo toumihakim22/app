@@ -603,4 +603,7 @@ Object.assign(I18N.ar, {
   "Colonnes : référence, date et heure (UTC), type, utilisateur, email, rôle, libellé, montant, frais, statut, moyen et numéro de facture ou de reçu.": "الأعمدة: المرجع، التاريخ والوقت (UTC)، النوع، المستخدم، البريد الإلكتروني، الدور، الوصف، المبلغ، الرسوم، الحالة، الوسيلة ورقم الفاتورة أو الإيصال.",
   "La date de fin doit suivre la date de début.": "يجب أن يكون تاريخ النهاية بعد تاريخ البداية.",
   "Export CSV téléchargé": "تم تنزيل ملف CSV",
+  // Messagerie par campagne (Messages)
+  "Les questions des clippers sur les campagnes de ClipBoost. Les agences répondent elles-mêmes sur leurs campagnes.": "أسئلة صانعي المقاطع حول حملات ClipBoost. تجيب الوكالات بنفسها على حملاتها.",
+  "Les clippers peuvent poser une question depuis la fiche de chaque campagne de ClipBoost active ou en pause.": "يمكن لصانعي المقاطع طرح سؤال من بطاقة كل حملة ClipBoost نشطة أو متوقفة مؤقتًا.",
 });

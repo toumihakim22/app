@@ -302,3 +302,64 @@ export function simulatedHistory(id: string, createdAt: number, endAt: number, v
     return { day: utcDay(at), at, views: v, likes: Math.round(v * rate) };
   });
 }
+
+// ---------- Messagerie par campagne (clipper ↔ agence, ou équipe ClipBoost) ----------
+
+/** Statuts d'une campagne sur lesquels un clipper peut poser une question (rejointe ou non). */
+export const ASKABLE_STATUSES = ["Active", "En pause"] as const;
+/** Anti-spam : au plus MESSAGE_LIMIT messages envoyés par un utilisateur sur MESSAGE_WINDOW_MS (10 minutes). */
+export const MESSAGE_LIMIT = 30, MESSAGE_WINDOW_MS = 10 * 60_000;
+/** Longueur maximale de l'extrait d'un message repris dans une notification. */
+export const EXCERPT_MAX = 60;
+
+/** Identifiant d'une conversation dans l'app et ses liens : « <campagne>~<clipper> » (les identifiants n'ont pas de « ~ »). */
+export const threadKey = (campaignId: string, clipperId: string) => `${campaignId}~${clipperId}`;
+
+/**
+ * Campagne de ClipBoost (créée par l'équipe : sans propriétaire, ou propriétaire administrateur) : ce sont les admins
+ * qui répondent aux clippers, et non une agence.
+ */
+export const isTeamCampaign = (ownerId: string | null, ownerRole: string | null | undefined) => !ownerId || ownerRole === "admin";
+
+/** Extrait d'un message pour une notification : une ligne, coupé à EXCERPT_MAX caractères sur un espace, avec « … ». */
+export function messageExcerpt(body: string) {
+  const line = body.replace(/\s+/g, " ").trim();
+  if (line.length <= EXCERPT_MAX) return line;
+  const cut = line.slice(0, EXCERPT_MAX), space = cut.lastIndexOf(" ");
+  return `${(space > EXCERPT_MAX / 2 ? cut.slice(0, space) : cut).replace(/[\s,;:.!?…-]+$/, "")}…`;
+}
+
+/**
+ * Notification de l'agence (ou des admins) à chaque message d'un clipper : « Nouvelle question » quand il ouvre la
+ * conversation ou relance après une réponse, « Nouveau message » quand il complète sa question. Même texte sur le
+ * serveur, hors ligne et dans les données d'exemple (traduit par l'interface, web/src/i18n/<langue>/server.js).
+ */
+export const clipperMessageText = (clipper: string, campaign: string, body: string, question: boolean) =>
+  `${question ? "Nouvelle question" : "Nouveau message"} de ${clipper} sur « ${campaign} » : « ${messageExcerpt(body)} »`;
+
+/** Notification du clipper à chaque réponse : de l'agence (son nom), ou de l'équipe pour une campagne de ClipBoost. */
+export const replyText = (agency: string | null, campaign: string, body: string) =>
+  agency ? `Réponse de ${agency} sur « ${campaign} » : « ${messageExcerpt(body)} »` : `L'équipe ClipBoost a répondu sur « ${campaign} » : « ${messageExcerpt(body)} »`;
+
+/** Message tel que stocké (dates en millisecondes), pour messageThreads. */
+export type MessageRow = { id: string; campaignId: string; clipperId: string; senderId: string; body: string; createdAt: number; readAt: number | null };
+
+/**
+ * Conversations envoyées à l'interface (GET /api/state), de la plus récente à la plus ancienne : messages dans l'ordre,
+ * unread : messages de l'autre côté pas encore lus par le lecteur (clipper ou non), awaiting : le dernier message vient du
+ * clipper (une réponse est attendue). Même forme sur le serveur et hors ligne.
+ */
+export function messageThreads(rows: MessageRow[], readerIsClipper: boolean) {
+  const sorted = rows.slice().sort((a, b) => a.createdAt - b.createdAt);
+  const threads = new Map<string, { id: string; campaignId: string; clipperId: string; unread: number; awaiting: boolean; lastAt: string; messages: { id: string; senderId: string; fromClipper: boolean; body: string; at: string; read: boolean }[] }>();
+  for (const m of sorted) {
+    const key = threadKey(m.campaignId, m.clipperId), fromClipper = m.senderId === m.clipperId, read = m.readAt !== null;
+    let t = threads.get(key);
+    if (!t) threads.set(key, (t = { id: key, campaignId: m.campaignId, clipperId: m.clipperId, unread: 0, awaiting: false, lastAt: "", messages: [] }));
+    t.messages.push({ id: m.id, senderId: m.senderId, fromClipper, body: m.body, at: new Date(m.createdAt).toISOString(), read });
+    if (!read && fromClipper !== readerIsClipper) t.unread++;
+    t.awaiting = fromClipper;
+    t.lastAt = new Date(m.createdAt).toISOString();
+  }
+  return [...threads.values()].sort((a, b) => b.lastAt.localeCompare(a.lastAt) || a.id.localeCompare(b.id));
+}

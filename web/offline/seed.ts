@@ -2,6 +2,7 @@
 // données d'exemple que `scripts/seed.mts --demo`, datées par rapport au premier lancement.
 import type { CampaignStatus, PublicationStatus } from "../../lib/server/db/schema";
 import { DEMO_APPEAL_MESSAGE, DEMO_PROOF_DATA_URL } from "../../lib/server/demo-appeal";
+import { demoThreads } from "../../lib/server/demo-messages";
 import { numberDocuments } from "../../lib/server/documents";
 import { clipRisk, payoutFor, sentence, simulatedHistory } from "../../lib/server/rules";
 import { link } from "../../lib/server/links";
@@ -167,6 +168,12 @@ export async function seed(): Promise<Store> {
     [admin, 0.9, "🏦", `${hoggar.name} annonce une recharge de ${fmt(600000)} par virement bancaire (réf. ${rechargeRef}).`, link.adminPayment(rechargeId)],
     [admin, 1.5, "🛡️", `${hoggar.name} demande le badge de vérification.`, link.adminUser(hoggar.id)],
     [admin, 0.6, "⚖️", `${lina.name} conteste le refus du clip « Sketch du marché ».`, link.adminAppeal(appealId)]);
+  // Conversations de campagne (lib/server/demo-messages.ts) : messages et notifications lus ou non selon la conversation.
+  const threads = demoThreads({ yacine, amira, lina, tassili, admin, derby, kahwa, rire });
+  for (const m of threads.messages) db.messages.push({ id: newId(), campaignId: m.campaignId, clipperId: m.clipperId, senderId: m.senderId, body: m.body, readAt: m.read ? daysAgo(m.days - 0.05) : null, createdAt: daysAgo(m.days) });
+  for (const n of threads.notes) for (const to of n.to === "admins" ? db.users.filter((u) => u.role === "admin").map((u) => u.id) : [n.to]) {
+    db.notifications.push({ id: newId(), userId: to, icon: "💬", text: n.text, link: n.link, read: n.read, createdAt: daysAgo(n.days) });
+  }
   // Les événements de plus de 2 jours sont déjà lus ; les plus récents restent à lire.
   for (const [days, icon, text] of acts) db.activity.push({ id: newId(), icon, text, createdAt: daysAgo(days) });
   for (const [u, days, icon, text, href] of notes) db.notifications.push({ id: newId(), userId: u.id, icon, text, link: href, read: days > 2, createdAt: daysAgo(days) });

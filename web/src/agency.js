@@ -12,6 +12,7 @@ const AGENCY_NAV = [
   { id: "apercu", get label() { return t("Accueil"); }, get short() { return t("Accueil"); }, icon: "home" },
   { id: "campagnes", get label() { return t("Mes campagnes"); }, get short() { return t("Campagnes"); }, icon: "target" },
   { id: "clips", get label() { return t("Clips reçus"); }, get short() { return t("Clips"); }, icon: "film" },
+  { id: "messages", get label() { return t("Messages"); }, icon: "message" },
   { id: "budget", get label() { return t("Budget"); }, icon: "wallet" },
   { id: "profil", get label() { return t("Profil de l'agence"); }, get short() { return t("Profil"); }, icon: "user" },
   { id: "parametres", get label() { return t("Paramètres"); }, icon: "gear" },
@@ -591,7 +592,14 @@ function gParametres() {
 }
 
 // paiement : page hors navigation (ITEM_PAGES dans main.js), « Budget » y reste l'entrée courante.
-const AGENCY_VIEWS = { apercu: gApercu, campagnes: gCampagnes, clips: gClips, budget: gBudget, paiement: gPaiement, profil: gProfil, parametres: gParametres };
+// Messages : questions des clippers sur les campagnes de l'agence (#/agence/messages/<campagne>~<clipper>).
+const gMessages = () => msgTeamPage({
+  area: "agence", form: "ag-msg", campaignAction: "ag-open", filter: state.ag.msgFilter || "all", filterAction: "ag-msg-filter",
+  title: t("Messages"), text: t("Les questions des clippers sur vos campagnes. Répondez-leur ici : ils sont prévenus."),
+  emptyText: t("Les clippers peuvent vous poser une question depuis la fiche de chaque campagne active ou en pause."),
+});
+
+const AGENCY_VIEWS = { apercu: gApercu, campagnes: gCampagnes, clips: gClips, messages: gMessages, budget: gBudget, paiement: gPaiement, profil: gProfil, parametres: gParametres };
 
 // ---------- Formulaire de campagne (partagé avec admin.js) ----------
 
@@ -1034,6 +1042,7 @@ function handleAgencyAction(action, el) {
   const id = el.dataset.id;
   switch (action) {
     case "ag-status": state.ag.status = el.dataset.value; return render();
+    case "ag-msg-filter": state.ag.msgFilter = el.dataset.value; return render();
     case "ag-clip-status": state.ag.clipStatus = el.dataset.value; return render();
     case "ag-clear": state.ag.q = ""; state.ag.status = "Toutes"; return render();
     case "ag-show-refused": state.ag.q = ""; state.ag.status = "Refusée"; return navigate("#/agence/campagnes");
@@ -1093,6 +1102,11 @@ function agCampaignError(d) {
 }
 
 function handleAgencySubmit(form, data) {
+  if (form === "ag-msg") {
+    const x = msgThreads().find((y) => y.id === state.route.item), body = String(data.body || "").trim();
+    if (!x || !body) return;
+    return act("POST", `/api/campaigns/${encodeURIComponent(x.campaignId)}/messages`, { body, clipperId: x.clipperId });
+  }
   if (form === "ag-campaign") {
     const err = agCampaignError(data);
     if (err) return agInvalid(form, ...err);

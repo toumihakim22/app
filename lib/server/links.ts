@@ -29,6 +29,12 @@ export const link = {
   adminPayment: (transactionId: string) => `#/admin/retraits/${transactionId}`,
   /** Retrait (clipper) ou recharge (agence) traité par l'équipe. */
   userTx: (type: string, transactionId: string) => (type === "recharge" ? link.agencyBudget(transactionId) : link.clipperTx(transactionId)),
+  /** Conversation du clipper sur une campagne (Messages) : identifiée par la campagne seule. */
+  clipperThread: (campaignId: string) => `#/clipper/messages/${campaignId}`,
+  /** Conversation avec un clipper sur une campagne de l'agence : « <campagne>~<clipper> » (threadKey, rules.ts). */
+  agencyThread: (campaignId: string, clipperId: string) => `#/agence/messages/${campaignId}~${clipperId}`,
+  /** Conversation avec un clipper sur une campagne de ClipBoost, à laquelle l'équipe répond. */
+  adminThread: (campaignId: string, clipperId: string) => `#/admin/messages/${campaignId}~${clipperId}`,
   /** Accueil de l'espace (compte réactivé ou suspendu). */
   home: (role: Role) => ({ admin: "#/admin/apercu", agence: "#/agence/apercu", clipper: "#/clipper/accueil" })[role],
 };

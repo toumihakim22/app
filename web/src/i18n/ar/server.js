@@ -195,6 +195,14 @@ Object.assign(I18N.ar, {
   "Terminée": "منتهية",
   "Refusée": "مرفوضة",
   "Équipe ClipBoost": "فريق ClipBoost",
+  // ---------- Messagerie par campagne (lib/server/services/messages.ts, validation.ts) ----------
+  "Écrivez votre message": "اكتب رسالتك",
+  "Campagne manquante": "الحملة غير محددة",
+  "Conversation introuvable": "المحادثة غير موجودة",
+  "Cette campagne appartient à une agence : c'est elle qui répond à ses clippers": "هذه الحملة تابعة لوكالة: هي من تجيب صانعي المقاطع",
+  "Cette campagne est terminée : vous ne pouvez plus envoyer de message": "انتهت هذه الحملة: لم يعد بإمكانك إرسال رسائل",
+  "Vous pouvez seulement répondre à un clipper qui vous a écrit": "يمكنك فقط الرد على صانع مقاطع راسلك",
+  "Trop de messages envoyés, réessayez dans quelques minutes": "أرسلت رسائل كثيرة، أعد المحاولة بعد بضع دقائق",
 });
 
 I18N_RX.ar.push(
@@ -328,4 +336,12 @@ I18N_RX.ar.push(
   [/^(?:Invalid option: |Option invalide : ).+$/, "خيار غير صالح"],
   [/^(?:Invalid input: |Entrée invalide : |Invalid discriminator value).+$/, "قيمة غير صالحة"],
   [/^(?:Invalid string: |Chaîne de caractères invalide : ).+$/, "صيغة غير صالحة"],
+);
+
+// Messagerie par campagne (lib/server/services/messages.ts, validation.ts) : notifications (lib/server/rules.ts, clipperMessageText et replyText).
+I18N_RX.ar.push(
+  [/^Nouvelle question de (.+) sur « (.+) » : « ([\s\S]*) »$/, "سؤال جديد من $1 حول « $2 »: « $3 »"],
+  [/^Nouveau message de (.+) sur « (.+) » : « ([\s\S]*) »$/, "رسالة جديدة من $1 حول « $2 »: « $3 »"],
+  [/^Réponse de (.+) sur « (.+) » : « ([\s\S]*) »$/, "رد من $1 حول « $2 »: « $3 »"],
+  [/^L'équipe ClipBoost a répondu sur « (.+) » : « ([\s\S]*) »$/, "ردّ فريق ClipBoost حول « $1 »: « $2 »"],
 );

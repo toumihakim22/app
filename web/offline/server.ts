@@ -5,13 +5,14 @@ import { z, ZodError, type ZodType } from "zod";
 import {
   amountSchema, appealSchema, approveSchema, campaignSchema, campaignStatusSchema, changePasswordSchema, checkoutSchema, clipSchema, creditSchema, forgotSchema,
   loginSchema, membershipSchema, oauthDemoSchema, profileSchema, resetSchema, reviewAppealSchema, reviewClipSchema, settingsSchema, signupSchema, simulatePaymentSchema,
-  socialAccountSchema, userStatusSchema, verificationRequestSchema, verificationReviewSchema, verifySchema, viewsSchema, withdrawSchema, exportSchema,
+  socialAccountSchema, userStatusSchema, verificationRequestSchema, verificationReviewSchema, verifySchema, viewsSchema, withdrawSchema, exportSchema, messageSchema, readThreadSchema,
 } from "../../lib/server/validation";
 import { csvFilename } from "../../lib/server/documents";
 import { exportTransactions, transactionDocument } from "./documents";
 import { ApiError, badRequest, clear, forbidden, load, logActivity, save } from "./db";
 import * as svc from "./services";
 import { reviewAppeal, submitAppeal } from "./appeals";
+import { markThreadRead, sendMessage } from "./messages";
 import { resumeOnlineTopUp, simulatePayment, startOnlineTopUp } from "./payments";
 import { publicState, stateFor } from "./state";
 import { runDueJobs, trackViews } from "./tracking";
@@ -163,6 +164,20 @@ const routes: Record<string, Record<string, Handler>> = {
     POST: (req) => {
       const user = svc.requireUser(req.db, "clipper");
       svc.setMembership(req, user.id, req.params.id, body(req, membershipSchema));
+      return ok();
+    },
+  },
+  // Messagerie par campagne : question du clipper, réponse de l'agence ou de l'équipe ; conversation lue.
+  "/api/campaigns/:id/messages": {
+    POST: (req) => {
+      const user = svc.requireUser(req.db, "clipper", "agence", "admin");
+      return ok({ id: sendMessage(req, user, req.params.id, body(req, messageSchema)) }, 201);
+    },
+  },
+  "/api/messages/read": {
+    POST: (req) => {
+      const user = svc.requireUser(req.db, "clipper", "agence", "admin");
+      markThreadRead(req, user, body(req, readThreadSchema));
       return ok();
     },
   },

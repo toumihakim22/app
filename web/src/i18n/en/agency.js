@@ -412,4 +412,7 @@ Object.assign(I18N.en, {
 
   // Facture PDF des recharges validées (Budget)
   "Facture": "Invoice",
+  // Messagerie par campagne (Messages)
+  "Les questions des clippers sur vos campagnes. Répondez-leur ici : ils sont prévenus.": "Clippers' questions about your campaigns. Reply here: they get notified.",
+  "Les clippers peuvent vous poser une question depuis la fiche de chaque campagne active ou en pause.": "Clippers can ask you a question from the page of each active or paused campaign.",
 });

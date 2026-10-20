@@ -1,6 +1,6 @@
 // Espace Clipper : accueil (activité et statistiques), découvrir (toutes les campagnes), agences et page d'une agence,
 // publications, portefeuille, profil (et comptes sociaux), paramètres. Modales : fiche d'une campagne, soumission d'un
-// clip, retrait, retrait d'un compte social vérifié.
+// clip, retrait, retrait d'un compte social vérifié. Messages : questions posées aux organisateurs des campagnes.
 // Recettes et helpers : docs/design-system.md §4 et §6.2 (web/src/ui.js). Helpers locaux préfixés « cl ».
 // Textes : t("source française") au moment du rendu (web/src/i18n.js) ; traductions dans web/src/i18n/{en,ar}/clipper.js.
 // Les valeurs échangées avec le serveur ou comparées (statuts, catégories, moyens de retrait, data-value) restent en
@@ -28,6 +28,7 @@ const CLIPPER_NAV = [
   { id: "decouvrir", get label() { return t("Découvrir"); }, icon: "compass" },
   { id: "agences", get label() { return t("Agences"); }, icon: "building" },
   { id: "publications", get label() { return t("Mes publications"); }, get short() { return t("Clips"); }, icon: "film" },
+  { id: "messages", get label() { return t("Messages"); }, icon: "message" },
   { id: "portefeuille", get label() { return t("Portefeuille"); }, icon: "wallet" },
   { id: "profil", get label() { return t("Profil"); }, icon: "user" },
   { id: "parametres", get label() { return t("Paramètres"); }, icon: "gear" },
@@ -662,6 +663,38 @@ function cPublications() {
     : `<div class="mt-6">${emptyState("film", t("Aucun clip soumis"), t("Rejoignez une campagne, publiez votre clip puis soumettez son lien pour validation."), `<a href="#/clipper/decouvrir" class="${btn("primary")}">${icon("compass")}${t("Découvrir les campagnes")}</a>`)}</div>`}`;
 }
 
+// ---------- Messages : une conversation par campagne (#/clipper/messages/<campagne>) ----------
+// Le clipper pose sa question depuis la fiche d'une campagne (« Poser une question ») ; l'agence, ou l'équipe ClipBoost
+// pour une campagne de ClipBoost, répond. Une campagne active ou en pause accepte de nouveaux messages.
+const clThreadOf = (campaignId) => msgThreads().find((x) => x.campaignId === campaignId) || null;
+const clAskable = (c) => c.status === "Active" || c.status === "En pause";
+const clAnswerer = (c) => (c.ownerId ? clOrgName(c) : t("l'équipe ClipBoost"));
+
+function cMessages() {
+  const id = state.route.item || "", threads = msgThreads().filter((x) => campaignById(x.campaignId));
+  const list = threads.length
+    ? threads.map((x) => { const c = campaignById(x.campaignId); return msgThreadItem({ href: `#/clipper/messages/${encodeURIComponent(c.id)}`, current: c.id === id, thumb: coverThumb(c), title: esc(c.title), sub: esc(clOrgName(c)), thread: msgMine(x, true) }); }).join("")
+    : emptyState("message", t("Aucune conversation"), t("Une question sur une campagne ? Ouvrez sa fiche et choisissez « Poser une question »."), `<a href="#/clipper/decouvrir" class="${btn("secondary")}">${t("Découvrir les campagnes")}</a>`, { inCard: true });
+  let conversation = "";
+  if (id) {
+    const c = campaignById(id), x = c && clThreadOf(c.id);
+    if (!c) conversation = `<div class="grid flex-1 place-items-center">${emptyState("message", t("Conversation introuvable"), t("Cette campagne n'est plus visible."), `<a href="#/clipper/messages" class="${btn("secondary")}">${t("Voir mes conversations")}</a>`, { inCard: true })}</div>`;
+    else {
+      msgAutoRead(x, { campaignId: c.id });
+      const o = clOrgOf(c), who = clAnswerer(c);
+      conversation = msgConversation({
+        back: "#/clipper/messages",
+        head: `${coverThumb(c)}<div class="min-w-0"><p class="truncate text-sm font-semibold text-fg">${esc(c.title)}</p><p class="truncate text-xs text-fg-subtle">${c.ownerId ? `${esc(o.name)}${o.verified ? `${NB}${verifiedBadge("size-3.5")}` : ""}` : t("Réponses de l'équipe ClipBoost")}</p></div>`,
+        actions: `<button type="button" data-action="open-campaign" data-id="${c.id}" class="${btn("secondary", "sm", "shrink-0")}">${icon("info", "size-4")}<span class="max-sm:hidden">${t("Voir la campagne")}</span></button>`,
+        messages: x ? msgMine(x, true).messages : [],
+        empty: `<div class="grid h-full place-items-center">${emptyState("message", t("Posez votre question"), t("{name} vous répondra ici. Vous serez prévenu par une notification.", { name: esc(who) }), "", { inCard: true })}</div>`,
+        composer: msgComposer("cl-msg", t("Écrivez votre question…"), clAskable(c) ? "" : t("Cette campagne est terminée : vous ne pouvez plus envoyer de message.")),
+      });
+    }
+  }
+  return msgLayout({ title: t("Messages"), text: t("Vos questions aux agences sur leurs campagnes, et leurs réponses."), list, conversation });
+}
+
 function cPortefeuille() {
   const u = me(), all = myTx();
   const list = all.filter((x) => state.tx.type === "tous" || x.type === state.tx.type);
@@ -809,7 +842,7 @@ function cParametres() {
 }
 
 // agence : page hors navigation (ITEM_PAGES dans main.js), « Agences » y reste l'entrée courante.
-const CLIPPER_VIEWS = { accueil: cAccueil, decouvrir: cDecouvrir, agences: cAgences, agence: cAgence, publications: cPublications, portefeuille: cPortefeuille, profil: cProfil, parametres: cParametres };
+const CLIPPER_VIEWS = { accueil: cAccueil, decouvrir: cDecouvrir, agences: cAgences, agence: cAgence, publications: cPublications, messages: cMessages, portefeuille: cPortefeuille, profil: cProfil, parametres: cParametres };
 
 // ---------- Récapitulatifs en direct (main.js appelle LIVE[nom] à chaque saisie) ----------
 LIVE.withdraw = (d) => {
@@ -861,7 +894,9 @@ function clCampaignSheet(c, u) {
       <h3 class="mt-6 text-section text-fg">${plats.length > 1 ? t("Plateformes acceptées") : t("Plateforme acceptée")}</h3>
       <div class="mt-2 flex flex-wrap gap-2">${plats.map(platformTag).join("")}</div>
       ${open && plats.length > 1 ? `<p class="mt-2 text-xs text-fg-subtle">${t("Publiez votre clip sur une seule de ces plateformes ou sur toutes : vous indiquerez un lien par plateforme, chacun payé selon ses vues.")}</p>` : ""}`,
-    footer: `<button type="button" data-action="close-modal" class="${btn(open ? "ghost" : "secondary")}">${t("Fermer")}</button>${!open ? "" : joined
+    // Question à l'organisateur : sur une campagne active ou en pause, ou conversation déjà ouverte.
+    footer: `<button type="button" data-action="close-modal" class="${btn(open ? "ghost" : "secondary")}">${t("Fermer")}</button>${clAskable(c) || clThreadOf(c.id)
+      ? `<a href="#/clipper/messages/${encodeURIComponent(c.id)}" data-action="close-modal" class="${btn("secondary")}">${icon("message", "size-4")}${clThreadOf(c.id) ? t("Voir la conversation") : t("Poser une question")}</a>` : ""}${!open ? "" : joined
       ? `<button type="button" data-action="submit-clip" data-id="${c.id}" class="${btn("primary")}">${icon("plus")}${t("Soumettre un clip")}</button>`
       : `<button type="button" data-action="join" data-id="${c.id}" class="${btn("primary")}">${t("Rejoindre la campagne")}</button>`}`,
   });
@@ -1163,6 +1198,11 @@ function handleClipperSubmit(form, data) {
       return;
     }
     return act("POST", `/api/clips/${encodeURIComponent(id)}/appeal`, { message, proof }, t("Contestation envoyée : l'équipe ClipBoost va revoir votre clip"), () => { state.modal = null; });
+  }
+  if (form === "cl-msg") {
+    const c = campaignById(state.route.item || ""), body = String(data.body || "").trim();
+    if (!c || !body) return;
+    return act("POST", `/api/campaigns/${encodeURIComponent(c.id)}/messages`, { body });
   }
   if (form === "withdraw") {
     const amount = Math.floor(Number(String(data.amount || "").replace(/\D/g, ""))) || 0, min = db.settings.minWithdraw, bal = Math.floor(balance());

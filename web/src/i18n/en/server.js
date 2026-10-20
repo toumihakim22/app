@@ -191,6 +191,14 @@ Object.assign(I18N.en, {
   "Terminée": "Ended",
   "Refusée": "Rejected",
   "Équipe ClipBoost": "ClipBoost Team",
+  // ---------- Messagerie par campagne (lib/server/services/messages.ts, validation.ts) ----------
+  "Écrivez votre message": "Write your message",
+  "Campagne manquante": "Missing campaign",
+  "Conversation introuvable": "Conversation not found",
+  "Cette campagne appartient à une agence : c'est elle qui répond à ses clippers": "This campaign belongs to an agency: the agency answers its clippers",
+  "Cette campagne est terminée : vous ne pouvez plus envoyer de message": "This campaign has ended: you can no longer send messages",
+  "Vous pouvez seulement répondre à un clipper qui vous a écrit": "You can only reply to a clipper who wrote to you",
+  "Trop de messages envoyés, réessayez dans quelques minutes": "Too many messages sent, please try again in a few minutes",
 });
 
 I18N_RX.en.push(
@@ -317,4 +325,12 @@ I18N_RX.en.push(
   [/^Option invalide : une valeur parmi (.+) attendue$/, "Invalid option: expected one of $1"],
   [/^Entrée invalide : .+$/, "Invalid input"],
   [/^Chaîne de caractères invalide : .+$/, "Invalid format"],
+);
+
+// Messagerie par campagne (lib/server/services/messages.ts, validation.ts) : notifications (lib/server/rules.ts, clipperMessageText et replyText).
+I18N_RX.en.push(
+  [/^Nouvelle question de (.+) sur « (.+) » : « ([\s\S]*) »$/, "New question from $1 on “$2”: “$3”"],
+  [/^Nouveau message de (.+) sur « (.+) » : « ([\s\S]*) »$/, "New message from $1 on “$2”: “$3”"],
+  [/^Réponse de (.+) sur « (.+) » : « ([\s\S]*) »$/, "Reply from $1 on “$2”: “$3”"],
+  [/^L'équipe ClipBoost a répondu sur « (.+) » : « ([\s\S]*) »$/, "The ClipBoost team replied on “$1”: “$2”"],
 );

@@ -18,6 +18,7 @@ const ADMIN_NAV = [
   { id: "campagnes", label: "Campagnes", icon: "target" },
   { id: "moderation", label: "Modération des clips", short: "Clips", icon: "shield" },
   { id: "retraits", label: "Paiements", icon: "wallet" },
+  { id: "messages", label: "Messages", icon: "message" },
   { id: "parametres", label: "Réglages du site", short: "Réglages", icon: "gear" },
 ];
 
@@ -947,7 +948,14 @@ function aCompte() {
 }
 
 // utilisateur : page hors navigation (ITEM_PAGES dans main.js) ; compte : « Mon compte », ouverte par le menu du compte.
-const ADMIN_VIEWS = { apercu: aApercu, utilisateurs: aUtilisateurs, utilisateur: aUtilisateur, campagnes: aCampagnes, moderation: aModeration, retraits: aRetraits, parametres: aParametres, compte: aCompte };
+// Messages : questions des clippers sur les campagnes de ClipBoost, auxquelles l'équipe répond (#/admin/messages/<campagne>~<clipper>).
+const aMessages = () => msgTeamPage({
+  area: "admin", form: "adm-msg", campaignAction: "adm-camp", filter: state.adm.msgFilter || "all", filterAction: "adm-msg-filter",
+  title: t("Messages"), text: t("Les questions des clippers sur les campagnes de ClipBoost. Les agences répondent elles-mêmes sur leurs campagnes."),
+  emptyText: t("Les clippers peuvent poser une question depuis la fiche de chaque campagne de ClipBoost active ou en pause."),
+});
+
+const ADMIN_VIEWS = { apercu: aApercu, messages: aMessages, utilisateurs: aUtilisateurs, utilisateur: aUtilisateur, campagnes: aCampagnes, moderation: aModeration, retraits: aRetraits, parametres: aParametres, compte: aCompte };
 
 // ---------- Fiches d'examen ----------
 
@@ -1414,6 +1422,7 @@ function handleAdminAction(action, el) {
     case "adm-camp-status": state.adm.campStatus = v; return render();
     case "adm-camp-clear": Object.assign(state.adm, { campQ: "", campStatus: "Toutes" }); return render();
     case "adm-mod-status": state.adm.modStatus = v; return render();
+    case "adm-msg-filter": state.adm.msgFilter = v; return render();
     case "adm-mod-sort": state.adm.modSort = v === "risk" ? "risk" : "recent"; return render();
     // Relevé des vues de tous les clips suivis, sans attendre le prochain passage automatique.
     case "adm-track-views": return act("POST", "/api/admin/track-views", null, (r) => (r.failed
@@ -1532,6 +1541,12 @@ function admLimitError(label, min, max, decimal) {
 
 function handleAdminSubmit(form, data) {
   const m = state.modal;
+  // Réponse de l'équipe dans la conversation ouverte (Messages).
+  if (form === "adm-msg") {
+    const x = msgThreads().find((y) => y.id === state.route.item), body = String(data.body || "").trim();
+    if (!x || !body) return;
+    return act("POST", `/api/campaigns/${encodeURIComponent(x.campaignId)}/messages`, { body, clipperId: x.clipperId });
+  }
   // Export CSV : téléchargement (navigateur ou fichier HTML autonome), modale refermée une fois le fichier enregistré.
   if (form === "adm-export") {
     const from = String(data.from || ""), to = String(data.to || "");

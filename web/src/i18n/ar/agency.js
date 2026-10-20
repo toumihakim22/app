@@ -413,4 +413,7 @@ Object.assign(I18N.ar, {
 
   // Facture PDF des recharges validées (Budget)
   "Facture": "الفاتورة",
+  // Messagerie par campagne (Messages)
+  "Les questions des clippers sur vos campagnes. Répondez-leur ici : ils sont prévenus.": "أسئلة صانعي المقاطع حول حملاتك. أجبهم هنا وسيصلهم إشعار.",
+  "Les clippers peuvent vous poser une question depuis la fiche de chaque campagne active ou en pause.": "يمكن لصانعي المقاطع طرح سؤال عليك من بطاقة كل حملة نشطة أو متوقفة مؤقتًا.",
 });

@@ -29,6 +29,8 @@ export type JobRunRow = Row<typeof schema.jobRuns.$inferSelect, "lastRunAt">;
 export type AppealRow = Row<typeof schema.appeals.$inferSelect, "createdAt" | "decidedAt">;
 /** Facture (recharge validée) ou reçu (retrait validé) : son numéro ; le PDF est composé au téléchargement (documents.ts). */
 export type DocumentRow = Row<typeof schema.documents.$inferSelect, "createdAt">;
+/** Message d'une conversation de campagne (campagne × clipper). */
+export type MessageRow = Row<typeof schema.messages.$inferSelect, "createdAt" | "readAt">;
 
 export type Store = {
   version: number;
@@ -46,6 +48,7 @@ export type Store = {
   jobRuns: JobRunRow[];
   appeals: AppealRow[];
   documents: DocumentRow[];
+  messages: MessageRow[];
   settings: Partial<Settings>;
   /** Session du navigateur (l'équivalent du cookie cb_session). */
   session: { userId: string; expiresAt: number } | null;
@@ -58,7 +61,7 @@ export const STORAGE_KEY = `clipboost-offline-v${VERSION}`;
 
 export const emptyStore = (): Store => ({
   version: VERSION, users: [], emailCodes: [], campaigns: [], members: [], publications: [], transactions: [],
-  notifications: [], activity: [], oauth: [], social: [], snapshots: [], jobRuns: [], appeals: [], documents: [], settings: {}, session: null,
+  notifications: [], activity: [], oauth: [], social: [], snapshots: [], jobRuns: [], appeals: [], documents: [], messages: [], settings: {}, session: null,
 });
 
 // ---------- Persistance ----------
@@ -89,6 +92,7 @@ function upgrade(s: Store): Store {
   s.snapshots ??= [];
   s.jobRuns ??= [];
   s.appeals ??= [];
+  s.messages ??= [];
   // Base d'avant les factures et reçus : un document pour chaque recharge ou retrait déjà validé (comme la migration 0007).
   if (!s.documents) {
     const done = s.transactions.filter((t) => t.status === "Validé" && documentKindOf(t.type));

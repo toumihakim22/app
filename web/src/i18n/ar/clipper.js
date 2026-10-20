@@ -466,4 +466,16 @@ Object.assign(I18N.ar, {
   "Expliquez votre contestation en 20 caractères au moins.": "اشرح اعتراضك في 20 حرفًا على الأقل.",
   "Ajoutez une capture d'écran comme preuve.": "أضف لقطة شاشة كإثبات.",
   "Contestation envoyée : l'équipe ClipBoost va revoir votre clip": "أُرسل الاعتراض: سيعيد فريق ClipBoost مراجعة مقطعك",
+  // Messagerie par campagne (Messages)
+  "l'équipe ClipBoost": "فريق ClipBoost",
+  "Une question sur une campagne ? Ouvrez sa fiche et choisissez « Poser une question ».": "لديك سؤال عن حملة؟ افتح بطاقتها واختر « اطرح سؤالًا ».",
+  "Cette campagne n'est plus visible.": "لم تعد هذه الحملة ظاهرة.",
+  "Voir mes conversations": "عرض محادثاتي",
+  "Réponses de l'équipe ClipBoost": "يجيب فريق ClipBoost",
+  "Posez votre question": "اطرح سؤالك",
+  "{name} vous répondra ici. Vous serez prévenu par une notification.": "سيجيبك {name} هنا، وستصلك إشعار بذلك.",
+  "Écrivez votre question…": "اكتب سؤالك…",
+  "Cette campagne est terminée : vous ne pouvez plus envoyer de message.": "انتهت هذه الحملة: لم يعد بإمكانك إرسال رسائل.",
+  "Vos questions aux agences sur leurs campagnes, et leurs réponses.": "أسئلتك للوكالات حول حملاتها، وردودها.",
+  "Poser une question": "اطرح سؤالًا",
 });

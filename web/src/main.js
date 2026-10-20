@@ -1,7 +1,8 @@
 // Routeur, coquilles (navigation) et gestion des événements de l'application (/espace).
 // Routes : #/connexion, #/inscription, #/inscription-agence, #/mot-de-passe, #/clipper/<page>, #/agence/<page>, #/admin/<page>.
 // Un 3e segment désigne un élément de la page (lien d'une notification) : #/clipper/publications/<id>, voir applyRouteItem().
-// Exception : les pages de ITEM_PAGES, dont le 3e segment fait partie de l'adresse (#/clipper/agence/<clé>, voir onRoute()).
+// Exception : les pages de ITEM_PAGES, dont le 3e segment fait partie de l'adresse (#/clipper/agence/<clé>, la conversation
+// ouverte de Messages #/clipper/messages/<campagne>, #/agence/messages/<campagne>~<clipper>, voir onRoute()).
 // Anciennes adresses (ROUTE_ALIASES, encore présentes dans des notifications et des favoris) : #/clipper/campagnes[/<id>]
 // mène à Découvrir, #/clipper/statistiques à l'Accueil (qui réunit l'aperçu et les statistiques) ; l'adresse est corrigée.
 // La page d'accueil publique est servie par Next.js à l'adresse / ; dans la version autonome (fichier HTML unique),
@@ -25,8 +26,8 @@ const state = {
   // Accueil du clipper : graphique par jour ou cumulé, tableau des clips récents ou les plus vus.
   clChart: "jour",
   clClips: "recent",
-  adm: { userQ: "", userStatus: "Tous", userRole: "Tous les rôles", campQ: "", campStatus: "Toutes", modStatus: "En attente", modSort: "recent", payTab: "retraits" },
-  ag: { q: "", status: "Toutes", clipStatus: "Toutes" },
+  adm: { userQ: "", userStatus: "Tous", userRole: "Tous les rôles", campQ: "", campStatus: "Toutes", modStatus: "En attente", modSort: "recent", payTab: "retraits", msgFilter: "all" },
+  ag: { q: "", status: "Toutes", clipStatus: "Toutes", msgFilter: "all" },
   pwdError: "",
   auth: null,
 };
@@ -59,9 +60,9 @@ function parseRoute() {
   return r;
 }
 
-// Pages hors navigation dont le 3e segment est l'objet de la page (gardé dans l'adresse, rechargement possible) :
-// la valeur est l'entrée de navigation affichée comme courante.
-const ITEM_PAGES = { "clipper/agence": "agences", "admin/utilisateur": "utilisateurs", "agence/paiement": "budget" };
+// Pages dont le 3e segment est l'objet de la page (gardé dans l'adresse, rechargement possible) : la valeur est l'entrée
+// de navigation affichée comme courante. Messages : la conversation ouverte.
+const ITEM_PAGES = { "clipper/agence": "agences", "admin/utilisateur": "utilisateurs", "agence/paiement": "budget", "clipper/messages": "messages", "agence/messages": "messages", "admin/messages": "messages" };
 const navView = (area, view) => ITEM_PAGES[`${area}/${view}`] || view;
 
 function navigate(hash) {
@@ -150,6 +151,9 @@ const NAV_ICON = "size-[18px] shrink-0 text-fg-subtle transition-colors group-ho
 // Mini-crédit de l'agence dans la barre latérale : masqué là où le même chiffre est déjà le sujet de la page.
 const MINI_HIDDEN = { agence: ["apercu", "budget"] };
 
+// Pastille d'une entrée de navigation : files d'attente de l'admin, messages non lus (Messages, dans chaque espace).
+const navCount = (area, id) => (id === "messages" ? msgUnread() : area === "admin" ? adminBadge(id) : 0);
+
 // Barre latérale (≥ lg) et tiroir mobile : trois blocs posés dans un conteneur flex-col de hauteur fixe
 // (h-dvh / plein écran) qui défile seulement si l'écran est trop bas pour eux :
 //   logo (+ tools : bouton Fermer du tiroir) ; navigation, seule partie qui défile ; bloc du bas toujours visible
@@ -167,8 +171,8 @@ function shellSidebar(area, tools = "") {
     <div class="-mx-3 mt-6 min-h-32 flex-1 overflow-y-auto px-3 pb-2">
       <p class="px-2.5 text-micro font-medium uppercase tracking-[0.08em] text-fg-subtle">${t(AREAS[area].title)}</p>
       <nav class="mt-2 grid gap-0.5" aria-label="${esc(t("Navigation principale"))}">${nav.map((n) => {
-        const on = view === n.id, count = area === "admin" ? adminBadge(n.id) : 0;
-        return `<a href="#/${area}/${n.id}" ${on ? 'aria-current="page"' : ""} class="${NAV_ITEM}">${icon(n.icon, NAV_ICON)}<span class="min-w-0 flex-1 truncate">${t(n.label)}</span>${count ? countBadge(count, "queue") : ""}</a>`;
+        const on = view === n.id, count = navCount(area, n.id);
+        return `<a href="#/${area}/${n.id}" ${on ? 'aria-current="page"' : ""} class="${NAV_ITEM}">${icon(n.icon, NAV_ICON)}<span class="min-w-0 flex-1 truncate">${t(n.label)}</span>${count ? `${countBadge(count, n.id === "messages" ? "unread" : "queue")}${n.id === "messages" ? `<span class="sr-only">${esc(t("(non lue)"))}</span>` : ""}` : ""}</a>`;
       }).join("")}</nav>
     </div>
     <div class="grid shrink-0 gap-3 pt-4">
@@ -256,6 +260,7 @@ const NOTIF_DEST = {
   "agence/campagnes": "Voir la campagne", "agence/budget": "Voir le budget", "agence/apercu": "Ouvrir mon espace", "agence/profil": "Voir le profil",
   "admin/campagnes": "Voir la campagne", "admin/moderation": "Voir le clip", "admin/retraits": "Voir la demande",
   "admin/utilisateur": "Voir le profil", "admin/apercu": "Ouvrir mon espace",
+  "clipper/messages": "Voir la conversation", "agence/messages": "Voir la conversation", "admin/messages": "Voir la conversation",
 };
 // Lien vers un recours (#/admin/moderation/<id du recours>) : « Voir le recours ».
 const notifDest = (href) => {
@@ -286,10 +291,12 @@ function shellMobileNav(area) {
   const ids = AREAS[area].mobile, nav = AREAS[area].nav(), view = navView(area, state.route.view), inMore = !ids.includes(view);
   const TABI = "relative flex flex-col items-center justify-center gap-1 text-micro font-medium text-fg-subtle transition-colors [&_svg]:size-5 before:absolute before:inset-x-5 before:top-0 before:h-0.5 before:rounded-full aria-[current=page]:text-brand-fg aria-[current=page]:before:bg-brand";
   const tabs = ids.map((id) => nav.find((x) => x.id === id)).filter(Boolean);
+  // Messages non lus dans une page du tiroir (« Plus ») : point sur l'onglet.
+  const moreUnread = !ids.includes("messages") && nav.some((n) => n.id === "messages") && msgUnread() > 0;
   return `<nav class="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-surface/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-md lg:hidden" aria-label="${esc(t("Navigation mobile"))}">
     <div class="grid h-16 grid-cols-5">
       ${tabs.map((n) => `<a href="#/${area}/${n.id}" ${view === n.id ? 'aria-current="page"' : ""} class="${TABI} ${FOCUS}">${icon(n.icon)}${t(n.short || n.label)}</a>`).join("")}
-      <button type="button" data-action="drawer" aria-expanded="${state.drawer}" ${inMore ? 'aria-current="page"' : ""} class="${TABI} ${FOCUS}">${icon("more")}${t("Plus")}</button>
+      <button type="button" data-action="drawer" aria-expanded="${state.drawer}" ${inMore ? 'aria-current="page"' : ""} class="${TABI} ${FOCUS}"><span class="relative">${icon("more")}${moreUnread ? `<span class="absolute -end-1 -top-0.5 size-2 rounded-full bg-brand ring-2 ring-surface" aria-hidden="true"></span>` : ""}</span>${t("Plus")}${moreUnread ? `<span class="sr-only">${esc(t("Messages non lus"))}</span>` : ""}</button>
     </div></nav>`;
 }
 
@@ -490,10 +497,13 @@ function pageFormOf(el) {
   const form = el && (el.form || (el.closest && el.closest("form[data-form]")));
   return form && form.matches("form[data-form]") && root.contains(form) && !form.closest('[aria-modal="true"]') ? form : null;
 }
+// Un événement sans nouvelle saisie (change émis par le champ actif quand render() le remplace, juste après l'envoi)
+// laisse le formulaire envoyé : seul un brouillon modifié reprend.
 function capturePageDraft(form) {
   const name = form.dataset.form, d = pageDrafts[name] || (pageDrafts[name] = { draft: null, sentWith: null });
-  d.sentWith = null;
+  const before = JSON.stringify(d.draft);
   captureDraft(form, d);
+  if (JSON.stringify(d.draft) !== before) d.sentWith = null;
 }
 const dropPageDraft = (name) => { delete pageDrafts[name]; };
 
@@ -584,6 +594,9 @@ function render() {
   // ouvert une modale empilée peut vivre dans un récapitulatif en direct).
   restoreDraft();
   restorePageDrafts();
+  // Conversation ouverte (Messages) : affichée sur son dernier message ; zone de saisie à la hauteur de son texte.
+  root.querySelectorAll("[data-msg-scroll]").forEach((el) => { el.scrollTop = el.scrollHeight; });
+  root.querySelectorAll("textarea[data-autogrow]").forEach(autogrow);
   // Case « en partie cochée » (« Toutes les plateformes » quand certaines seulement le sont) : l'état indéterminé n'a pas
   // d'attribut HTML, le rendu pose data-indeterminate et il est appliqué ici.
   root.querySelectorAll('input[type="checkbox"][data-indeterminate]').forEach((el) => { el.indeterminate = !el.checked; });
@@ -742,6 +755,7 @@ root.addEventListener("input", (e) => {
   if (k === "adm-user-q") { state.adm.userQ = e.target.value; return render(); }
   if (k === "adm-camp-q") { state.adm.campQ = e.target.value; return render(); }
   if (k === "ag-q") { state.ag.q = e.target.value; return render(); }
+  if (e.target.hasAttribute("data-autogrow")) autogrow(e.target);
   if (e.target.hasAttribute("data-strength")) {
     const meter = root.querySelector("[data-strength-meter]");
     if (meter) meter.innerHTML = strengthMeter(e.target.value);
@@ -778,7 +792,20 @@ window.addEventListener("change", (e) => {
   if (e.target.type !== "file" && e.target.closest("[data-rerender]")) render();
 });
 
+// Zone de saisie d'un message : sa hauteur suit le texte (jusqu'à sa hauteur maximale, puis elle défile).
+function autogrow(el) {
+  if (!el.value) { el.style.height = ""; return; }
+  el.style.height = "auto";
+  el.style.height = `${el.scrollHeight + 2}px`;
+}
+
 root.addEventListener("keydown", (e) => {
+  // Message (Messages) : Entrée envoie, Maj + Entrée passe à la ligne ; pas pendant une composition (clavier IME).
+  if (e.key === "Enter" && !e.shiftKey && !e.isComposing && e.target.matches && e.target.matches("textarea[data-send-on-enter]")) {
+    e.preventDefault();
+    if (e.target.form) e.target.form.requestSubmit();
+    return;
+  }
   // Recherche rapide du clipper (barre du haut) : Entrée ouvre Découvrir avec cette recherche.
   if (e.target.dataset.input === "global-q" && e.key === "Enter") {
     e.preventDefault();

@@ -176,6 +176,7 @@ const icons = {
   trash: '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>',
   pencil: '<path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16v4z"/><path d="M13.5 6.5l4 4"/>',
   send: '<path d="M21 3L10 14M21 3l-7 18-4-7-7-4z"/>',
+  message: '<path d="M20 12a8 8 0 0 1-11.7 7.1L4 20l1-4A8 8 0 1 1 20 12z"/><path d="M8.5 12h.01M12 12h.01M15.5 12h.01"/>',
   refresh: '<path d="M4 12a8 8 0 1 0 2.3-5.7M4 4v4h4"/>',
   card: '<rect x="2.5" y="5" width="19" height="14" rx="2"/><path d="M2.5 10h19M6 15h4"/>',
   help: '<circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6v.6M12 17h.01"/>',
@@ -193,7 +194,7 @@ const EVENT_ICON = { "✅": ["check", "bg-success-bg text-success-fg"], "🚫": 
   "⏳": ["clock", "bg-muted text-fg-muted"], "⚙": ["gear", "bg-muted text-fg-muted"], "🎬": ["film", "bg-muted text-fg-muted"], "🎯": ["target", "bg-muted text-fg-muted"],
   "🏁": ["flag", "bg-muted text-fg-muted"], "🏢": ["building", "bg-muted text-fg-muted"], "🏦": ["bank", "bg-muted text-fg-muted"], "💰": ["wallet", "bg-muted text-fg-muted"], "💸": ["wallet", "bg-muted text-fg-muted"],
   "🛡": ["shield", "bg-info-bg text-info-fg"], "✏": ["pencil", "bg-muted text-fg-muted"], "🗑": ["trash", "bg-muted text-fg-muted"],
-  "📈": ["trend", "bg-brand-soft text-brand-fg"], "⚖": ["flag", "bg-info-bg text-info-fg"] };
+  "📈": ["trend", "bg-brand-soft text-brand-fg"], "⚖": ["flag", "bg-info-bg text-info-fg"], "💬": ["message", "bg-brand-soft text-brand-fg"] };
 const eventIcon = (emoji) => {
   const [ic, tone] = EVENT_ICON[String(emoji || "").replace(/️/g, "")] || ["bell", "bg-muted text-fg-muted"];
   return `<span class="grid size-8 shrink-0 place-items-center rounded-full ${tone}" aria-hidden="true">${icon(ic, "size-4")}</span>`;
@@ -763,3 +764,126 @@ function barList(items, { tone = "brand", aria = "" } = {}) {
 // Ancien nom, ne plus appeler (le garde-fou l'interdit hors de ui.js).
 // Les anciens appels placent la courbe dans un conteneur à hauteur fixe (h-20, h-56…) : elle le remplit.
 const areaChart = (values) => cumulativeChart(values, { end: false, h: "h-full" });
+
+// ---------- Messagerie par campagne (Messages du clipper, de l'agence et de l'équipe) ----------
+// Une conversation (db.threads) est la paire campagne × clipper : { id « <campagne>~<clipper> », campaignId, clipperId,
+// unread (messages de l'autre côté non lus), awaiting (réponse attendue), lastAt, messages [{ fromClipper, body, at, read }] }.
+// Mise en page commune : liste et conversation côte à côte (≥ lg), l'une ou l'autre sur mobile (retour à la liste).
+const msgThreads = () => db.threads || [];
+const msgUnread = () => msgThreads().reduce((n, x) => n + x.unread, 0);
+// Conversation vue par son lecteur : mine sur chaque message écrit de son côté (clipperSide : le lecteur est le clipper).
+const msgMine = (thread, clipperSide) => ({ ...thread, messages: thread.messages.map((m) => ({ ...m, mine: m.fromClipper === clipperSide })) });
+const MSG_PANE_H = "h-[calc(100dvh-14.5rem)] min-h-[26rem] lg:h-[calc(100dvh-13rem)]";
+
+// Ligne de la liste : vignette, titre, sous-titre, dernier message (« Vous : … »), heure, pastille des non lus.
+function msgThreadItem({ href, current, thumb, title, sub, thread }) {
+  const last = thread.messages[thread.messages.length - 1], own = last && last.mine;
+  // Texte du message dans sa propre direction (dir="auto"), « Vous : » dans celle de la page.
+  const preview = last ? `${own ? `<span class="shrink-0">${t("Vous :")}</span>` : ""}<span class="min-w-0 truncate" dir="auto">${esc(last.body.replace(/\s+/g, " "))}</span>` : "";
+  return `<a href="${href}" ${current ? 'aria-current="true"' : ""} class="flex items-start gap-3 px-4 py-3 transition-colors duration-150 hover:bg-subtle aria-[current=true]:bg-brand-soft/60 ${FOCUS_INSET}">
+    ${thumb}
+    <span class="min-w-0 flex-1">
+      <span class="flex items-baseline gap-2"><span class="min-w-0 flex-1 truncate text-sm ${thread.unread ? "font-semibold" : "font-medium"} text-fg">${title}</span><span class="shrink-0 text-xs text-fg-subtle">${ago(thread.lastAt)}</span></span>
+      <span class="block truncate text-xs text-fg-subtle">${sub}</span>
+      <span class="mt-0.5 flex items-center gap-2"><span class="flex min-w-0 flex-1 gap-1 text-small ${thread.unread ? "font-medium text-fg" : "text-fg-muted"}">${preview}</span>${thread.unread ? `${countBadge(thread.unread, "unread")}<span class="sr-only">${esc(t("(non lue)"))}</span>` : ""}</span>
+    </span></a>`;
+}
+
+// Bulles : les siennes à la fin (bg-brand-soft), celles de l'autre côté au début (bg-subtle), heure sous chacune, un
+// séparateur par jour. « Lu » sous son dernier message quand l'autre côté l'a lu.
+function msgBubbles(messages) {
+  let lastDay = "";
+  const lastMine = messages.reduce((k, m, i) => (m.mine ? i : k), -1);
+  const hour = (iso) => { const f = uiIntl("DateTimeFormat", { hour: "2-digit", minute: "2-digit" }); return f ? f.format(new Date(iso)) : iso.slice(11, 16); };
+  return messages.map((m, i) => {
+    const d = m.at.slice(0, 10), sep = d !== lastDay ? `<li class="my-2 flex justify-center" aria-hidden="true"><span class="rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-fg-subtle">${date(m.at)}</span></li>` : "";
+    lastDay = d;
+    const seen = i === lastMine && m.read ? ` · ${t("Lu")}` : "";
+    return `${sep}<li class="flex flex-col ${m.mine ? "items-end" : "items-start"}">
+      ${m.label ? `<span class="mb-1 px-1 text-xs text-fg-subtle">${m.label}</span>` : ""}
+      <span class="sr-only">${esc(m.mine ? t("Vous :") : t("Message reçu :"))}</span>
+      <p class="max-w-[85%] whitespace-pre-wrap break-words rounded-2xl px-3.5 py-2 text-sm leading-5 text-fg sm:max-w-[75%] ${m.mine ? "rounded-ee-md bg-brand-soft" : "rounded-es-md bg-subtle"}" dir="auto">${esc(m.body)}</p>
+      <span class="mt-1 px-1 text-xs text-fg-subtle"><time datetime="${m.at}">${hour(m.at)}</time>${seen}</span></li>`;
+  }).join("");
+}
+
+// Zone de saisie : Entrée envoie, Maj + Entrée passe à la ligne (main.js) ; la hauteur suit le texte (data-autogrow).
+// note : texte affiché à la place de la saisie (campagne terminée).
+const msgComposer = (form, placeholder, note = "") => note
+  ? `<div class="border-t border-line bg-subtle px-4 py-3 text-small text-fg-muted">${note}</div>`
+  : `<form data-form="${form}" novalidate class="flex items-end gap-2 border-t border-line bg-surface p-3">
+      <label class="sr-only" for="${form}-body">${t("Votre message")}</label>
+      <textarea id="${form}-body" name="body" rows="1" maxlength="1000" data-autogrow data-send-on-enter placeholder="${esc(placeholder)}" class="${inputCls} h-auto max-h-36 min-h-10 resize-none py-2 leading-5" dir="auto"></textarea>
+      <button class="${btn("primary", "md", "shrink-0")}" aria-label="${esc(t("Envoyer"))}">${icon("send", "size-4 rtl:-scale-x-100")}<span class="max-sm:hidden">${t("Envoyer")}</span></button>
+    </form>`;
+
+// Conversation : en-tête (back : lien de retour à la liste, mobile), messages (data-msg-scroll : défile jusqu'au dernier
+// après chaque affichage, main.js), puis la saisie. empty : contenu affiché tant qu'aucun message n'a été envoyé.
+const msgConversation = ({ back, head, actions = "", messages, empty = "", composer }) =>
+  `<div class="flex min-h-0 flex-1 flex-col">
+    <div class="flex items-center gap-3 border-b border-line px-4 py-3">
+      <a href="${back}" class="${iconBtn("sm", false, "-ms-1.5 lg:hidden")}" aria-label="${esc(t("Retour aux conversations"))}">${icon("arrowLeft", "size-4 rtl:-scale-x-100")}</a>
+      <div class="flex min-w-0 flex-1 items-center gap-3">${head}</div>${actions}
+    </div>
+    <div data-msg-scroll class="min-h-0 flex-1 overflow-y-auto px-4 py-4">${messages.length ? `<ol class="grid gap-3" aria-label="${esc(t("Messages"))}">${msgBubbles(messages)}</ol>` : empty}</div>
+    ${composer}
+  </div>`;
+
+// Page Messages : la liste (avec ses filtres) et la conversation ouverte, dans une carte de hauteur fixe.
+function msgLayout({ title, text, filters = "", list, conversation }) {
+  const open = !!conversation;
+  return `<div class="${open ? "max-lg:hidden" : ""}">${pageHeader(title, text)}</div>
+    <section class="${CARD} ${open ? "max-lg:-mt-2" : "mt-6"} lg:mt-6 flex overflow-hidden ${MSG_PANE_H}">
+      <div class="${open ? "max-lg:hidden" : "flex"} w-full flex-col border-line lg:flex lg:w-80 lg:shrink-0 lg:border-e xl:w-96">
+        ${filters ? `<div class="border-b border-line px-3 py-2.5">${filters}</div>` : ""}
+        <div class="min-h-0 flex-1 divide-y divide-line overflow-y-auto">${list}</div>
+      </div>
+      <div class="${open ? "flex" : "hidden lg:flex"} min-w-0 flex-1 flex-col">${conversation
+        || `<div class="grid flex-1 place-items-center">${emptyState("message", t("Choisissez une conversation"), t("Ouvrez une conversation dans la liste pour lire les messages et répondre."), "", { inCard: true })}</div>`}</div>
+    </section>`;
+}
+
+// Conversation affichée avec des messages non lus : lecture enregistrée (une fois par conversation et par nombre de
+// non lus), puis données rechargées (pastilles, notifications de la conversation).
+const msgReading = new Set();
+function msgAutoRead(thread, payload) {
+  if (!thread || !thread.unread) return;
+  const key = `${thread.id}:${thread.messages.length}`;
+  if (msgReading.has(key)) return;
+  msgReading.add(key);
+  setTimeout(() => api("POST", "/api/messages/read", payload).then(refresh).then(render).catch(() => {}), 0);
+}
+
+// Messages de l'agence (ses campagnes) et de l'équipe (campagnes de ClipBoost) : conversations ouvertes par les clippers,
+// filtre « À répondre » (dernier message du clipper), réponse seulement (aucun premier message).
+// area : « agence » ou « admin » ; form : formulaire de réponse ; campaignAction : action qui ouvre la fiche de la campagne ;
+// filter : filtre courant ("all" | "awaiting"), filterAction : action du filtre.
+function msgTeamPage({ area, form, campaignAction, filter, filterAction, title, text, emptyText }) {
+  const id = state.route.item || "", all = msgThreads().filter((x) => campaignById(x.campaignId));
+  const awaiting = all.filter((x) => x.awaiting), threads = filter === "awaiting" ? awaiting : all;
+  const who = (x) => userById(x.clipperId) || { id: x.clipperId, name: t("Clipper"), role: "clipper" };
+  const href = (x) => `#/${area}/messages/${encodeURIComponent(x.id)}`;
+  const filters = all.length ? segmented(filterAction, filter, [["all", t("Toutes"), all.length], ["awaiting", t("À répondre"), awaiting.length]], t("Filtrer les conversations")) : "";
+  const list = threads.length
+    ? threads.map((x) => msgThreadItem({ href: href(x), current: x.id === id, thumb: avatar(who(x), "md"), title: esc(who(x).name), sub: esc(campaignById(x.campaignId).title), thread: msgMine(x, false) })).join("")
+    : all.length ? emptyState("check", t("Aucune question en attente"), t("Vous avez répondu à tous les clippers."), "", { inCard: true })
+      : emptyState("message", t("Aucune conversation"), emptyText, "", { inCard: true });
+  let conversation = "";
+  if (id) {
+    const x = all.find((y) => y.id === id);
+    if (!x) conversation = `<div class="grid flex-1 place-items-center">${emptyState("message", t("Conversation introuvable"), t("Cette conversation n'existe pas ou sa campagne a été supprimée."), `<a href="#/${area}/messages" class="${btn("secondary")}">${t("Voir les conversations")}</a>`, { inCard: true })}</div>`;
+    else {
+      const c = campaignById(x.campaignId), u = who(x), view = msgMine(x, false);
+      msgAutoRead(x, { campaignId: x.campaignId, clipperId: x.clipperId });
+      // Équipe : plusieurs admins répondent, le nom de l'auteur est rappelé au-dessus de ses messages.
+      const messages = area === "admin" ? view.messages.map((m) => (m.mine && m.senderId !== state.session ? { ...m, label: esc((userById(m.senderId) || { name: t("Équipe ClipBoost") }).name) } : m)) : view.messages;
+      conversation = msgConversation({
+        back: `#/${area}/messages`,
+        head: `${avatar(u, "md")}<div class="min-w-0"><p class="truncate text-sm font-semibold text-fg">${esc(u.name)}${u.handle ? ` <span class="font-normal text-fg-subtle" dir="ltr">${esc(u.handle)}</span>` : ""}</p><p class="truncate text-xs text-fg-subtle">${esc(c.title)}</p></div>`,
+        actions: `<button type="button" data-action="${campaignAction}" data-id="${c.id}" class="${btn("secondary", "sm", "shrink-0")}">${icon("target", "size-4")}<span class="max-sm:hidden">${t("Voir la campagne")}</span></button>`,
+        messages, composer: msgComposer(form, t("Écrivez votre réponse…")),
+      });
+    }
+  }
+  return msgLayout({ title, text, filters, list, conversation });
+}

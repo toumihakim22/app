@@ -114,6 +114,19 @@ export const reviewAppealSchema = z.object({
   reason: z.string({ error: "Motif manquant" }).trim()
     .min(3, "Indiquez le motif de votre décision (3 caractères minimum)").max(300, "Motif trop long (300 caractères maximum)"),
 });
+/**
+ * Message d'une conversation de campagne (1 à 1 000 caractères). clipperId : la conversation visée, obligatoire pour
+ * l'agence ou l'équipe qui répond ; ignoré pour un clipper (sa propre conversation).
+ */
+export const messageSchema = z.object({
+  body: z.string({ error: "Message manquant" }).trim().min(1, "Écrivez votre message").max(1000, "Message trop long (1 000 caractères maximum)"),
+  clipperId: z.string().trim().min(1).max(64).optional(),
+});
+/** Conversation ouverte : les messages de l'autre côté sont marqués comme lus (clipperId : comme pour messageSchema). */
+export const readThreadSchema = z.object({
+  campaignId: z.string({ error: "Campagne manquante" }).trim().min(1, "Campagne manquante").max(64),
+  clipperId: z.string().trim().min(1).max(64).optional(),
+});
 /** Compte social d'un clipper (Profil → Comptes sociaux) : identifiant ou adresse du profil, normalisé par le service (normalizeHandle). */
 export const socialAccountSchema = z.object({
   platform: z.enum(PLATFORMS as [string, ...string[]], { error: "Plateforme inconnue" }),
