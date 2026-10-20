@@ -479,3 +479,29 @@ Object.assign(I18N.en, {
   "Vos questions aux agences sur leurs campagnes, et leurs réponses.": "Your questions to agencies about their campaigns, and their answers.",
   "Poser une question": "Ask a question",
 });
+
+// Classement (page Classement)
+Object.assign(I18N.en, {
+  "Classement indisponible": "Leaderboard unavailable",
+  "Rechargez la page pour afficher le classement de la semaine.": "Reload the page to show this week's leaderboard.",
+  "Du {from} au {to}, heure d'Alger": "From {from} to {to}, Algiers time",
+  "Podium": "Podium",
+  "Le classement se remplit à chaque relevé des vues des clips validés. Les 10 premiers de la semaine gagnent une prime.": "The leaderboard fills up with every view reading of approved clips. The week's top 10 win a prize.",
+  "Votre position": "Your position",
+  "clippers classés": { one: "ranked clipper", other: "ranked clippers" },
+  "Vous êtes {rank} avec {views} cette semaine.": "You are {rank} with {views} this week.",
+  "Prime en jeu : {amount} si vous gardez cette place jusqu'à dimanche minuit.": "Prize at stake: {amount} if you keep this spot until Sunday midnight.",
+  "Encore {views} pour entrer dans le top 10.": "{views} more to make the top 10.",
+  "Vous n'êtes pas encore au classement": "You're not on the leaderboard yet",
+  "Les vues gagnées cette semaine par vos clips validés vous y font entrer.": "Views gained this week by your approved clips get you on it.",
+  "Dimanche à minuit, heure d'Alger. Les primes sont versées lundi.": "Sunday at midnight, Algiers time. Prizes are paid on Monday.",
+  "Gagnants de la semaine {n}": "Week {n} winners",
+  "Primes versées le {date}": "Prizes paid on {date}",
+  "Aucun gagnant cette semaine-là": "No winners that week",
+  "Seules les vues validées comptent : les vues gagnées pendant la semaine par vos clips validés, du lundi 00:00 au dimanche 24:00 (heure d'Alger).": "Only approved views count: views gained during the week by your approved clips, from Monday 00:00 to Sunday 24:00 (Algiers time).",
+  "Les 10 premiers de la semaine gagnent une prime, versée lundi dans votre portefeuille.": "The week's top 10 win a prize, paid into your wallet on Monday.",
+  "Comme vos autres gains, une prime reste en rétention {days} avant d'être retirable.": "Like your other earnings, a prize is on hold for {days} before it can be withdrawn.",
+  "À égalité de vues, le clipper inscrit le plus tôt passe devant.": "On equal views, the clipper who signed up first ranks higher.",
+  "Règles du classement": "Leaderboard rules",
+  "Les clippers qui gagnent le plus de vues validées cette semaine. Les 10 premiers remportent une prime.": "The clippers gaining the most approved views this week. The top 10 win a prize.",
+});

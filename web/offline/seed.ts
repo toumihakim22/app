@@ -2,9 +2,10 @@
 // données d'exemple que `scripts/seed.mts --demo`, datées par rapport au premier lancement.
 import type { CampaignStatus, PublicationStatus } from "../../lib/server/db/schema";
 import { DEMO_APPEAL_MESSAGE, DEMO_PROOF_DATA_URL } from "../../lib/server/demo-appeal";
+import { DEMO_CONTENDERS, demoLastWeek } from "../../lib/server/demo-leaderboard";
 import { demoThreads } from "../../lib/server/demo-messages";
 import { numberDocuments } from "../../lib/server/documents";
-import { clipRisk, payoutFor, sentence, simulatedHistory } from "../../lib/server/rules";
+import { clipRisk, payoutFor, prizeLabel, prizeNotice, sentence, simulatedHistory, weekClosedText } from "../../lib/server/rules";
 import { link } from "../../lib/server/links";
 import { DEFAULT_SETTINGS } from "../../lib/server/settings";
 import { emptyStore, insertCampaign, insertPublication, insertTransaction, insertUser, newId, newRef, newSocialCode, type CampaignRow, type Store, type UserRow } from "./db";
@@ -26,6 +27,9 @@ export async function seed(): Promise<Store> {
   const lina = await U("clipper", "Lina Mansouri", "lina@clipboost.dz", { level: "Clipper Bronze", handles: { tiktok: "@lina.lol", youtube: "@lina.lol" }, createdAt: daysAgo(60) });
   const tassili = await U("agence", "Tassili Sport", "agence@clipboost.dz", { contact: "Nassim Ait Ali", bio: "Équipementier sportif algérien : maillots, ballons et tenues d'entraînement. Nous cherchons des clippers passionnés de foot pour faire vivre chaque match.", credit: 400000, createdAt: daysAgo(240) });
   const hoggar = await U("agence", "Hoggar Boissons", "hoggar@clipboost.dz", { contact: "Meriem Saadi", bio: "Boissons fraîches produites en Algérie, du Hoggar à la côte. Nos campagnes célèbrent les soirées d'été entre amis.", credit: 0, verification: "pending", verificationNote: "Marque déposée en Algérie depuis 2015, registre du commerce disponible sur demande.", createdAt: daysAgo(3) });
+  // Clippers de plus pour le classement hebdomadaire (lib/server/demo-leaderboard.ts) : un compte vérifié et un clip validé chacun.
+  const contenders: { d: (typeof DEMO_CONTENDERS)[number]; u: UserRow }[] = [];
+  for (const d of DEMO_CONTENDERS) contenders.push({ d, u: await U("clipper", d.name, d.email, { level: d.level, handles: { [d.platform.toLowerCase()]: `@${d.handle}` }, createdAt: daysAgo(d.createdDaysAgo) }) });
   const djurdjura = await U("agence", "Djurdjura Médias", "djurdjura@clipboost.dz", { contact: "Karim Ouali", country: "Algérie", bio: "Studio de production basé à Tizi Ouzou : courts-métrages, clips musicaux et documentaires.", credit: 150000, verification: "verified", createdAt: daysAgo(120) });
 
   const C = (ownerId: string | null, title: string, brand: string, category: string, rate: number, budget: number, status: CampaignStatus, emoji: string, gradient: string, platforms: string[], rules: string[], extra: Partial<CampaignRow> = {}) =>
@@ -50,10 +54,12 @@ export async function seed(): Promise<Store> {
   social(yacine, "TikTok", "yacine.clips", 30); social(yacine, "Instagram", "yacine.clips", 12); social(yacine, "YouTube", "yacineclips", 12);
   social(amira, "Instagram", "amira.style", 25); social(amira, "TikTok", "amira.style", null);
   social(lina, "TikTok", "lina.lol", 40); social(lina, "YouTube", "lina.lol", 15);
+  for (const { d, u } of contenders) social(u, d.platform, d.handle, d.verifiedDaysAgo);
 
   const userOf = (id: string) => db.users.find((u) => u.id === id)!;
   const join = (u: UserRow, c: CampaignRow, favorite = false) => db.members.push({ campaignId: c.id, userId: u.id, joined: true, favorite, createdAt: Date.now() });
   join(yacine, derby, true); join(yacine, kahwa); join(yacine, rire, true); join(amira, kahwa); join(amira, derby); join(lina, rire);
+  for (const { d, u } of contenders) join(u, { derby, kahwa, rire }[d.clip.campaign]);
 
   // Clips : certains validés et payés, d'autres en attente (dont un sous le seuil). Le but de la 89e est publié sur
   // TikTok et Instagram : deux publications du même lot (envoyées ensemble, une seule ligne au journal).
@@ -71,6 +77,7 @@ export async function seed(): Promise<Store> {
     { u: lina, c: rire, title: "Quand ta mère trouve ton bulletin", platform: "TikTok", views: 52900, status: "En attente", days: 1, likeRate: 0.0007, spike: true },
     { u: yacine, c: derby, title: "Les supporters chantent", platform: "YouTube", views: 1600, status: "En attente", days: 0 },
     { u: lina, c: rire, title: "Sketch du marché", platform: "YouTube", views: 4100, status: "Refusée", days: 9, reason: "Musique protégée" },
+    ...contenders.map(({ d, u }) => ({ u, c: { derby, kahwa, rire }[d.clip.campaign], title: d.clip.title, platform: d.platform, views: d.clip.views, status: "Validée" as const, days: d.clip.days })),
   ];
   // Journal d'activité et notifications des événements ci-dessus (mêmes textes que les services, lib/server/services/*).
   const fmt = (n: number) => `${n.toLocaleString("fr-FR").replace(/\u202f|\xa0/g, " ")} DA`;
@@ -132,12 +139,32 @@ export async function seed(): Promise<Store> {
       if (p.title === "Sketch du marché") sketchId = id;
     }
   }
+  // Semaine écoulée du classement déjà clôturée (comme par closeWeek) : primes versées en gains, notifications, journal.
+  const lastWeek = demoLastWeek({
+    now: Date.now(), clips: db.publications, prizes: DEFAULT_SETTINGS.weeklyPrizes, clippers: db.users.filter((u) => u.role === "clipper"),
+    readings: db.snapshots.map((x) => ({ publicationId: x.publicationId, views: x.views, at: x.recordedAt })),
+  });
+  const closedDays = (Date.now() - lastWeek.closedAt) / 86_400_000;
+  let prizeCount = 0, prizeTotal = 0;
+  for (const a of lastWeek.awards) {
+    const txId = a.prize > 0 ? newId() : null;
+    if (txId) {
+      insertTransaction(db, { id: txId, ref: newRef(), userId: a.userId, type: "gain", label: prizeLabel(lastWeek.week, a.rank), amount: a.prize, status: "Validé", availableAt: lastWeek.closedAt + DEFAULT_SETTINGS.holdDays * 86_400_000, createdAt: lastWeek.closedAt });
+      notes.push([userOf(a.userId), closedDays, "🏆", prizeNotice(lastWeek.week, a.rank, a.prize), link.clipperTx(txId)]);
+      prizeCount++;
+      prizeTotal += a.prize;
+    }
+    db.weeklyAwards.push({ week: lastWeek.week, rank: a.rank, userId: a.userId, views: a.views, amount: a.prize, transactionId: txId, createdAt: lastWeek.closedAt });
+  }
+  acts.push([closedDays, "🏆", weekClosedText(lastWeek.week, prizeCount, prizeTotal)]);
   // Recours en attente : Lina conteste le refus de « Sketch du marché » (musique libre de droits), capture d'écran à l'appui.
   const appealId = newId();
   db.appeals.push({ id: appealId, publicationId: sketchId, userId: lina.id, message: DEMO_APPEAL_MESSAGE, proof: DEMO_PROOF_DATA_URL, status: "En attente", decisionNote: null, decidedBy: null, decidedAt: null, createdAt: daysAgo(0.6) });
   acts.push([0.6, "⚖️", `${lina.name} a contesté le refus du clip « Sketch du marché ».`]);
   // Dernier relevé automatique des vues (toutes les 6 heures, simulé) : le prochain sera lancé à l'ouverture de l'app dans 4 heures.
   db.jobRuns.push({ name: "views", lastRunAt: lastRun, summary: { by: "cron", total: tracked, updated: tracked, simulated: tracked, failed: 0 } });
+  // Dernière semaine clôturée du classement (tâche « weekly ») : la semaine écoulée.
+  db.jobRuns.push({ name: "weekly", lastRunAt: lastWeek.closedAt, summary: { week: lastWeek.week, winners: prizeCount, paid: prizeTotal } });
   const withdrawalId = newId(), rechargeId = newId();
   insertTransaction(db, { id: withdrawalId, ref: newRef(), userId: amira.id, type: "retrait", label: "Retrait vers BaridiMob", amount: -2000, status: "En cours", method: "BaridiMob", createdAt: daysAgo(1) });
   const rechargeRef = newRef();

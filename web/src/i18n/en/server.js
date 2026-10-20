@@ -334,3 +334,21 @@ I18N_RX.en.push(
   [/^Réponse de (.+) sur « (.+) » : « ([\s\S]*) »$/, "Reply from $1 on “$2”: “$3”"],
   [/^L'équipe ClipBoost a répondu sur « (.+) » : « ([\s\S]*) »$/, "The ClipBoost team replied on “$1”: “$2”"],
 );
+
+// Classement hebdomadaire (lib/server/services/leaderboard.ts, rules.ts : prizeLabel, prizeNotice, weekClosedText ;
+// validation.ts : primes des réglages). Le rang ($1, « 3e ») est traduit par le dictionnaire « shell ».
+Object.assign(I18N.en, {
+  "Semaine invalide": "Invalid week",
+  "Cette semaine n'est pas encore terminée": "This week is not over yet",
+  "Prime du classement invalide": "Invalid leaderboard prize",
+  "Prime du classement trop élevée (1 000 000 DA maximum)": "Leaderboard prize too high (1,000,000 DA maximum)",
+  "Primes du classement invalides": "Invalid leaderboard prizes",
+  "Indiquez les 10 primes du classement": "Enter the 10 leaderboard prizes",
+});
+I18N_RX.en.push(
+  [/^Prime classement · semaine (\d+) \((\d+(?:er|e))\)$/, "Leaderboard prize · week $1 ($2)"],
+  [/^Vous êtes (\d+(?:er|e)) du classement de la semaine (\d+) : \+([\d\s]+ DA)$/, "You finished $1 on the week $2 leaderboard: +$3"],
+  [/^Classement de la semaine (\d+) clôturé : aucune prime versée\.$/, "Week $1 leaderboard closed: no prize paid."],
+  [/^Classement de la semaine (\d+) clôturé : 1 prime versée \(([\d\s]+ DA)\)\.$/, "Week $1 leaderboard closed: 1 prize paid ($2)."],
+  [/^Classement de la semaine (\d+) clôturé : (\d+) primes versées \(([\d\s]+ DA)\)\.$/, "Week $1 leaderboard closed: $2 prizes paid ($3)."],
+);

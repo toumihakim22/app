@@ -363,3 +363,99 @@ export function messageThreads(rows: MessageRow[], readerIsClipper: boolean) {
   }
   return [...threads.values()].sort((a, b) => b.lastAt.localeCompare(a.lastAt) || a.id.localeCompare(b.id));
 }
+
+// ---------- Classement hebdomadaire des clippers (vues validées) et primes du top 10 ----------
+
+/** Heure d'Alger (Africa/Algiers) : UTC+1 toute l'année, sans heure d'été. Les semaines du classement suivent cette heure. */
+export const ALGIERS_OFFSET_MS = 3_600_000;
+const WEEK_MS = 7 * DAY_MS;
+/** Rangs primés (top 10 : une prime par rang, réglage weeklyPrizes) et semaines rattrapées au plus par une clôture en retard. */
+export const PRIZE_RANKS = 10, CATCH_UP_WEEKS = 8;
+
+/** Début de la semaine (ms) qui contient `at` : lundi 00:00, heure d'Alger (dimanche 23:00 UTC). */
+export function weekStart(at: number) {
+  const local = at + ALGIERS_OFFSET_MS, midnight = local - (((local % DAY_MS) + DAY_MS) % DAY_MS);
+  return midnight - ((new Date(midnight).getUTCDay() + 6) % 7) * DAY_MS - ALGIERS_OFFSET_MS;
+}
+
+/** Clé ISO de la semaine qui contient `at`, heure d'Alger : « 2026-W43 » (année ISO : celle du jeudi de la semaine). */
+export function weekKey(at: number) {
+  const thursday = new Date(weekStart(at) + ALGIERS_OFFSET_MS + 3 * DAY_MS), year = thursday.getUTCFullYear();
+  return `${year}-W${String(Math.floor((thursday.getTime() - Date.UTC(year, 0, 1)) / WEEK_MS) + 1).padStart(2, "0")}`;
+}
+
+/** Bornes d'une semaine « 2026-W43 » en ms : début (lundi 00:00 à Alger) et fin exclue (lundi suivant) ; null si la clé n'existe pas. */
+export function weekBounds(key: string) {
+  const m = /^(\d{4})-W(\d{2})$/.exec(key);
+  if (!m) return null;
+  const jan4 = Date.UTC(+m[1], 0, 4), start = jan4 - ((new Date(jan4).getUTCDay() + 6) % 7) * DAY_MS + (+m[2] - 1) * WEEK_MS - ALGIERS_OFFSET_MS;
+  // Semaine 0, ou semaine 53 d'une année qui n'en a que 52.
+  return +m[2] >= 1 && weekKey(start) === key ? { start, end: start + WEEK_MS } : null;
+}
+
+/** Numéro de la semaine d'une clé (« 2026-W43 » → 43), cité dans les libellés et les notifications. */
+export const weekNumber = (key: string) => Number(key.slice(6));
+
+/**
+ * Semaines terminées à clôturer à l'instant `now` : celles qui suivent la dernière semaine clôturée (`lastClosed`),
+ * jusqu'à la semaine écoulée ; sans clôture précédente (premier lancement), la semaine écoulée seule. Une tâche arrêtée
+ * longtemps ne rattrape que les CATCH_UP_WEEKS dernières semaines.
+ */
+export function weeksToClose(lastClosed: string | null, now: number) {
+  const last = weekKey(weekStart(now) - 1), from = lastClosed ? weekBounds(lastClosed) : null;
+  if (!from) return [last];
+  const out: string[] = [];
+  for (let at = from.end; at < weekStart(now); at += WEEK_MS) out.push(weekKey(at));
+  return out.slice(-CATCH_UP_WEEKS);
+}
+
+/**
+ * Un relevé fait après le début d'une semaine ne remplace pas le relevé du même jour UTC fait avant (dimanche entre
+ * 23:00 et minuit UTC) : la semaine terminée garde son dernier relevé, la suivante part du même (aucune vue comptée deux fois).
+ */
+export const keepsWeekReading = (previousAt: number, now: number) => previousAt < weekStart(now) && weekStart(now) <= now;
+
+/** Relevé d'un clip (view_snapshots : vues et heure du relevé, ms) pour le calcul des vues d'une semaine. */
+export type WeekReading = { publicationId: string; views: number; at: number };
+
+/**
+ * Vues gagnées par chaque clip pendant la semaine [start, end[ : vues du dernier relevé avant la fin, moins celles du
+ * dernier relevé avant le début (0 sans relevé avant : toutes ses vues comptent). Clip sans relevé dans la semaine : 0.
+ */
+export function weekGains(readings: WeekReading[], start: number, end: number) {
+  const before = new Map<string, WeekReading>(), last = new Map<string, WeekReading>();
+  for (const r of readings) {
+    if (r.at < start && (before.get(r.publicationId)?.at ?? -Infinity) < r.at) before.set(r.publicationId, r);
+    if (r.at < end && (last.get(r.publicationId)?.at ?? -Infinity) < r.at) last.set(r.publicationId, r);
+  }
+  const gains = new Map<string, number>();
+  for (const [id, r] of last) gains.set(id, Math.max(0, r.views - (before.get(id)?.views ?? 0)));
+  return gains;
+}
+
+/** Ligne du classement : rang (à partir de 1), clipper, vues validées de la semaine, prime de son rang (0 au-delà du 10e). */
+export type RankRow = { rank: number; userId: string; views: number; prize: number };
+
+/**
+ * Classement d'une semaine : vues gagnées (weekGains) par les clips « Validée » de chaque clipper, additionnées. Les
+ * clippers suspendus et ceux sans vue ne sont pas classés. Ex æquo : le plus de vues d'abord, puis l'inscription la plus
+ * ancienne. Les PRIZE_RANKS premiers reçoivent la prime de leur rang (`prizes`, réglage weeklyPrizes).
+ */
+export function weeklyRanking(clips: { id: string; userId: string; status: string }[], gains: Map<string, number>, clippers: { id: string; createdAt: number; status: string }[], prizes: number[]): RankRow[] {
+  const total = new Map<string, number>();
+  for (const c of clips) if (c.status === "Validée" && gains.get(c.id)) total.set(c.userId, (total.get(c.userId) ?? 0) + gains.get(c.id)!);
+  return clippers.filter((u) => u.status !== "Suspendu" && (total.get(u.id) ?? 0) > 0)
+    .sort((a, b) => total.get(b.id)! - total.get(a.id)! || a.createdAt - b.createdAt || a.id.localeCompare(b.id))
+    .map((u, i) => ({ rank: i + 1, userId: u.id, views: total.get(u.id)!, prize: i < PRIZE_RANKS ? Math.max(0, Math.floor(prizes[i] ?? 0)) : 0 }));
+}
+
+/** Rang abrégé des textes du serveur : « 1er », « 2e »… (traduit par l'interface). */
+export const rankText = (rank: number) => (rank === 1 ? "1er" : `${rank}e`);
+const amountText = (n: number) => `${String(n).replace(/\B(?=(\d{3})+(?!\d))/g, " ")} DA`;
+/** Libellé de la transaction d'une prime (même texte sur le serveur, hors ligne et dans les données d'exemple). */
+export const prizeLabel = (week: string, rank: number) => `Prime classement · semaine ${weekNumber(week)} (${rankText(rank)})`;
+/** Notification du gagnant d'une prime. */
+export const prizeNotice = (week: string, rank: number, amount: number) => `Vous êtes ${rankText(rank)} du classement de la semaine ${weekNumber(week)} : +${amountText(amount)}`;
+/** Ligne du journal d'activité à la clôture d'une semaine. */
+export const weekClosedText = (week: string, winners: number, paid: number) =>
+  `Classement de la semaine ${weekNumber(week)} clôturé : ${winners ? `${winners} prime${winners > 1 ? "s" : ""} versée${winners > 1 ? "s" : ""} (${amountText(paid)})` : "aucune prime versée"}.`;

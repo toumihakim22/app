@@ -12,13 +12,15 @@ const PAYOUT_METHODS = ["BaridiMob", "CCP", "RIB bancaire"];
 
 const emptyDb = () => ({
   me: null,
-  settings: { maintenance: false, signupsOpen: true, announcement: "", minWithdraw: 2000, commissionRate: 15, minBudget: 50000, holdDays: 3, earningDays: 7, instantFeePercent: 2, instantMinFee: 100 },
+  settings: { maintenance: false, signupsOpen: true, announcement: "", minWithdraw: 2000, commissionRate: 15, minBudget: 50000, holdDays: 3, earningDays: 7, instantFeePercent: 2, instantMinFee: 100, weeklyPrizes: [10000, 7000, 5000, 4000, 3000, 2500, 2000, 1500, 1000, 1000] },
   users: [], campaigns: [], agencies: [], publications: [], appeals: [], threads: [], transactions: [], notifications: [], activity: [],
   series: { daily: [], label: "" },
   // Connexions Google, Apple, Discord proposées (configurées sur le serveur ; toutes, simulées, dans la version autonome).
   oauth: [],
   // Relevé automatique des vues (admin seulement) : { everyHours, lastRunAt, summary, simulated }.
   tracking: null,
+  // Classement hebdomadaire (clippers et admin) : { week, number, start, end, prizes, ranked, top, me?, last, history? }.
+  leaderboard: null,
 });
 let db = emptyDb();
 

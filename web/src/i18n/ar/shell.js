@@ -357,3 +357,22 @@ Object.assign(I18N.ar, {
   "Messages non lus": "رسائل غير مقروءة",
   "Voir la campagne": "عرض الحملة",
 });
+
+// Classement hebdomadaire (helpers lb… de ui.js, navigation des espaces Clipper et Admin) ; rangs aussi cités par les
+// textes du serveur (« Vous êtes 3e du classement… », tServer). Rangs : ordinaux au masculin (« المركز الأول »), le
+// nombre seul au-delà du 10e (« المركز 14 »).
+Object.assign(I18N.ar, {
+  "Classement": "الترتيب",
+  "1er": "الأول", "2e": "الثاني", "3e": "الثالث", "4e": "الرابع", "5e": "الخامس", "6e": "السادس", "7e": "السابع", "8e": "الثامن", "9e": "التاسع", "10e": "العاشر",
+  "{n}e": "{n}",
+  "{first} et {second}": "{first} و{second}",
+  "heures": { zero: "ساعة", one: "ساعة", two: "ساعتان", few: "ساعات", many: "ساعة", other: "ساعة" },
+  "minutes": { zero: "دقيقة", one: "دقيقة", two: "دقيقتان", few: "دقائق", many: "دقيقة", other: "دقيقة" },
+  "vues validées": { zero: "مشاهدة مقبولة", one: "مشاهدة مقبولة", two: "مشاهدتان مقبولتان", few: "مشاهدات مقبولة", many: "مشاهدة مقبولة", other: "مشاهدة مقبولة" },
+  "Vous": "أنت",
+  "Place à prendre": "مركز شاغر",
+  "Semaine {n}": "الأسبوع {n}",
+  "En direct": "مباشر",
+  "Fin de la semaine dans": "ينتهي الأسبوع بعد",
+  "Aucune vue validée cette semaine pour l'instant": "لا توجد مشاهدات مقبولة هذا الأسبوع حتى الآن",
+});

@@ -607,3 +607,26 @@ Object.assign(I18N.ar, {
   "Les questions des clippers sur les campagnes de ClipBoost. Les agences répondent elles-mêmes sur leurs campagnes.": "أسئلة صانعي المقاطع حول حملات ClipBoost. تجيب الوكالات بنفسها على حملاتها.",
   "Les clippers peuvent poser une question depuis la fiche de chaque campagne de ClipBoost active ou en pause.": "يمكن لصانعي المقاطع طرح سؤال من بطاقة كل حملة ClipBoost نشطة أو متوقفة مؤقتًا.",
 });
+
+// Classement hebdomadaire (page Classement, primes dans les réglages)
+Object.assign(I18N.ar, {
+  "Classement hebdomadaire": "الترتيب الأسبوعي",
+  "Les clippers classés par vues validées, du lundi au dimanche (heure d'Alger). Les 10 premiers reçoivent une prime à la clôture de la semaine, faite par le relevé des vues.": "صانعو المقاطع مرتّبون حسب المشاهدات المقبولة، من الاثنين إلى الأحد (بتوقيت الجزائر). يحصل العشرة الأوائل على مكافأة عند إغلاق الأسبوع، الذي يتم مع قراءة المشاهدات.",
+  "Modifier les primes": "تعديل المكافآت",
+  "Clippers classés": "صانعو المقاطع المصنّفون",
+  "Primes en jeu": "المكافآت على المحك",
+  "sur {amount} au total": "من أصل {amount} إجمالًا",
+  "Dimanche à minuit, heure d'Alger": "منتصف ليل الأحد بتوقيت الجزائر",
+  "Primes versées": "المكافآت المصروفة",
+  "sur {weeks}": "خلال {weeks}",
+  "semaines clôturées": { zero: "أسبوع مغلق", one: "أسبوع مغلق", two: "أسبوعين مغلقين", few: "أسابيع مغلقة", many: "أسبوعًا مغلقًا", other: "أسبوع مغلق" },
+  "Vues validées gagnées depuis lundi 00:00 (heure d'Alger), en direct.": "المشاهدات المقبولة المكتسبة منذ الاثنين 00:00 (بتوقيت الجزائر)، مباشرة.",
+  "Aucune vue validée cette semaine pour l'instant.": "لا توجد مشاهدات مقبولة هذا الأسبوع حتى الآن.",
+  "Semaines clôturées, la plus récente d'abord.": "الأسابيع المغلقة، الأحدث أولًا.",
+  "Aucune semaine clôturée": "لا توجد أسابيع مغلقة",
+  "La semaine écoulée est clôturée au premier relevé des vues du lundi.": "يُغلق الأسبوع المنقضي مع أول قراءة للمشاهدات يوم الاثنين.",
+  "Primes du classement hebdomadaire": "مكافآت الترتيب الأسبوعي",
+  "Versées chaque lundi aux 10 clippers qui ont le plus de vues validées la semaine écoulée. ClipBoost les paie : aucune campagne n'est débitée. 0 DA : pas de prime pour ce rang.": "تُصرف كل يوم اثنين لصانعي المقاطع العشرة أصحاب أكبر عدد من المشاهدات المقبولة في الأسبوع المنقضي. تدفعها ClipBoost: لا تُخصم من أي حملة. 0 دج: لا مكافأة لهذا المركز.",
+  "Annonce, montants, délais et primes s'appliquent à tout le site dès l'enregistrement.": "يُطبَّق الإعلان والمبالغ والمهل والمكافآت على الموقع كله فور الحفظ.",
+  "Prime du {rank} : indiquez un nombre entier entre 0 et 1 000 000.": "مكافأة المركز {rank}: أدخل عددًا صحيحًا بين 0 و1000000.",
+});

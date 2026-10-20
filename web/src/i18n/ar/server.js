@@ -345,3 +345,24 @@ I18N_RX.ar.push(
   [/^Réponse de (.+) sur « (.+) » : « ([\s\S]*) »$/, "رد من $1 حول « $2 »: « $3 »"],
   [/^L'équipe ClipBoost a répondu sur « (.+) » : « ([\s\S]*) »$/, "ردّ فريق ClipBoost حول « $1 »: « $2 »"],
 );
+
+// Classement hebdomadaire (lib/server/services/leaderboard.ts, rules.ts : prizeLabel, prizeNotice, weekClosedText ;
+// validation.ts : primes des réglages). Le rang (« 3e » → « الثالث ») est traduit par le dictionnaire « shell » ; le
+// nombre de primes (10 au plus) prend la forme du duel et du pluriel de l'arabe.
+Object.assign(I18N.ar, {
+  "Semaine invalide": "أسبوع غير صالح",
+  "Cette semaine n'est pas encore terminée": "لم ينتهِ هذا الأسبوع بعد",
+  "Prime du classement invalide": "مكافأة ترتيب غير صالحة",
+  "Prime du classement trop élevée (1 000 000 DA maximum)": "مكافأة الترتيب مرتفعة جدًا (الحد الأقصى 1000000 دج)",
+  "Primes du classement invalides": "مكافآت الترتيب غير صالحة",
+  "Indiquez les 10 primes du classement": "أدخل مكافآت الترتيب العشر",
+});
+I18N_RX.ar.push(
+  [/^Prime classement · semaine (\d+) \((\d+(?:er|e))\)$/, "مكافأة الترتيب · الأسبوع $1 (المركز $2)"],
+  [/^Vous êtes (\d+(?:er|e)) du classement de la semaine (\d+) : \+([\d\s]+ DA)$/, "حللت في المركز $1 في ترتيب الأسبوع $2: +$3"],
+  [/^Classement de la semaine (\d+) clôturé : aucune prime versée\.$/, "أُغلق ترتيب الأسبوع $1: لم تُصرف أي مكافأة."],
+  [/^Classement de la semaine (\d+) clôturé : 1 prime versée \(([\d\s]+ DA)\)\.$/, "أُغلق ترتيب الأسبوع $1: صُرفت مكافأة واحدة ($2)."],
+  [/^Classement de la semaine (\d+) clôturé : 2 primes versées \(([\d\s]+ DA)\)\.$/, "أُغلق ترتيب الأسبوع $1: صُرفت مكافأتان ($2)."],
+  [/^Classement de la semaine (\d+) clôturé : ([3-9]|10) primes versées \(([\d\s]+ DA)\)\.$/, "أُغلق ترتيب الأسبوع $1: صُرفت $2 مكافآت ($3)."],
+  [/^Classement de la semaine (\d+) clôturé : (\d+) primes versées \(([\d\s]+ DA)\)\.$/, "أُغلق ترتيب الأسبوع $1: صُرفت $2 مكافأة ($3)."],
+);

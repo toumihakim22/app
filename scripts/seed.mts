@@ -3,12 +3,13 @@ import { randomBytes } from "node:crypto";
 import { eq } from "drizzle-orm";
 import * as schema from "../lib/server/db/schema";
 import { DEMO_APPEAL_MESSAGE, DEMO_PROOF_JPEG_BASE64 } from "../lib/server/demo-appeal";
+import { DEMO_CONTENDERS, demoLastWeek } from "../lib/server/demo-leaderboard";
 import { demoThreads } from "../lib/server/demo-messages";
 import { numberDocuments } from "../lib/server/documents";
 import { newId, newRef } from "../lib/server/ids";
 import { link } from "../lib/server/links";
 import { hashPassword } from "../lib/server/password";
-import { clipRisk, payoutFor, sentence, simulatedHistory, socialCode } from "../lib/server/rules";
+import { clipRisk, payoutFor, prizeLabel, prizeNotice, sentence, simulatedHistory, socialCode, weekClosedText, type WeekReading } from "../lib/server/rules";
 import { DEFAULT_SETTINGS } from "../lib/server/settings";
 import { openDb } from "./db";
 
@@ -43,7 +44,9 @@ if (process.argv.includes("--demo")) {
     // Hoggar a demandé le badge de vérification (en attente de l'équipe) ; Djurdjura est déjà vérifiée.
     const hoggar = U("agence", "Hoggar Boissons", "hoggar@clipboost.dz", { contact: "Meriem Saadi", bio: "Boissons fraîches produites en Algérie, du Hoggar à la côte. Nos campagnes célèbrent les soirées d'été entre amis.", credit: 0, verification: "pending", verificationNote: "Marque déposée en Algérie depuis 2015, registre du commerce disponible sur demande.", createdAt: daysAgo(3) });
     const djurdjura = U("agence", "Djurdjura Médias", "djurdjura@clipboost.dz", { contact: "Karim Ouali", country: "Algérie", bio: "Studio de production basé à Tizi Ouzou : courts-métrages, clips musicaux et documentaires.", credit: 150000, verification: "verified", createdAt: daysAgo(120) });
-    await db.insert(schema.users).values([yacine, amira, lina, tassili, hoggar, djurdjura]);
+    // Clippers de plus pour le classement hebdomadaire (lib/server/demo-leaderboard.ts) : un compte vérifié et un clip validé chacun.
+    const contenders = DEMO_CONTENDERS.map((d) => ({ d, u: U("clipper", d.name, d.email, { level: d.level, handles: { [d.platform.toLowerCase()]: `@${d.handle}` }, createdAt: daysAgo(d.createdDaysAgo) }) }));
+    await db.insert(schema.users).values([yacine, amira, lina, tassili, hoggar, djurdjura, ...contenders.map((x) => x.u)]);
 
     // Comptes sociaux vérifiés (code dans la bio) sur les plateformes de leurs clips ; Amira a aussi un compte TikTok
     // en attente de vérification (code à coller dans sa bio). Les « @compte » des profils (handles) sont ceux-là.
@@ -59,6 +62,7 @@ if (process.argv.includes("--demo")) {
       social(yacine, "TikTok", "yacine.clips", 30), social(yacine, "Instagram", "yacine.clips", 12), social(yacine, "YouTube", "yacineclips", 12),
       social(amira, "Instagram", "amira.style", 25), social(amira, "TikTok", "amira.style", null),
       social(lina, "TikTok", "lina.lol", 40), social(lina, "YouTube", "lina.lol", 15),
+      ...contenders.map(({ d, u }) => social(u, d.platform, d.handle, d.verifiedDaysAgo)),
     ];
     await db.insert(schema.socialAccounts).values(socialRows);
 
@@ -75,7 +79,8 @@ if (process.argv.includes("--demo")) {
     await db.insert(schema.campaigns).values([derby, maillot, soirees, kahwa, rire, coupe, festival]);
 
     const join = (u: { id: string }, c: { id: string }, favorite = false) => ({ campaignId: c.id, userId: u.id, joined: true, favorite });
-    await db.insert(schema.campaignMembers).values([join(yacine, derby, true), join(yacine, kahwa), join(yacine, rire, true), join(amira, kahwa), join(amira, derby), join(lina, rire)]);
+    await db.insert(schema.campaignMembers).values([join(yacine, derby, true), join(yacine, kahwa), join(yacine, rire, true), join(amira, kahwa), join(amira, derby), join(lina, rire),
+      ...contenders.map(({ d, u }) => join(u, { derby, kahwa, rire }[d.clip.campaign]))]);
 
     // Journal d'activité et notifications des événements de démo (mêmes textes que les services, lib/server/services/*).
     const fmt = (n: number) => `${n.toLocaleString("fr-FR").replace(/\u202f|\xa0/g, " ")} DA`;
@@ -101,7 +106,7 @@ if (process.argv.includes("--demo")) {
     launched(festival, 5.9);
     // Demande de badge de vérification en attente de l'équipe.
     acts.push([1.5, "🛡️", `${hoggar.name} demande le badge de vérification.`]);
-    const nameOf = (id: string) => [yacine, amira, lina].find((u) => u.id === id)!.name;
+    const nameOf = (id: string) => [yacine, amira, lina, ...contenders.map((x) => x.u)].find((u) => u.id === id)!.name;
     for (const a of socialRows) if (a.verifiedAt) acts.push([(Date.now() - a.verifiedAt.getTime()) / 86_400_000, "🛡️", `${nameOf(a.userId)} a vérifié son compte ${a.platform} @${a.handle}.`]);
 
     // Clips : certains validés et payés, d'autres en attente (dont un sous le seuil).
@@ -121,8 +126,11 @@ if (process.argv.includes("--demo")) {
       { u: lina, c: rire, title: "Quand ta mère trouve ton bulletin", platform: "TikTok", views: 52900, status: "En attente", days: 1, likeRate: 0.0007, spike: true },
       { u: yacine, c: derby, title: "Les supporters chantent", platform: "YouTube", views: 1600, status: "En attente", days: 0 },
       { u: lina, c: rire, title: "Sketch du marché", platform: "YouTube", views: 4100, status: "Refusée", days: 9, reason: "Musique protégée" },
+      ...contenders.map(({ d, u }) => ({ u, c: { derby, kahwa, rire }[d.clip.campaign], title: d.clip.title, platform: d.platform, views: d.clip.views, status: "Validée" as const, days: d.clip.days })),
     ];
     let i = 0, tracked = 0, sketchId = "";
+    // Clips et relevés gardés pour le classement de la semaine écoulée (clôturée plus bas).
+    const clipRows: { id: string; userId: string; status: string }[] = [], readings: WeekReading[] = [];
     const lastRun = new Date(Date.now() - 2 * 3_600_000), earningMs = DEFAULT_SETTINGS.earningDays * 86_400_000;
     for (const p of pubs) {
       // Un lien TikTok nomme le compte : celui que le clipper a vérifié.
@@ -140,6 +148,8 @@ if (process.argv.includes("--demo")) {
         approvedAt: p.status === "Validée" ? daysAgo(p.days) : null, createdAt: new Date(createdAt),
         likes: last?.likes ?? null, checkedAt: last ? new Date(last.at) : null, riskScore: risk.score, riskFlags: risk.flags,
       });
+      clipRows.push({ id, userId: p.u.id, status: p.status });
+      readings.push(...snaps.map((x) => ({ publicationId: id, views: x.views, at: x.at })));
       if (snaps.length) await db.insert(schema.viewSnapshots).values(snaps.map((x) => ({ publicationId: id, day: x.day, views: x.views, likes: x.likes, recordedAt: new Date(x.at) })));
       const txId = newId();
       if (paid) {
@@ -162,6 +172,25 @@ if (process.argv.includes("--demo")) {
     await db.insert(schema.media).values({ id: proofId, ownerId: lina.id, mime: "image/jpeg", data: DEMO_PROOF_JPEG_BASE64, createdAt: daysAgo(0.6) });
     await db.insert(schema.appeals).values({ id: appealId, publicationId: sketchId, userId: lina.id, message: DEMO_APPEAL_MESSAGE, proof: `/api/media/${proofId}`, createdAt: daysAgo(0.6) });
     acts.push([0.6, "⚖️", `${lina.name} a contesté le refus du clip « Sketch du marché ».`]);
+    // Semaine écoulée du classement déjà clôturée (comme par closeWeek) : primes versées en gains, notifications, journal.
+    const lastWeek = demoLastWeek({
+      now: Date.now(), clips: clipRows, readings, prizes: DEFAULT_SETTINGS.weeklyPrizes,
+      clippers: [yacine, amira, lina, ...contenders.map((x) => x.u)].map((u) => ({ id: u.id, createdAt: (u.createdAt as Date).getTime(), status: "Actif" })),
+    });
+    const closedAt = new Date(lastWeek.closedAt), closedDays = (Date.now() - lastWeek.closedAt) / 86_400_000;
+    let prizeCount = 0, prizeTotal = 0;
+    for (const a of lastWeek.awards) {
+      const txId = a.prize > 0 ? newId() : null;
+      if (txId) {
+        await db.insert(schema.transactions).values({ id: txId, ref: newRef(), userId: a.userId, type: "gain", label: prizeLabel(lastWeek.week, a.rank), amount: a.prize, status: "Validé", availableAt: new Date(lastWeek.closedAt + DEFAULT_SETTINGS.holdDays * 86_400_000), createdAt: closedAt });
+        notes.push([{ id: a.userId }, closedDays, "🏆", prizeNotice(lastWeek.week, a.rank, a.prize), link.clipperTx(txId)]);
+        prizeCount++;
+        prizeTotal += a.prize;
+      }
+      await db.insert(schema.weeklyAwards).values({ week: lastWeek.week, rank: a.rank, userId: a.userId, views: a.views, amount: a.prize, transactionId: txId, createdAt: closedAt });
+    }
+    acts.push([closedDays, "🏆", weekClosedText(lastWeek.week, prizeCount, prizeTotal)]);
+    await db.insert(schema.jobRuns).values({ name: "weekly", lastRunAt: closedAt, summary: { week: lastWeek.week, winners: prizeCount, paid: prizeTotal } });
     for (const c of [derby, rire, kahwa]) await db.update(schema.campaigns).set({ spent: c.spent }).where(eq(schema.campaigns.id, c.id));
     // Dernier relevé automatique des vues (tâche « views » de job_runs, toutes les 6 heures), tout en mode simulé.
     await db.insert(schema.jobRuns).values({ name: "views", lastRunAt: lastRun, summary: { by: "cron", total: tracked, updated: tracked, simulated: tracked, failed: 0 } });

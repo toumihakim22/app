@@ -3,7 +3,7 @@
 import type { CampaignStatus, Handles, Locale, Role, SignupPayload } from "../../lib/server/db/schema";
 import { GRADIENTS, PLATFORM_HOSTS } from "../../lib/server/gradients";
 import { link } from "../../lib/server/links";
-import { belowMin, clipRisk, fundingCost, instantFee, normalizeHandle, payoutDelta, RISK_WINDOW_DAYS, sentence, socialLinkError, utcDay, validateCampaignNumbers, viewsFor } from "../../lib/server/rules";
+import { belowMin, clipRisk, fundingCost, instantFee, keepsWeekReading, normalizeHandle, payoutDelta, RISK_WINDOW_DAYS, sentence, socialLinkError, utcDay, validateCampaignNumbers, viewsFor } from "../../lib/server/rules";
 import { IMAGE_DATA_URL, type OAuthProvider } from "../../lib/server/validation";
 import {
   ApiError, badRequest, forbidden, getSettings, insertCampaign, insertPublication, insertTransaction, insertUser, logActivity,
@@ -466,7 +466,8 @@ export function recordViews({ db }: Ctx, id: string, views: number, likes?: numb
   }
   const now = Date.now(), day = utcDay(now), nextLikes = likes ?? p.likes;
   const snap = db.snapshots.find((x) => x.publicationId === id && x.day === day);
-  if (snap) Object.assign(snap, { views, likes: nextLikes, recordedAt: now });
+  // Le relevé du jour fait avant le début de la semaine (dimanche après 23:00 UTC) est gardé : classement (keepsWeekReading).
+  if (snap) { if (!keepsWeekReading(snap.recordedAt, now)) Object.assign(snap, { views, likes: nextLikes, recordedAt: now }); }
   else db.snapshots.push({ publicationId: id, day, views, likes: nextLikes, recordedAt: now });
   const { score, flags } = riskOf(db, p, views, nextLikes);
   Object.assign(p, { views, likes: nextLikes, checkedAt: now, riskScore: score, riskFlags: flags } satisfies Partial<PubRow>);

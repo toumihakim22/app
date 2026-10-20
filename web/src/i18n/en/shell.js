@@ -353,3 +353,21 @@ Object.assign(I18N.en, {
   "Messages non lus": "Unread messages",
   "Voir la campagne": "View campaign",
 });
+
+// Classement hebdomadaire (helpers lb… de ui.js, navigation des espaces Clipper et Admin) ; rangs aussi cités par les
+// textes du serveur (« Vous êtes 3e du classement… », tServer).
+Object.assign(I18N.en, {
+  "Classement": "Leaderboard",
+  "1er": "1st", "2e": "2nd", "3e": "3rd", "4e": "4th", "5e": "5th", "6e": "6th", "7e": "7th", "8e": "8th", "9e": "9th", "10e": "10th",
+  "{n}e": "{n}th",
+  "{first} et {second}": "{first} and {second}",
+  "heures": { one: "hour", other: "hours" },
+  "minutes": { one: "minute", other: "minutes" },
+  "vues validées": { one: "approved view", other: "approved views" },
+  "Vous": "You",
+  "Place à prendre": "Up for grabs",
+  "Semaine {n}": "Week {n}",
+  "En direct": "Live",
+  "Fin de la semaine dans": "Week ends in",
+  "Aucune vue validée cette semaine pour l'instant": "No approved views this week yet",
+});

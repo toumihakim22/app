@@ -221,7 +221,7 @@ export const messages = pgTable("messages", {
   createdAt: createdAt(),
 }, (t) => [index("messages_thread_idx").on(t.campaignId, t.clipperId), index("messages_clipper_idx").on(t.clipperId), index("messages_sender_idx").on(t.senderId, t.createdAt)]);
 
-/** Dernière exécution de chaque tâche planifiée (« views » : relevé des vues), avec son bilan. */
+/** Dernière exécution de chaque tâche planifiée (« views » : relevé des vues ; « weekly » : dernière semaine du classement clôturée), avec son bilan. */
 export const jobRuns = pgTable("job_runs", {
   name: text("name").primaryKey(),
   lastRunAt: timestamp("last_run_at", { withTimezone: true }).notNull(),
@@ -252,6 +252,22 @@ export const transactions = pgTable("transactions", {
   providerRef: text("provider_ref"),
   createdAt: createdAt(),
 }, (t) => [index("transactions_user_idx").on(t.userId), uniqueIndex("transactions_ref_idx").on(t.ref), uniqueIndex("transactions_provider_ref_idx").on(t.providerRef)]);
+
+/**
+ * Primes du classement hebdomadaire des clippers (vues validées, semaine du lundi au dimanche, heure d'Alger) : une ligne
+ * par rang classé (top 10) de chaque semaine clôturée (closeWeek, services/leaderboard.ts). week : « 2026-W43 » ;
+ * views : vues validées de la semaine ; amount : prime du rang au moment de la clôture (réglage weeklyPrizes, 0 possible) ;
+ * transaction_id : le gain versé au clipper (null pour une prime de 0 DA). La clé (week, rank) empêche de payer deux fois.
+ */
+export const weeklyAwards = pgTable("weekly_awards", {
+  week: text("week").notNull(),
+  rank: integer("rank").notNull(),
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  views: integer("views").notNull(),
+  amount: integer("amount").notNull(),
+  transactionId: text("transaction_id").references(() => transactions.id, { onDelete: "set null" }),
+  createdAt: createdAt(),
+}, (t) => [primaryKey({ columns: [t.week, t.rank] }), index("weekly_awards_user_idx").on(t.userId)]);
 
 export type DocumentKind = "facture" | "recu";
 

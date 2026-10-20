@@ -188,4 +188,7 @@ export const settingsSchema = z.object({
   minWithdraw: z.number().int().min(0), commissionRate: z.number().int().min(0).max(50), minBudget: z.number().int().min(0),
   earningDays: z.number().int().min(1).max(60), holdDays: z.number().int().min(0).max(60),
   instantFeePercent: z.number().min(0).max(20), instantMinFee: z.number().int().min(0),
+  // Primes du classement hebdomadaire : une par rang, du 1er au 10e, en DA.
+  weeklyPrizes: z.array(z.number({ error: "Prime du classement invalide" }).int("Prime du classement invalide").min(0, "Prime du classement invalide").max(1_000_000, "Prime du classement trop élevée (1 000 000 DA maximum)"), { error: "Primes du classement invalides" })
+    .length(10, "Indiquez les 10 primes du classement"),
 }).partial();

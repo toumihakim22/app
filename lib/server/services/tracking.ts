@@ -3,13 +3,15 @@
 // (POST /api/admin/track-views). Chaque clip suivi est lu par l'API officielle de sa plateforme (lib/server/platforms.ts) ;
 // une plateforme sans ses clés est en mode simulé (simulatedStats, lib/server/rules.ts). Le relevé passe par
 // recordViews (services/clips.ts) : historique du jour, score de risque, paiement des vues supplémentaires.
-// La dernière exécution de chaque tâche est gardée dans job_runs (relevé des vues : « views »).
+// La dernière exécution de chaque tâche est gardée dans job_runs (relevé des vues : « views »). Chaque relevé clôture
+// aussi les semaines terminées du classement hebdomadaire (closeDueWeeks, services/leaderboard.ts).
 import { and, eq, gt, inArray, or } from "drizzle-orm";
 import { getDb, schema } from "../db";
 import { fetchClipStats, PLATFORM_ENV, platformConfigured } from "../platforms";
 import { simulatedStats } from "../rules";
 import { getSettings } from "../settings";
 import { recordViews } from "./clips";
+import { closeDueWeeks } from "./leaderboard";
 
 /** Nom de la tâche du relevé des vues dans job_runs, et intervalle entre deux relevés (heures). */
 export const VIEWS_JOB = "views";
@@ -68,8 +70,9 @@ async function readClip(p: Tracked, now: number) {
  * Relève les vues (et les likes) de chaque clip suivi. Les API sont interrogées 4 clips à la fois ; chaque relevé est
  * ensuite enregistré dans sa propre transaction (recordViews). Un clip dont l'API échoue ou dont la vidéo est
  * introuvable est passé pour ce tour (compté dans `failed`, détail dans les journaux du serveur) : aucune vue inventée.
+ * Ensuite, les semaines terminées du classement sont clôturées (`closedWeeks`).
  */
-export async function trackViews(by: TrackTrigger): Promise<TrackSummary & { at: string }> {
+export async function trackViews(by: TrackTrigger): Promise<TrackSummary & { at: string; closedWeeks: string[] }> {
   const clips = await trackedClips();
   const now = new Date();
   const summary: TrackSummary = { by, total: clips.length, updated: 0, simulated: 0, failed: 0 };
@@ -96,5 +99,13 @@ export async function trackViews(by: TrackTrigger): Promise<TrackSummary & { at:
     }
   }
   await saveJobRun(VIEWS_JOB, summary, now);
-  return { ...summary, at: now.toISOString() };
+  // Classement : semaines terminées clôturées après le relevé (primes du top 10). Une erreur ne fait pas échouer le relevé :
+  // la semaine reste à clôturer au relevé suivant.
+  let closedWeeks: string[] = [];
+  try {
+    closedWeeks = await closeDueWeeks(now.getTime());
+  } catch (err) {
+    console.error(`[ClipBoost] Clôture du classement hebdomadaire : ${err instanceof Error ? err.message : String(err)}`);
+  }
+  return { ...summary, at: now.toISOString(), closedWeeks };
 }

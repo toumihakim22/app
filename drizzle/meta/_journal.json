@@ -64,6 +64,13 @@
       "when": 1792442762183,
       "tag": "0008_messages",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1792458183376,
+      "tag": "0009_weekly_leaderboard",
+      "breakpoints": true
     }
   ]
 }

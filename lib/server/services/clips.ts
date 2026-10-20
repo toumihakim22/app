@@ -6,7 +6,7 @@ import { logActivity, notify } from "../events";
 import { badRequest, notFound } from "../http";
 import { newId, newRef } from "../ids";
 import { link } from "../links";
-import { belowMin, clipRisk, payoutDelta, RISK_WINDOW_DAYS, sentence, socialLinkError, utcDay, viewsFor } from "../rules";
+import { belowMin, clipRisk, payoutDelta, RISK_WINDOW_DAYS, sentence, socialLinkError, utcDay, viewsFor, weekStart } from "../rules";
 import { getSettings } from "../settings";
 
 const fmt = (n: number) => `${n.toLocaleString("fr-FR").replace(/ | /g, " ")} DA`;
@@ -80,7 +80,8 @@ const paying = (c: { status: string }) => c.status === "Active" || c.status === 
  * Relevé des vues d'un clip : saisi par l'équipe, ou par le relevé automatique (services/tracking.ts, `auto` : un
  * nombre inférieur au dernier relevé, que la plateforme a pu corriger, garde le dernier relevé au lieu d'être refusé).
  * `likes` : undefined ou null garde les likes connus. Chaque relevé remplace celui du jour dans l'historique
- * (view_snapshots), date le dernier relevé et recalcule le score de risque du clip.
+ * (view_snapshots), sauf celui fait avant le début de la semaine du classement, date le dernier relevé et recalcule le
+ * score de risque du clip.
  * Pendant la fenêtre de gains, un clip validé est payé pour ses vues supplémentaires, si sa campagne est encore financée.
  */
 export async function recordViews(id: string, views: number, likes?: number | null, { auto = false } = {}) {
@@ -94,8 +95,9 @@ export async function recordViews(id: string, views: number, likes?: number | nu
       views = p.views;
     }
     const now = new Date(), nextLikes = likes ?? p.likes, V = schema.viewSnapshots;
+    // Le relevé du jour fait avant le début de la semaine (dimanche après 23:00 UTC) est gardé : classement (keepsWeekReading).
     await tx.insert(V).values({ publicationId: id, day: utcDay(now), views, likes: nextLikes, recordedAt: now })
-      .onConflictDoUpdate({ target: [V.publicationId, V.day], set: { views, likes: nextLikes, recordedAt: now } });
+      .onConflictDoUpdate({ target: [V.publicationId, V.day], set: { views, likes: nextLikes, recordedAt: now }, setWhere: sql`${V.recordedAt} >= ${new Date(weekStart(now.getTime())).toISOString()}::timestamptz` });
     const { score, flags } = await riskOf(tx, p, views, nextLikes);
     await tx.update(schema.publications).set({ views, likes: nextLikes, checkedAt: now, riskScore: score, riskFlags: flags }).where(eq(schema.publications.id, id));
     if (p.status !== "Validée" || !p.approvedAt) return;

@@ -179,6 +179,7 @@ const icons = {
   message: '<path d="M20 12a8 8 0 0 1-11.7 7.1L4 20l1-4A8 8 0 1 1 20 12z"/><path d="M8.5 12h.01M12 12h.01M15.5 12h.01"/>',
   refresh: '<path d="M4 12a8 8 0 1 0 2.3-5.7M4 4v4h4"/>',
   card: '<rect x="2.5" y="5" width="19" height="14" rx="2"/><path d="M2.5 10h19M6 15h4"/>',
+  trophy: '<path d="M8 4h8v6a4 4 0 0 1-8 0z"/><path d="M8 6H5a1 1 0 0 0-1 1 4 4 0 0 0 4 4M16 6h3a1 1 0 0 1 1 1 4 4 0 0 1-4 4M12 14v3M8.5 21h7M9.5 21l.5-4h4l.5 4"/>',
   help: '<circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6v.6M12 17h.01"/>',
   fileText: '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h6"/>',
   compass: '<circle cx="12" cy="12" r="9"/><path d="M15.5 8.5l-2 5-5 2 2-5z"/>',
@@ -194,7 +195,8 @@ const EVENT_ICON = { "✅": ["check", "bg-success-bg text-success-fg"], "🚫": 
   "⏳": ["clock", "bg-muted text-fg-muted"], "⚙": ["gear", "bg-muted text-fg-muted"], "🎬": ["film", "bg-muted text-fg-muted"], "🎯": ["target", "bg-muted text-fg-muted"],
   "🏁": ["flag", "bg-muted text-fg-muted"], "🏢": ["building", "bg-muted text-fg-muted"], "🏦": ["bank", "bg-muted text-fg-muted"], "💰": ["wallet", "bg-muted text-fg-muted"], "💸": ["wallet", "bg-muted text-fg-muted"],
   "🛡": ["shield", "bg-info-bg text-info-fg"], "✏": ["pencil", "bg-muted text-fg-muted"], "🗑": ["trash", "bg-muted text-fg-muted"],
-  "📈": ["trend", "bg-brand-soft text-brand-fg"], "⚖": ["flag", "bg-info-bg text-info-fg"], "💬": ["message", "bg-brand-soft text-brand-fg"] };
+  "📈": ["trend", "bg-brand-soft text-brand-fg"], "⚖": ["flag", "bg-info-bg text-info-fg"], "💬": ["message", "bg-brand-soft text-brand-fg"],
+  "🏆": ["trophy", "bg-warning-bg text-warning-fg"] };
 const eventIcon = (emoji) => {
   const [ic, tone] = EVENT_ICON[String(emoji || "").replace(/️/g, "")] || ["bell", "bg-muted text-fg-muted"];
   return `<span class="grid size-8 shrink-0 place-items-center rounded-full ${tone}" aria-hidden="true">${icon(ic, "size-4")}</span>`;
@@ -887,3 +889,51 @@ function msgTeamPage({ area, form, campaignAction, filter, filterAction, title, 
   }
   return msgLayout({ title, text, filters, list, conversation });
 }
+
+// ---------- Classement hebdomadaire (page Classement du clipper et de l'administration) ----------
+// db.leaderboard : { week « 2026-W43 », number, start, end (ISO ; fin exclue : lundi 00:00, heure d'Alger), prizes (du 1er
+// au 10e, en DA), ranked (clippers classés), top [{ rank, userId, name, avatar, views, prize }] (en direct), me (clipper :
+// { rank | null, views }), last (dernière semaine clôturée : { week, number, closedAt, winners [{ rank, userId, name,
+// avatar, views, amount }] } | null), history (admin : semaines clôturées, la plus récente d'abord) }.
+const lbData = () => db.leaderboard || null;
+// Rang ordinal : « 1er », « 2e »… ; anglais « 1st », « 22nd » ; arabe « الأول » … « العاشر », puis le nombre (« المركز 14 »).
+const LB_RANKS = () => [t("1er"), t("2e"), t("3e"), t("4e"), t("5e"), t("6e"), t("7e"), t("8e"), t("9e"), t("10e")];
+function lbOrdinal(n) {
+  if (n >= 1 && n <= 10) return LB_RANKS()[n - 1];
+  if (LANG === "en") {
+    let cat = "other";
+    try { cat = new Intl.PluralRules("en", { type: "ordinal" }).select(n); } catch (e) {}
+    return `${fmt(n)}${{ one: "st", two: "nd", few: "rd" }[cat] || "th"}`;
+  }
+  return t("{n}e", { n: fmt(n) });
+}
+// Temps restant jusqu'à `iso` : « 3 jours et 5 heures », « 5 heures et 12 minutes », « 8 minutes ».
+function lbTimeLeft(iso) {
+  const m = Math.max(0, Math.floor((new Date(iso).getTime() - Date.now()) / 60000)), d = Math.floor(m / 1440), h = Math.floor((m % 1440) / 60), min = m % 60;
+  if (d) return h ? t("{first} et {second}", { first: plural(d, "jour", "jours"), second: plural(h, "heure", "heures") }) : plural(d, "jour", "jours");
+  if (h) return min ? t("{first} et {second}", { first: plural(h, "heure", "heures"), second: plural(min, "minute", "minutes") }) : plural(h, "heure", "heures");
+  return plural(min, "minute", "minutes");
+}
+// Clipper du classement (données publiques seulement) pour avatar().
+const lbPerson = (r) => ({ id: r.userId, name: r.name, avatar: r.avatar, role: "clipper" });
+// Pastille du rang : or, argent et bronze pour le podium (tons warning, idle, brand), neutre ensuite.
+const LB_MEDAL = { 1: "bg-warning-bg text-warning-fg ring-warning-border", 2: "bg-idle-bg text-idle-fg ring-idle-border", 3: "bg-brand-soft text-brand-fg ring-brand-line" };
+const lbRankChip = (rank, size = "size-8") =>
+  `<span class="grid ${size} shrink-0 place-items-center rounded-full text-xs font-semibold tabular-nums ring-1 ring-inset ${LB_MEDAL[rank] || "bg-subtle text-fg-muted ring-line"}" aria-label="${esc(lbOrdinal(rank))}">${fmt(rank)}</span>`;
+const lbPrize = (n) => (n ? `<span class="whitespace-nowrap text-sm font-semibold tabular-nums text-income">${da(n)}</span>` : `<span class="text-sm text-fg-subtle">—</span>`);
+
+/**
+ * Lignes du classement : rang, photo, nom, vues validées, prime (amountKey : « prize » en direct, « amount » versée).
+ * meId : ligne du clipper connecté mise en avant ; name(r) : nom en HTML (échappé, ou lien vers la fiche chez l'admin) ;
+ * open : rangs primés encore libres cette semaine (« Place à prendre », avec leur prime).
+ */
+function lbRows(rows, { meId = "", name = (r) => esc(r.name), amountKey = "prize", open = [] } = {}) {
+  const item = (inner, mine = false) => `<li class="flex min-w-0 items-center gap-3 py-3 ${mine ? "-mx-3 rounded-control bg-brand-soft px-3" : ""}">${inner}</li>`;
+  return `<ol class="divide-y divide-line">${rows.map((r) => item(`${lbRankChip(r.rank)}${avatar(lbPerson(r), "sm")}
+      <div class="min-w-0 flex-1"><p class="flex min-w-0 items-center gap-2 text-sm font-medium text-fg"><span class="min-w-0 truncate">${name(r)}</span>${r.userId === meId ? badge(t("Vous"), "brand") : ""}</p>
+        <p class="text-xs tabular-nums text-fg-subtle">${plural(r.views, "vue validée", "vues validées")}</p></div>
+      ${lbPrize(r[amountKey])}`, r.userId === meId)).join("")}${open.map((x) => item(`<span class="grid size-8 shrink-0 place-items-center rounded-full border border-dashed border-line-strong text-xs font-semibold tabular-nums text-fg-subtle" aria-label="${esc(lbOrdinal(x.rank))}">${fmt(x.rank)}</span>
+      <p class="min-w-0 flex-1 truncate text-sm text-fg-subtle">${t("Place à prendre")}</p>${lbPrize(x.prize)}`)).join("")}</ol>`;
+}
+// Rangs primés sans clipper classé cette semaine (prime non nulle).
+const lbOpenRanks = (lb) => lb.prizes.map((prize, i) => ({ rank: i + 1, prize })).filter((x) => x.rank > lb.top.length && x.prize > 0);

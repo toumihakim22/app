@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { offlineApi } from "../web/offline/server";
-import { STORAGE_FULL, STORAGE_KEY } from "../web/offline/db";
+import { load, save, STORAGE_FULL, STORAGE_KEY } from "../web/offline/db";
+import { closeWeek } from "../web/offline/leaderboard";
+import { weekClosedText, weekKey, weekNumber, weekStart } from "../lib/server/rules";
 
 // API simulée de la version autonome (web/offline/), exécutée dans Node avec un localStorage en mémoire.
 // quota : taille maximale d'une valeur enregistrée (simule un stockage plein), sans limite par défaut.
@@ -24,6 +26,14 @@ async function call(method: string, path: string, body?: unknown) {
 }
 const login = (email: string, password = "Clipboost2026") => call("POST", "/api/auth/login", { email, password });
 const state = async () => (await call("GET", "/api/state")).data;
+// Primes du classement versées à un clipper (gains sans clip) : en rétention ou déjà retirables selon le jour de la semaine
+// (la semaine écoulée des données d'exemple est clôturée le lundi, la rétention dure 3 jours).
+type Gain = { type: string; label: string; amount: number; availableAt: string | null };
+const prizeSplit = (s: { transactions: Gain[] }) => {
+  const prizes = s.transactions.filter((t) => t.type === "gain" && /^Prime classement · semaine \d+ \(\d+(er|e)\)$/.test(t.label));
+  const held = prizes.filter((t) => Date.parse(t.availableAt!) > Date.now()).reduce((n, t) => n + t.amount, 0);
+  return { held, free: prizes.reduce((n, t) => n + t.amount, 0) - held };
+};
 // Image PNG de 1 × 1 pixel (data URL valide, signature PNG).
 const PNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
 
@@ -36,7 +46,8 @@ test("données d'exemple, connexion et contrôle d'accès", async () => {
   assert.deepEqual(await login("yacine@clipboost.dz", "faux"), { status: 400, data: { error: "Email ou mot de passe incorrect" } });
   assert.equal((await login("yacine@clipboost.dz")).status, 200);
   const s = (await call("GET", "/api/state")).data;
-  assert.deepEqual([s.me.available, s.me.pending, s.me.earned], [3078, 7230, 14308]);
+  const prize = prizeSplit(s);
+  assert.deepEqual([s.me.available, s.me.pending, s.me.earned], [3078 + prize.free, 7230 + prize.held, 14308 + prize.free + prize.held]);
   // Notifications d'exemple : chacune mène à un élément de l'espace Clipper qui existe.
   type Note = { text: string; link: string | null };
   const ids = new Set([...s.campaigns, ...s.publications, ...s.transactions].map((x: { id: string }) => x.id));
@@ -116,7 +127,8 @@ test("inscription avec code, campagne financée, clip payé et retrait instantan
   await login("yacine@clipboost.dz");
   const s = (await call("GET", "/api/state")).data;
   assert.equal(s.publications.find((p: { id: string }) => p.id === clipId).paid, 6750);
-  assert.deepEqual([s.me.available, s.me.pending, s.me.earned], [3078 - 2000, 7230 + 6750, 14308 + 6750]);
+  const prize = prizeSplit(s);
+  assert.deepEqual([s.me.available, s.me.pending, s.me.earned], [3078 - 2000 + prize.free, 7230 + 6750 + prize.held, 14308 + 6750 + prize.free + prize.held]);
   assert.equal(s.notifications[0].text, "Votre retrait de 2 000 DA a été validé (1 900 DA versés après 100 DA de frais).");
 
   // Liens des notifications : chaque événement mène à l'élément concerné.
@@ -171,8 +183,9 @@ test("anciennes notifications sans lien : lien déduit du texte", async () => {
   };
   const before = await linksOf();
   const store = JSON.parse(storage.get(STORAGE_KEY)!);
-  // Les demandes de badge, les recours, les paiements en ligne et les messages sont postérieurs aux liens : une ancienne copie n'en contient pas.
-  for (const n of store.notifications) if (!/badge de vérification| conteste le refus du clip | a payé en ligne une recharge |^(Nouvelle question|Nouveau message|Réponse) de |^L'équipe ClipBoost a répondu /.test(n.text)) delete n.link;
+  // Les demandes de badge, les recours, les paiements en ligne, les messages et les primes du classement sont postérieurs
+  // aux liens : une ancienne copie n'en contient pas.
+  for (const n of store.notifications) if (!/badge de vérification| conteste le refus du clip | a payé en ligne une recharge |^(Nouvelle question|Nouveau message|Réponse) de |^L'équipe ClipBoost a répondu |^Vous êtes \d+(er|e) du classement /.test(n.text)) delete n.link;
   storage.set(STORAGE_KEY, JSON.stringify(store));
   const after = await linksOf();
   let exact = 0, total = 0;
@@ -446,8 +459,8 @@ test("relevé des vues : bouton de l'admin, relevé dû toutes les 6 heures, his
   await offlineApi.reset();
   await login("admin@clipboost.dz", "AdminClip2026");
   const s0 = await state();
-  // Données d'exemple : dernier relevé il y a 2 heures (pas de relevé à l'ouverture), 7 clips suivis, tout est simulé.
-  assert.deepEqual([s0.tracking.everyHours, s0.tracking.simulated, s0.tracking.summary], [6, ["TikTok", "Instagram", "YouTube", "Facebook"], { by: "cron", total: 7, updated: 7, simulated: 7, failed: 0 }]);
+  // Données d'exemple : dernier relevé il y a 2 heures (pas de relevé à l'ouverture), 11 clips suivis, tout est simulé.
+  assert.deepEqual([s0.tracking.everyHours, s0.tracking.simulated, s0.tracking.summary], [6, ["TikTok", "Instagram", "YouTube", "Facebook"], { by: "cron", total: 11, updated: 11, simulated: 11, failed: 0 }]);
   assert.ok(Math.abs(Date.now() - 2 * 3_600_000 - Date.parse(s0.tracking.lastRunAt)) < 60_000);
   const byTitle = (list: Pub[], title: string, platform?: string) => list.find((p) => p.title === title && (!platform || p.platform === platform))!;
   const pubs0: Pub[] = s0.publications;
@@ -463,11 +476,12 @@ test("relevé des vues : bouton de l'admin, relevé dû toutes les 6 heures, his
   // Bouton de l'admin : seuls les clips suivis (en attente, ou validés depuis moins de 7 jours) sont relevés.
   const run = await call("POST", "/api/admin/track-views");
   assert.equal(run.status, 200);
-  assert.deepEqual({ ...run.data, at: undefined }, { ok: true, by: "admin", total: 7, updated: 7, simulated: 7, failed: 0, at: undefined });
+  // La semaine écoulée est déjà clôturée (données d'exemple) : aucune clôture du classement.
+  assert.deepEqual({ ...run.data, at: undefined }, { ok: true, by: "admin", total: 11, updated: 11, simulated: 11, failed: 0, at: undefined, closedWeeks: [] });
   const s1 = await state(), pubs1: Pub[] = s1.publications, today = new Date().toISOString().slice(0, 10);
   for (const p of pubs1) {
     const before = pubs0.find((x) => x.id === p.id)!;
-    const tracked = p.status === "En attente" || ["But de la 89e en slow-motion", "Mon café du matin à Alger", "Brunch à Oran"].includes(p.title);
+    const tracked = p.status === "En attente" || ["But de la 89e en slow-motion", "Mon café du matin à Alger", "Brunch à Oran", "Les plus beaux arrêts du gardien", "Café et croissant au ralenti", "Le prof de maths le jour du bac", "Le chant des supporters en 4K"].includes(p.title);
     if (tracked) {
       assert.ok(p.views >= before.views && Date.now() - Date.parse(p.checkedAt!) < 60_000, p.title);
       assert.deepEqual(p.history!.at(-1), { ...p.history!.at(-1)!, day: today, views: p.views, likes: p.likes });
@@ -477,7 +491,7 @@ test("relevé des vues : bouton de l'admin, relevé dû toutes les 6 heures, his
   assert.equal(byTitle(pubs1, "Le taxi clandestin").views, byTitle(pubs0, "Le taxi clandestin").views);
   // Clip validé encore dans sa fenêtre de gains : ses vues supplémentaires sont payées.
   assert.ok(byTitle(pubs1, "But de la 89e en slow-motion", "TikTok").paid > byTitle(pubs0, "But de la 89e en slow-motion", "TikTok").paid);
-  assert.match(s1.activity[0].text, /^Vues relevées par Équipe ClipBoost : 7 clips mis à jour\.$/);
+  assert.match(s1.activity[0].text, /^Vues relevées par Équipe ClipBoost : 11 clips mis à jour\.$/);
   assert.equal(s1.tracking.summary.by, "admin");
 
   // Saisie de l'équipe avec les likes : le score est recalculé (le pic reste, les likes ne sont plus suspects).
@@ -509,14 +523,14 @@ test("relevé des vues : bouton de l'admin, relevé dû toutes les 6 heures, his
   const lina = await state();
   assert.ok(lina.publications.some((p: Pub) => Date.now() - Date.parse(p.checkedAt!) < 60_000));
   const saved = JSON.parse(storage.get(STORAGE_KEY)!).jobRuns[0];
-  assert.deepEqual([saved.summary.by, saved.summary.total], ["auto", 7]);
+  assert.deepEqual([saved.summary.by, saved.summary.total], ["auto", 11]);
   assert.ok(Date.now() - saved.lastRunAt < 60_000);
   // Relevé récent : rien n'est relancé au chargement suivant.
   await state();
   assert.equal(JSON.parse(storage.get(STORAGE_KEY)!).jobRuns[0].lastRunAt, saved.lastRunAt);
   // Adresse de la tâche planifiée du serveur, ouverte hors ligne.
   const cron = await call("GET", "/api/cron/views");
-  assert.deepEqual([cron.status, cron.data.by, cron.data.total], [200, "cron", 7]);
+  assert.deepEqual([cron.status, cron.data.by, cron.data.total], [200, "cron", 11]);
   assert.equal(JSON.parse(storage.get(STORAGE_KEY)!).jobRuns[0].summary.by, "cron");
 });
 
@@ -835,6 +849,85 @@ test("messagerie par campagne : question du clipper, réponse de l'agence ou de 
   await login("amira@clipboost.dz");
   for (let i = 0; i < 30; i++) assert.equal((await call("POST", `/api/campaigns/${kahwa.id}/messages`, { body: `Question ${i}` })).status, 201);
   assert.deepEqual(await call("POST", `/api/campaigns/${kahwa.id}/messages`, { body: "Encore une" }), { status: 429, data: { error: "Trop de messages envoyés, réessayez dans quelques minutes" } });
+});
+
+test("classement hebdomadaire : semaine écoulée clôturée une seule fois, primes du réglage, notifications", async () => {
+  type Row = { rank: number; userId: string; name: string; views: number; prize?: number; amount?: number };
+  type Tx = { id: string; type: string; label: string; amount: number; availableAt: string | null; userId: string };
+  await offlineApi.reset();
+  const lastWeek = weekKey(weekStart(Date.now()) - 1), n = weekNumber(lastWeek);
+  // Données d'exemple : la semaine écoulée est déjà clôturée et payée ; la semaine en cours est classée en direct.
+  assert.equal((await login("yacine@clipboost.dz")).status, 200);
+  let s = await state();
+  assert.equal(s.leaderboard.week, weekKey(Date.now()));
+  assert.ok(s.leaderboard.top.length >= 3 && s.leaderboard.top.every((r: Row, i: number) => r.rank === i + 1 && r.views > 0 && (i === 0 || r.views <= s.leaderboard.top[i - 1].views)));
+  for (const r of s.leaderboard.top) assert.deepEqual(Object.keys(r).sort(), ["avatar", "name", "prize", "rank", "userId", "views"]);
+  assert.equal(s.leaderboard.me.rank, s.leaderboard.top.find((r: Row) => r.userId === s.me.id)?.rank ?? null);
+  assert.equal(s.leaderboard.last.week, lastWeek);
+  assert.ok(s.leaderboard.last.winners.length >= 3);
+  assert.equal(s.leaderboard.history, undefined, "historique réservé à l'équipe");
+  assert.ok(!JSON.stringify(s.leaderboard).includes("@clipboost.dz"), "aucune donnée privée des autres clippers");
+  assert.equal((await login("agence@clipboost.dz")).status, 200);
+  assert.equal((await state()).leaderboard, undefined);
+
+  // L'équipe change les primes (10 montants exactement) et suspend un clipper : la clôture suivante en tient compte.
+  await login("admin@clipboost.dz", "AdminClip2026");
+  assert.deepEqual(await call("PATCH", "/api/admin/settings", { weeklyPrizes: [1, 2, 3] }), { status: 400, data: { error: "Indiquez les 10 primes du classement" } });
+  assert.equal((await call("PATCH", "/api/admin/settings", { weeklyPrizes: [100, -1, 0, 0, 0, 0, 0, 0, 0, 0] })).status, 400);
+  const prizes = [12345, 0, 6000, 4000, 3000, 2500, 2000, 1500, 1000, 1000];
+  assert.equal((await call("PATCH", "/api/admin/settings", { weeklyPrizes: prizes })).status, 200);
+  let admin = await state();
+  assert.deepEqual([admin.settings.weeklyPrizes, admin.leaderboard.prizes, admin.leaderboard.history.length], [prizes, prizes, 1]);
+  const before = admin.leaderboard.last.winners as Row[];
+  const suspended = before[0].userId;
+  assert.equal((await call("PATCH", `/api/admin/users/${suspended}`, { status: "Suspendu" })).status, 200);
+  // Copie du navigateur où la semaine écoulée n'est pas encore clôturée : primes, notifications et tâche « weekly » retirées.
+  const store = JSON.parse(storage.get(STORAGE_KEY)!);
+  const oldPrizes = new Set(store.weeklyAwards.map((a: { transactionId: string | null }) => a.transactionId));
+  store.transactions = store.transactions.filter((t: { id: string }) => !oldPrizes.has(t.id));
+  store.notifications = store.notifications.filter((x: { text: string }) => !x.text.startsWith("Vous êtes "));
+  store.weeklyAwards = [];
+  store.jobRuns = store.jobRuns.filter((j: { name: string }) => j.name !== "weekly");
+  storage.set(STORAGE_KEY, JSON.stringify(store));
+
+  // Ouverture de l'app : la semaine écoulée est clôturée (GET /api/state), avec les primes du réglage, sans le clipper suspendu.
+  admin = await state();
+  const winners = admin.leaderboard.last.winners as Row[];
+  assert.equal(admin.leaderboard.last.week, lastWeek);
+  assert.ok(winners.length >= 2 && !winners.some((w) => w.userId === suspended));
+  assert.deepEqual(winners.map((w) => w.userId), before.filter((w) => w.userId !== suspended).map((w) => w.userId));
+  assert.deepEqual(winners.map((w) => w.amount), prizes.slice(0, winners.length));
+  const paid = winners.filter((w) => w.amount! > 0);
+  const total = paid.reduce((t, w) => t + w.amount!, 0);
+  assert.equal(admin.activity[0].text, weekClosedText(lastWeek, paid.length, total));
+  let saved = JSON.parse(storage.get(STORAGE_KEY)!);
+  const prizeTx = () => (JSON.parse(storage.get(STORAGE_KEY)!).transactions as Tx[]).filter((t) => t.type === "gain" && t.label.startsWith("Prime classement"));
+  assert.equal(prizeTx().length, paid.length, "une prime de 0 DA ne crée aucun gain");
+  assert.deepEqual(saved.jobRuns.find((j: { name: string }) => j.name === "weekly").summary, { week: lastWeek, winners: paid.length, paid: total });
+  // 2e : prime de 0 DA (rang enregistré, aucune transaction).
+  assert.equal(saved.weeklyAwards.find((a: { rank: number }) => a.rank === 2).transactionId, null);
+
+  // Clôturée deux fois (relevé des vues, ouverture suivante, appel direct) : rien n'est payé de plus.
+  assert.deepEqual((await call("POST", "/api/admin/track-views")).data.closedWeeks, []);
+  assert.deepEqual((await call("GET", "/api/cron/views")).data.closedWeeks, []);
+  await state();
+  const db = await load();
+  assert.deepEqual(closeWeek({ db, commit: () => save(db) }, lastWeek), { week: lastWeek, closed: false, winners: 0, paid: 0 });
+  assert.equal(prizeTx().length, paid.length);
+  assert.equal(JSON.parse(storage.get(STORAGE_KEY)!).weeklyAwards.length, winners.length);
+  // Semaine en cours : pas encore terminée.
+  assert.throws(() => closeWeek({ db, commit: () => save(db) }, weekKey(Date.now())), /pas encore terminée/);
+
+  // Le gagnant : notification avec le lien vers sa prime (en rétention 3 jours), libellé de la transaction.
+  const first = winners[0], user = admin.users.find((u: { id: string }) => u.id === first.userId);
+  assert.equal((await login(user.email)).status, 200);
+  s = await state();
+  const tx = (s.transactions as Tx[]).find((t) => t.label === `Prime classement · semaine ${n} (1er)`)!;
+  assert.deepEqual([tx.amount, tx.type], [12345, "gain"]);
+  assert.ok(Math.abs(Date.parse(tx.availableAt!) - Date.now() - 3 * 86_400_000) < 60_000);
+  const note = s.notifications.find((x: { text: string }) => x.text === `Vous êtes 1er du classement de la semaine ${n} : +12 345 DA`);
+  assert.deepEqual([note?.link, note?.unread], [`#/clipper/portefeuille/${tx.id}`, true]);
+  assert.equal(s.leaderboard.last.winners[0].userId, first.userId);
 });
 
 test("réinitialisation : retour aux données d'exemple", async () => {

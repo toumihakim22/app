@@ -5,6 +5,7 @@ import { inferLink, type LinkContext } from "../../lib/server/links";
 import { OAUTH_PROVIDERS } from "../../lib/server/validation";
 import { PLATFORMS } from "../../lib/server/gradients";
 import { dailyGains, isTeamCampaign, messageThreads, RISK_WINDOW_DAYS, utcDay } from "../../lib/server/rules";
+import { leaderboardState } from "./leaderboard";
 import { lastJobRun, simulatedPlatforms, TRACK_EVERY_HOURS, VIEWS_JOB } from "./tracking";
 
 const day = (ms: number) => new Date(ms).toISOString().slice(0, 10);
@@ -121,7 +122,7 @@ export function stateFor(db: Store, user: UserRow) {
       favorites: mine.filter((m) => m.favorite).map((m) => m.campaignId), joinedCampaigns: mine.filter((m) => m.joined).map((m) => m.campaignId), ...(balanceOf.get(user.id) ?? {}),
       ...(isClipper ? { socialAccounts: socialOf(user.id) } : {}),
     },
-    settings: { maintenance: settings.maintenance, signupsOpen: settings.signupsOpen, announcement: settings.announcement, minWithdraw: settings.minWithdraw, commissionRate: settings.commissionRate, minBudget: settings.minBudget, holdDays: settings.holdDays, earningDays: settings.earningDays, instantFeePercent: settings.instantFeePercent, instantMinFee: settings.instantMinFee },
+    settings: { maintenance: settings.maintenance, signupsOpen: settings.signupsOpen, announcement: settings.announcement, minWithdraw: settings.minWithdraw, commissionRate: settings.commissionRate, minBudget: settings.minBudget, holdDays: settings.holdDays, earningDays: settings.earningDays, instantFeePercent: settings.instantFeePercent, instantMinFee: settings.instantMinFee, weeklyPrizes: settings.weeklyPrizes },
     users: userRows.map((u) => ({
       ...(isAdmin ? fullUser(u) : u.id === user.id ? fullUser(u) : publicUser(u)), ...(balanceOf.get(u.id) ?? {}),
       ...(u.role === "clipper" && (isAdmin || u.id === user.id) ? { socialAccounts: socialOf(u.id) } : {}),
@@ -151,6 +152,8 @@ export function stateFor(db: Store, user: UserRow) {
     series,
     // Paiement en ligne des recharges : toujours simulé hors ligne (page de paiement simulée de l'app).
     ...(isAdmin || isAgency ? { payments: { simulated: true } } : {}),
+    // Classement hebdomadaire (clippers et admin) : semaine en cours en direct, dernière semaine clôturée ; historique pour l'admin.
+    ...(isClipper || isAdmin ? { leaderboard: leaderboardState(db, user, settings.weeklyPrizes) } : {}),
     // Relevé des vues (admin) : dernière exécution, son bilan, plateformes en mode simulé (toutes, hors ligne).
     ...(isAdmin ? { tracking: { everyHours: TRACK_EVERY_HOURS, lastRunAt: viewsRun ? new Date(viewsRun.lastRunAt).toISOString() : null, summary: viewsRun?.summary ?? null, simulated: simulatedPlatforms() } } : {}),
   };

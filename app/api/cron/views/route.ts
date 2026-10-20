@@ -11,6 +11,7 @@ const digest = (s: string) => createHash("sha256").update(s).digest();
 /**
  * Relevé automatique des vues, toutes les 6 heures (vercel.json : Vercel Cron appelle cette adresse en GET avec
  * « Authorization: Bearer <CRON_SECRET> »). Sans CRON_SECRET, la route est refusée en production et ouverte en développement.
+ * Le même passage clôture les semaines terminées du classement hebdomadaire (primes du top 10, `closedWeeks`).
  */
 export const GET = route(async (req) => {
   const secret = process.env.CRON_SECRET?.trim() ?? "";

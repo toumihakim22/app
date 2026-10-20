@@ -479,3 +479,29 @@ Object.assign(I18N.ar, {
   "Vos questions aux agences sur leurs campagnes, et leurs réponses.": "أسئلتك للوكالات حول حملاتها، وردودها.",
   "Poser une question": "اطرح سؤالًا",
 });
+
+// Classement (page Classement)
+Object.assign(I18N.ar, {
+  "Classement indisponible": "الترتيب غير متاح",
+  "Rechargez la page pour afficher le classement de la semaine.": "أعد تحميل الصفحة لعرض ترتيب هذا الأسبوع.",
+  "Du {from} au {to}, heure d'Alger": "من {from} إلى {to}، بتوقيت الجزائر",
+  "Podium": "منصة التتويج",
+  "Le classement se remplit à chaque relevé des vues des clips validés. Les 10 premiers de la semaine gagnent une prime.": "يمتلئ الترتيب مع كل قراءة لمشاهدات المقاطع المقبولة. يفوز العشرة الأوائل في الأسبوع بمكافأة.",
+  "Votre position": "مركزك",
+  "clippers classés": { zero: "صانع مقاطع مصنّف", one: "صانع مقاطع مصنّف", two: "صانعا مقاطع مصنّفان", few: "صنّاع مقاطع مصنّفين", many: "صانع مقاطع مصنّفًا", other: "صانع مقاطع مصنّف" },
+  "Vous êtes {rank} avec {views} cette semaine.": "أنت في المركز {rank} برصيد {views} هذا الأسبوع.",
+  "Prime en jeu : {amount} si vous gardez cette place jusqu'à dimanche minuit.": "مكافأة على المحك: {amount} إذا حافظت على هذا المركز حتى منتصف ليل الأحد.",
+  "Encore {views} pour entrer dans le top 10.": "تحتاج إلى {views} إضافية لدخول قائمة العشرة الأوائل.",
+  "Vous n'êtes pas encore au classement": "لست في الترتيب بعد",
+  "Les vues gagnées cette semaine par vos clips validés vous y font entrer.": "المشاهدات التي تكسبها مقاطعك المقبولة هذا الأسبوع تُدخلك إليه.",
+  "Dimanche à minuit, heure d'Alger. Les primes sont versées lundi.": "منتصف ليل الأحد بتوقيت الجزائر. تُصرف المكافآت يوم الاثنين.",
+  "Gagnants de la semaine {n}": "الفائزون في الأسبوع {n}",
+  "Primes versées le {date}": "صُرفت المكافآت في {date}",
+  "Aucun gagnant cette semaine-là": "لا يوجد فائزون في ذلك الأسبوع",
+  "Seules les vues validées comptent : les vues gagnées pendant la semaine par vos clips validés, du lundi 00:00 au dimanche 24:00 (heure d'Alger).": "تُحتسب المشاهدات المقبولة فقط: المشاهدات التي تكسبها مقاطعك المقبولة خلال الأسبوع، من الاثنين 00:00 إلى الأحد 24:00 (بتوقيت الجزائر).",
+  "Les 10 premiers de la semaine gagnent une prime, versée lundi dans votre portefeuille.": "يفوز العشرة الأوائل في الأسبوع بمكافأة تُضاف إلى محفظتك يوم الاثنين.",
+  "Comme vos autres gains, une prime reste en rétention {days} avant d'être retirable.": "مثل أرباحك الأخرى، تبقى المكافأة قيد الحجز {days} قبل أن تصبح قابلة للسحب.",
+  "À égalité de vues, le clipper inscrit le plus tôt passe devant.": "عند تساوي المشاهدات، يتقدّم صانع المقاطع الأقدم تسجيلًا.",
+  "Règles du classement": "قواعد الترتيب",
+  "Les clippers qui gagnent le plus de vues validées cette semaine. Les 10 premiers remportent une prime.": "صانعو المقاطع الذين يكسبون أكبر عدد من المشاهدات المقبولة هذا الأسبوع. يفوز العشرة الأوائل بمكافأة.",
+});

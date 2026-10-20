@@ -606,3 +606,26 @@ Object.assign(I18N.en, {
   "Les questions des clippers sur les campagnes de ClipBoost. Les agences répondent elles-mêmes sur leurs campagnes.": "Clippers' questions about ClipBoost campaigns. Agencies answer on their own campaigns.",
   "Les clippers peuvent poser une question depuis la fiche de chaque campagne de ClipBoost active ou en pause.": "Clippers can ask a question from the page of each active or paused ClipBoost campaign.",
 });
+
+// Classement hebdomadaire (page Classement, primes dans les réglages)
+Object.assign(I18N.en, {
+  "Classement hebdomadaire": "Weekly leaderboard",
+  "Les clippers classés par vues validées, du lundi au dimanche (heure d'Alger). Les 10 premiers reçoivent une prime à la clôture de la semaine, faite par le relevé des vues.": "Clippers ranked by approved views, Monday to Sunday (Algiers time). The top 10 receive a prize when the week is closed, by the view reading.",
+  "Modifier les primes": "Edit prizes",
+  "Clippers classés": "Ranked clippers",
+  "Primes en jeu": "Prizes at stake",
+  "sur {amount} au total": "out of {amount} in total",
+  "Dimanche à minuit, heure d'Alger": "Sunday at midnight, Algiers time",
+  "Primes versées": "Prizes paid",
+  "sur {weeks}": "over {weeks}",
+  "semaines clôturées": { one: "closed week", other: "closed weeks" },
+  "Vues validées gagnées depuis lundi 00:00 (heure d'Alger), en direct.": "Approved views gained since Monday 00:00 (Algiers time), live.",
+  "Aucune vue validée cette semaine pour l'instant.": "No approved views this week yet.",
+  "Semaines clôturées, la plus récente d'abord.": "Closed weeks, most recent first.",
+  "Aucune semaine clôturée": "No closed weeks",
+  "La semaine écoulée est clôturée au premier relevé des vues du lundi.": "The past week is closed by Monday's first view reading.",
+  "Primes du classement hebdomadaire": "Weekly leaderboard prizes",
+  "Versées chaque lundi aux 10 clippers qui ont le plus de vues validées la semaine écoulée. ClipBoost les paie : aucune campagne n'est débitée. 0 DA : pas de prime pour ce rang.": "Paid every Monday to the 10 clippers with the most approved views in the past week. ClipBoost pays them: no campaign is charged. 0 DA: no prize for that rank.",
+  "Annonce, montants, délais et primes s'appliquent à tout le site dès l'enregistrement.": "Announcement, amounts, delays and prizes apply to the whole site as soon as they are saved.",
+  "Prime du {rank} : indiquez un nombre entier entre 0 et 1 000 000.": "{rank} prize: enter a whole number between 0 and 1,000,000.",
+});

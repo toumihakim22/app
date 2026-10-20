@@ -12,6 +12,7 @@ import { documentNumbers } from "./documents";
 import { socialView } from "./social";
 import { dailyGains, isTeamCampaign, messageThreads, RISK_WINDOW_DAYS, utcDay } from "../rules";
 import { simulatedPlatforms, TRACK_EVERY_HOURS, VIEWS_JOB } from "./tracking";
+import { leaderboardState } from "./leaderboard";
 
 const day = (d: Date) => d.toISOString().slice(0, 10);
 const time = (d: Date) => d.toISOString().slice(11, 16);
@@ -148,7 +149,7 @@ export async function stateFor(user: User) {
       ...(balanceOf.get(user.id) ?? {}), hasPassword: user.passwordHash !== "", providers: OAUTH_PROVIDERS.filter((p) => providers.includes(p)),
       ...(isClipper ? { socialAccounts: socialOf(user.id) } : {}),
     },
-    settings: { maintenance: settings.maintenance, signupsOpen: settings.signupsOpen, announcement: settings.announcement, minWithdraw: settings.minWithdraw, commissionRate: settings.commissionRate, minBudget: settings.minBudget, holdDays: settings.holdDays, earningDays: settings.earningDays, instantFeePercent: settings.instantFeePercent, instantMinFee: settings.instantMinFee },
+    settings: { maintenance: settings.maintenance, signupsOpen: settings.signupsOpen, announcement: settings.announcement, minWithdraw: settings.minWithdraw, commissionRate: settings.commissionRate, minBudget: settings.minBudget, holdDays: settings.holdDays, earningDays: settings.earningDays, instantFeePercent: settings.instantFeePercent, instantMinFee: settings.instantMinFee, weeklyPrizes: settings.weeklyPrizes },
     users: userRows.map((u) => ({
       ...(isAdmin ? fullUser(u) : u.id === user.id ? fullUser(u) : publicUser(u)), ...(balanceOf.get(u.id) ?? {}),
       ...(u.role === "clipper" && (isAdmin || u.id === user.id) ? { socialAccounts: socialOf(u.id) } : {}),
@@ -177,6 +178,8 @@ export async function stateFor(user: User) {
     // en développement ; en production, le paiement en ligne est alors refusé).
     ...(isAdmin || isAgency ? { payments: { simulated: !chargilyConfigured() } } : {}),
     // Relevé automatique des vues (admin) : dernière exécution, son bilan, plateformes en mode simulé.
+    // Classement hebdomadaire (clippers et admin) : semaine en cours en direct, dernière semaine clôturée ; historique pour l'admin.
+    ...(isClipper || isAdmin ? { leaderboard: await leaderboardState(user, settings.weeklyPrizes) } : {}),
     ...(isAdmin ? { tracking: { everyHours: TRACK_EVERY_HOURS, lastRunAt: viewsRun?.lastRunAt.toISOString() ?? null, summary: viewsRun?.summary ?? null, simulated: simulatedPlatforms() } } : {}),
   };
 }

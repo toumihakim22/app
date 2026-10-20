@@ -3,6 +3,7 @@ import { test } from "node:test";
 import {
   viewRates, belowMin, isTeamCampaign, messageExcerpt, messageThreads, replyText, bioHasCode, clipRisk, dailyGains, fraudRisk, fundingCost, handleInUrl, instantFee, normalizeHandle, payoutDelta, payoutFor, RISK_LOW_LIKES, RISK_NEW_ACCOUNT,
   RISK_SPIKE, RISK_WINDOW_DAYS, riskLevel, sentence, simulatedHistory, simulatedProfile, simulatedStats, socialCode, socialLinkError, utcDay, validateCampaignNumbers, viewsFor, viewsTrackedText,
+  keepsWeekReading, prizeLabel, prizeNotice, rankText, weekBounds, weekClosedText, weekGains, weekKey, weeklyRanking, weekNumber, weeksToClose, weekStart,
 } from "../lib/server/rules";
 
 const derby = { rate: 150, minPayout: 300, maxPayout: 30000 };
@@ -217,4 +218,93 @@ test("messagerie : extrait des notifications, campagnes de ClipBoost, conversati
   const [other, thread] = messageThreads(rows, false);
   assert.deepEqual([other.id, thread.id, thread.unread, thread.awaiting, thread.messages.map((x) => x.id)], ["c1~k2", "c1~k1", 1, true, ["q", "r", "q2"]]);
   assert.equal(messageThreads(rows, true)[1].unread, 1);
+});
+
+// ---------- Classement hebdomadaire (semaines du lundi au dimanche, heure d'Alger : UTC+1 sans heure d'été) ----------
+
+const at = (iso: string) => Date.parse(iso);
+const iso = (ms: number) => new Date(ms).toISOString();
+
+test("semaine du classement : lundi 00:00 à dimanche 24:00 heure d'Alger, clé ISO", () => {
+  // Dimanche 18 octobre 2026 à 23:59:59 à Alger (22:59:59 UTC) : encore la semaine 42 ; une seconde plus tard, la 43.
+  assert.deepEqual([iso(weekStart(at("2026-10-18T22:59:59Z"))), weekKey(at("2026-10-18T22:59:59Z"))], ["2026-10-11T23:00:00.000Z", "2026-W42"]);
+  assert.deepEqual([iso(weekStart(at("2026-10-18T23:00:00Z"))), weekKey(at("2026-10-18T23:00:00Z"))], ["2026-10-18T23:00:00.000Z", "2026-W43"]);
+  // Lundi 00:30 UTC est déjà lundi 01:30 à Alger ; dimanche 23:30 UTC aussi (lundi 00:30 à Alger).
+  assert.equal(weekKey(at("2026-10-19T00:30:00Z")), "2026-W43");
+  assert.equal(weekKey(at("2026-10-25T23:30:00Z")), "2026-W44");
+  assert.deepEqual(weekBounds("2026-W43"), { start: at("2026-10-18T23:00:00Z"), end: at("2026-10-25T23:00:00Z") });
+  assert.equal(weekNumber("2026-W43"), 43);
+  // Changement d'année : 2026 a 53 semaines ISO (1er janvier un jeudi), le 1er janvier 2027 est dans la 53e, la
+  // semaine 1 de 2027 commence lundi 4 janvier (dimanche 3 à 23:00 UTC). 2025 n'a que 52 semaines.
+  assert.equal(weekKey(at("2027-01-01T12:00:00Z")), "2026-W53");
+  assert.equal(weekKey(at("2027-01-03T23:00:00Z")), "2027-W01");
+  assert.equal(weekKey(at("2025-12-29T10:00:00Z")), "2026-W01");
+  assert.deepEqual(weekBounds("2027-W01"), { start: at("2027-01-03T23:00:00Z"), end: at("2027-01-10T23:00:00Z") });
+  for (const bad of ["2025-W53", "2026-W00", "2026-W54", "2026-43", "W43", ""]) assert.equal(weekBounds(bad), null, bad);
+  // Chaque instant d'une année tombe dans la semaine dont les bornes l'encadrent.
+  for (let t = at("2026-01-01T00:00:00Z"); t < at("2027-01-15T00:00:00Z"); t += 3 * 3_600_000 + 17 * 60_000) {
+    const b = weekBounds(weekKey(t))!;
+    assert.ok(b.start <= t && t < b.end && b.end - b.start === 7 * 86_400_000, iso(t));
+  }
+});
+
+test("semaines à clôturer : la semaine écoulée, les semaines manquées (8 au plus), rien deux fois", () => {
+  const now = at("2026-10-20T10:00:00Z");
+  assert.deepEqual(weeksToClose(null, now), ["2026-W42"]);
+  assert.deepEqual(weeksToClose("2026-W42", now), []);
+  assert.deepEqual(weeksToClose("2026-W43", now), []);
+  assert.deepEqual(weeksToClose("2026-W40", now), ["2026-W41", "2026-W42"]);
+  assert.deepEqual(weeksToClose("2026-W52", at("2027-01-05T00:00:00Z")), ["2026-W53"]);
+  assert.deepEqual(weeksToClose("2026-W20", now), ["2026-W35", "2026-W36", "2026-W37", "2026-W38", "2026-W39", "2026-W40", "2026-W41", "2026-W42"]);
+  assert.deepEqual(weeksToClose("n'importe quoi", now), ["2026-W42"]);
+  // Lundi 00:10 à Alger (dimanche 23:10 UTC) : la semaine qui vient de finir est due.
+  assert.deepEqual(weeksToClose("2026-W41", at("2026-10-18T23:10:00Z")), ["2026-W42"]);
+  // Relevé du jour UTC fait avant le début de la semaine : gardé par un relevé fait après (dimanche 23:00-24:00 UTC).
+  assert.equal(keepsWeekReading(at("2026-10-18T18:00:00Z"), at("2026-10-18T23:30:00Z")), true);
+  assert.equal(keepsWeekReading(at("2026-10-18T12:00:00Z"), at("2026-10-18T18:00:00Z")), false);
+  assert.equal(keepsWeekReading(at("2026-10-19T06:00:00Z"), at("2026-10-19T12:00:00Z")), false);
+});
+
+test("vues validées de la semaine et classement : écart entre relevés, ex æquo, suspendus, primes du top 10", () => {
+  const { start, end } = weekBounds("2026-W43")!;
+  const r = (publicationId: string, views: number, when: string) => ({ publicationId, views, at: at(when) });
+  const readings = [
+    // a : relevés avant, pendant et après la semaine ; le relevé exact du lundi 00:00 à Alger compte dans la semaine.
+    r("a", 1000, "2026-10-17T22:00:00Z"), r("a", 1500, "2026-10-18T22:00:00Z"), r("a", 4000, "2026-10-21T22:00:00Z"), r("a", 6000, "2026-10-25T22:00:00Z"), r("a", 9000, "2026-10-26T06:00:00Z"),
+    // b : aucun relevé avant la semaine (clip publié pendant) : toutes ses vues comptent.
+    r("b", 2500, "2026-10-20T10:00:00Z"),
+    r("c", 3000, "2026-10-18T23:00:00Z"), r("c", 5000, "2026-10-22T12:00:00Z"),
+    // d : seulement avant la semaine ; e : vues corrigées à la baisse (aucun gain négatif).
+    r("d", 7000, "2026-10-10T10:00:00Z"), r("e", 900, "2026-10-17T10:00:00Z"), r("e", 800, "2026-10-20T10:00:00Z"),
+  ];
+  const gains = weekGains(readings, start, end);
+  assert.deepEqual(Object.fromEntries(gains), { a: 4500, b: 2500, c: 5000, d: 0, e: 0 });
+  const day = 86_400_000;
+  const clips = [
+    { id: "a", userId: "u1", status: "Validée" }, { id: "b", userId: "u2", status: "Validée" }, { id: "c", userId: "u3", status: "Validée" },
+    { id: "d", userId: "u4", status: "Validée" }, { id: "e", userId: "u4", status: "Validée" }, { id: "x", userId: "u2", status: "En attente" },
+  ];
+  // u2 et u5 : 2 500 vues chacun ; u5, inscrit plus tôt, passe devant. u3 est suspendu ; u4 n'a pas de vue cette semaine.
+  const all = [...clips, { id: "f", userId: "u5", status: "Validée" }, { id: "g", userId: "u6", status: "Refusée" }];
+  const g2 = new Map([...gains, ["f", 2500], ["x", 99999], ["g", 50000]]);
+  const users = [{ id: "u1", createdAt: 5 * day, status: "Actif" }, { id: "u2", createdAt: 3 * day, status: "Actif" }, { id: "u3", createdAt: 1 * day, status: "Suspendu" },
+    { id: "u4", createdAt: 2 * day, status: "Actif" }, { id: "u5", createdAt: 1 * day, status: "Actif" }, { id: "u6", createdAt: 1 * day, status: "Actif" }];
+  const prizes = [10000, 7000, 0, 4000, 3000, 2500, 2000, 1500, 1000, 1000];
+  assert.deepEqual(weeklyRanking(all, g2, users, prizes), [
+    { rank: 1, userId: "u1", views: 4500, prize: 10000 }, { rank: 2, userId: "u5", views: 2500, prize: 7000 }, { rank: 3, userId: "u2", views: 2500, prize: 0 },
+  ]);
+  // Au-delà du 10e : classé, sans prime.
+  const many = Array.from({ length: 12 }, (_, i) => ({ id: `k${i}`, userId: `m${i}`, status: "Validée" }));
+  const ranked = weeklyRanking(many, new Map(many.map((c, i) => [c.id, 1000 - i])), many.map((c, i) => ({ id: c.userId, createdAt: i, status: "Actif" })), prizes);
+  assert.deepEqual([ranked.length, ranked[9].prize, ranked[10].prize, ranked[11].rank], [12, 1000, 0, 12]);
+});
+
+test("textes du classement : libellé de la prime, notification, journal", () => {
+  assert.deepEqual([rankText(1), rankText(2), rankText(10)], ["1er", "2e", "10e"]);
+  assert.equal(prizeLabel("2026-W43", 1), "Prime classement · semaine 43 (1er)");
+  assert.equal(prizeNotice("2026-W43", 3, 5000), "Vous êtes 3e du classement de la semaine 43 : +5 000 DA");
+  assert.equal(prizeNotice("2026-W09", 1, 12345678), "Vous êtes 1er du classement de la semaine 9 : +12 345 678 DA");
+  assert.equal(weekClosedText("2026-W43", 0, 0), "Classement de la semaine 43 clôturé : aucune prime versée.");
+  assert.equal(weekClosedText("2026-W43", 1, 10000), "Classement de la semaine 43 clôturé : 1 prime versée (10 000 DA).");
+  assert.equal(weekClosedText("2026-W43", 10, 37000), "Classement de la semaine 43 clôturé : 10 primes versées (37 000 DA).");
 });
