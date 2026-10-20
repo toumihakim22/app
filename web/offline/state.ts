@@ -6,6 +6,7 @@ import { OAUTH_PROVIDERS } from "../../lib/server/validation";
 import { PLATFORMS } from "../../lib/server/gradients";
 import { dailyGains, isTeamCampaign, messageThreads, RISK_WINDOW_DAYS, utcDay } from "../../lib/server/rules";
 import { leaderboardState } from "./leaderboard";
+import { referralState } from "./referrals";
 import { lastJobRun, simulatedPlatforms, TRACK_EVERY_HOURS, VIEWS_JOB } from "./tracking";
 
 const day = (ms: number) => new Date(ms).toISOString().slice(0, 10);
@@ -24,11 +25,12 @@ function publicAgency(u: UserRow) {
   return { id: u.id, name: u.name, avatar: u.avatar, cover: u.cover, verified: u.verification === "verified", country: u.country, bio: u.bio, joined: day(u.createdAt) };
 }
 
-/** emailVerified : adresse confirmée (code à l'inscription, ou fournisseur Google, Apple, Discord). */
+/** emailVerified : adresse confirmée (code à l'inscription, ou fournisseur Google, Apple, Discord). referralCode, referredBy : parrainage. */
 function fullUser(u: UserRow) {
   return {
     ...publicUser(u), email: u.email, contact: u.contact, credit: u.credit, bio: u.bio, handles: u.handles, payoutMethod: u.payoutMethod, payoutAccount: u.payoutAccount,
     cover: u.cover, verification: u.verification, verificationNote: u.verificationNote, locale: u.locale, emailVerified: true,
+    referralCode: u.referralCode, referredBy: u.referredBy,
   };
 }
 
@@ -122,7 +124,7 @@ export function stateFor(db: Store, user: UserRow) {
       favorites: mine.filter((m) => m.favorite).map((m) => m.campaignId), joinedCampaigns: mine.filter((m) => m.joined).map((m) => m.campaignId), ...(balanceOf.get(user.id) ?? {}),
       ...(isClipper ? { socialAccounts: socialOf(user.id) } : {}),
     },
-    settings: { maintenance: settings.maintenance, signupsOpen: settings.signupsOpen, announcement: settings.announcement, minWithdraw: settings.minWithdraw, commissionRate: settings.commissionRate, minBudget: settings.minBudget, holdDays: settings.holdDays, earningDays: settings.earningDays, instantFeePercent: settings.instantFeePercent, instantMinFee: settings.instantMinFee, weeklyPrizes: settings.weeklyPrizes },
+    settings: { maintenance: settings.maintenance, signupsOpen: settings.signupsOpen, announcement: settings.announcement, minWithdraw: settings.minWithdraw, commissionRate: settings.commissionRate, minBudget: settings.minBudget, holdDays: settings.holdDays, earningDays: settings.earningDays, instantFeePercent: settings.instantFeePercent, instantMinFee: settings.instantMinFee, weeklyPrizes: settings.weeklyPrizes, referralBonus: settings.referralBonus },
     users: userRows.map((u) => ({
       ...(isAdmin ? fullUser(u) : u.id === user.id ? fullUser(u) : publicUser(u)), ...(balanceOf.get(u.id) ?? {}),
       ...(u.role === "clipper" && (isAdmin || u.id === user.id) ? { socialAccounts: socialOf(u.id) } : {}),
@@ -154,6 +156,8 @@ export function stateFor(db: Store, user: UserRow) {
     ...(isAdmin || isAgency ? { payments: { simulated: true } } : {}),
     // Classement hebdomadaire (clippers et admin) : semaine en cours en direct, dernière semaine clôturée ; historique pour l'admin.
     ...(isClipper || isAdmin ? { leaderboard: leaderboardState(db, user, settings.weeklyPrizes) } : {}),
+    // Parrainage (clipper) : son code, ses filleuls (nom, inscription, premier retrait) et les primes reçues.
+    ...(isClipper ? { referral: referralState(db, user) } : {}),
     // Relevé des vues (admin) : dernière exécution, son bilan, plateformes en mode simulé (toutes, hors ligne).
     ...(isAdmin ? { tracking: { everyHours: TRACK_EVERY_HOURS, lastRunAt: viewsRun ? new Date(viewsRun.lastRunAt).toISOString() : null, summary: viewsRun?.summary ?? null, simulated: simulatedPlatforms() } } : {}),
   };

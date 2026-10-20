@@ -629,3 +629,11 @@ Object.assign(I18N.en, {
   "Annonce, montants, délais et primes s'appliquent à tout le site dès l'enregistrement.": "Announcement, amounts, delays and prizes apply to the whole site as soon as they are saved.",
   "Prime du {rank} : indiquez un nombre entier entre 0 et 1 000 000.": "{rank} prize: enter a whole number between 0 and 1,000,000.",
 });
+
+// Parrainage : fiche d'un clipper, réglage de la prime.
+Object.assign(I18N.en, {
+  "Parrainé par": "Referred by",
+  "Personne": "No one",
+  "Prime de parrainage": "Referral bonus",
+  "Versée au parrain quand son filleul fait son premier retrait. ClipBoost la paie ; 0 DA : pas de prime.": "Paid to the referrer when their referral makes a first withdrawal. ClipBoost pays it; 0 DA: no bonus.",
+});

@@ -4,12 +4,13 @@ import { eq } from "drizzle-orm";
 import * as schema from "../lib/server/db/schema";
 import { DEMO_APPEAL_MESSAGE, DEMO_PROOF_JPEG_BASE64 } from "../lib/server/demo-appeal";
 import { DEMO_CONTENDERS, demoLastWeek } from "../lib/server/demo-leaderboard";
+import { DEMO_REFEREE_PAYOUT, DEMO_REFEREES, DEMO_REFERRAL_CODE } from "../lib/server/demo-referrals";
 import { demoThreads } from "../lib/server/demo-messages";
 import { numberDocuments } from "../lib/server/documents";
 import { newId, newRef } from "../lib/server/ids";
 import { link } from "../lib/server/links";
 import { hashPassword } from "../lib/server/password";
-import { clipRisk, payoutFor, prizeLabel, prizeNotice, sentence, simulatedHistory, socialCode, weekClosedText, type WeekReading } from "../lib/server/rules";
+import { clipRisk, payoutFor, prizeLabel, prizeNotice, referralCode, referralLabel, referralNotice, referralPaidText, sentence, simulatedHistory, socialCode, weekClosedText, type WeekReading } from "../lib/server/rules";
 import { DEFAULT_SETTINGS } from "../lib/server/settings";
 import { openDb } from "./db";
 
@@ -35,9 +36,10 @@ if (process.argv.includes("--demo")) {
   } else {
     const daysAgo = (n: number) => new Date(Date.now() - n * 86_400_000);
     const pwd = await hashPassword("Clipboost2026");
+    // Chaque clipper a son code de parrainage (celui de Yacine est fixe : DEMO_REFERRAL_CODE).
     const U = (role: "clipper" | "agence", name: string, email: string, extra: Partial<typeof schema.users.$inferInsert> = {}) =>
-      ({ id: newId(), role, name, email, passwordHash: pwd, ...extra });
-    const yacine = U("clipper", "Yacine Benali", "yacine@clipboost.dz", { level: "Clipper Argent", bio: "Monteur passionné de foot et d'humour.", handles: { tiktok: "@yacine.clips", instagram: "@yacine.clips", youtube: "@yacineclips" }, payoutMethod: "CCP", payoutAccount: "0021234567 clé 89", createdAt: daysAgo(210) });
+      ({ id: newId(), role, name, email, passwordHash: pwd, referralCode: role === "clipper" ? referralCode(randomBytes(8)) : null, ...extra });
+    const yacine = U("clipper", "Yacine Benali", "yacine@clipboost.dz", { referralCode: DEMO_REFERRAL_CODE, level: "Clipper Argent", bio: "Monteur passionné de foot et d'humour.", handles: { tiktok: "@yacine.clips", instagram: "@yacine.clips", youtube: "@yacineclips" }, payoutMethod: "CCP", payoutAccount: "0021234567 clé 89", createdAt: daysAgo(210) });
     const amira = U("clipper", "Amira Khelifi", "amira@clipboost.dz", { level: "Clipper Or", bio: "Lifestyle et mode à Oran.", handles: { instagram: "@amira.style" }, payoutMethod: "BaridiMob", payoutAccount: "00799999001234567890", createdAt: daysAgo(190) });
     const lina = U("clipper", "Lina Mansouri", "lina@clipboost.dz", { level: "Clipper Bronze", handles: { tiktok: "@lina.lol", youtube: "@lina.lol" }, createdAt: daysAgo(60) });
     const tassili = U("agence", "Tassili Sport", "agence@clipboost.dz", { contact: "Nassim Ait Ali", bio: "Équipementier sportif algérien : maillots, ballons et tenues d'entraînement. Nous cherchons des clippers passionnés de foot pour faire vivre chaque match.", credit: 400000, createdAt: daysAgo(240) });
@@ -46,6 +48,10 @@ if (process.argv.includes("--demo")) {
     const djurdjura = U("agence", "Djurdjura Médias", "djurdjura@clipboost.dz", { contact: "Karim Ouali", country: "Algérie", bio: "Studio de production basé à Tizi Ouzou : courts-métrages, clips musicaux et documentaires.", credit: 150000, verification: "verified", createdAt: daysAgo(120) });
     // Clippers de plus pour le classement hebdomadaire (lib/server/demo-leaderboard.ts) : un compte vérifié et un clip validé chacun.
     const contenders = DEMO_CONTENDERS.map((d) => ({ d, u: U("clipper", d.name, d.email, { level: d.level, handles: { [d.platform.toLowerCase()]: `@${d.handle}` }, createdAt: daysAgo(d.createdDaysAgo) }) }));
+    // Parrainage (lib/server/demo-referrals.ts) : filleuls de Yacine ; Karim retire vers son propre compte BaridiMob.
+    for (const u of [amira, lina, ...contenders.map((x) => x.u)]) if (DEMO_REFEREES.includes(u.email)) u.referredBy = yacine.id;
+    const karim = contenders.find((x) => x.u.email === DEMO_REFEREE_PAYOUT.email)!.u;
+    Object.assign(karim, { payoutMethod: DEMO_REFEREE_PAYOUT.method, payoutAccount: DEMO_REFEREE_PAYOUT.account });
     await db.insert(schema.users).values([yacine, amira, lina, tassili, hoggar, djurdjura, ...contenders.map((x) => x.u)]);
 
     // Comptes sociaux vérifiés (code dans la bio) sur les plateformes de leurs clips ; Amira a aussi un compte TikTok
@@ -205,15 +211,24 @@ if (process.argv.includes("--demo")) {
     acts.push([11, "💳", `Recharge de ${fmt(300000)} payée en ligne par ${tassili.name} (carte Edahabia, Chargily).`]);
     // Recharge par virement de Djurdjura confirmée par l'équipe, et retrait de Yacine versé : avec la recharge Edahabia,
     // chacun a son document (factures FAC-…, reçu REC-…), numérotés dans l'ordre des dates comme par la migration 0007.
-    const transferId = newId(), payoutId = newId();
+    // Premier retrait de Karim, filleul de Yacine, versé : son reçu, et la prime de parrainage payée à Yacine (en rétention).
+    const transferId = newId(), payoutId = newId(), karimPayoutId = newId(), bonusId = newId(), kp = DEMO_REFEREE_PAYOUT;
     await db.insert(schema.transactions).values([
       { id: transferId, ref: newRef(), userId: djurdjura.id, type: "recharge", label: "Recharge par virement bancaire", amount: 500000, status: "Validé", method: "virement bancaire", createdAt: daysAgo(8.2) },
       { id: payoutId, ref: newRef(), userId: yacine.id, type: "retrait", label: "Retrait vers CCP", amount: -4000, status: "Validé", method: "CCP", createdAt: daysAgo(4.2) },
+      { id: karimPayoutId, ref: newRef(), userId: karim.id, type: "retrait", label: `Retrait vers ${kp.method}`, amount: -kp.amount, status: "Validé", method: kp.method, createdAt: daysAgo(kp.requestedDaysAgo) },
+      { id: bonusId, ref: newRef(), userId: yacine.id, type: "gain", label: referralLabel(karim.name), amount: DEFAULT_SETTINGS.referralBonus, status: "Validé", availableAt: daysAgo(kp.paidDaysAgo - DEFAULT_SETTINGS.holdDays), createdAt: daysAgo(kp.paidDaysAgo) },
     ]);
+    await db.insert(schema.referralRewards).values({ refereeId: karim.id, referrerId: yacine.id, amount: DEFAULT_SETTINGS.referralBonus, transactionId: bonusId, createdAt: daysAgo(kp.paidDaysAgo) });
+    notes.push([karim, kp.paidDaysAgo, "✅", `Votre retrait de ${fmt(kp.amount)} a été validé.`, link.clipperTx(karimPayoutId)],
+      [yacine, kp.paidDaysAgo, "🎁", referralNotice(karim.name, DEFAULT_SETTINGS.referralBonus), link.clipperTx(bonusId)]);
+    acts.push([kp.requestedDaysAgo, "💸", `${karim.name} a demandé un retrait de ${fmt(kp.amount)}.`], [kp.paidDaysAgo, "✅", `Retrait de ${fmt(kp.amount)} validé par Équipe ClipBoost.`],
+      [kp.paidDaysAgo, "🎁", referralPaidText(yacine.name, karim.name, DEFAULT_SETTINGS.referralBonus)]);
     const docs = [
       { kind: "facture" as const, transactionId: onlineId, userId: tassili.id, amount: 300000, createdAt: daysAgo(11) },
       { kind: "facture" as const, transactionId: transferId, userId: djurdjura.id, amount: 500000, createdAt: daysAgo(8) },
       { kind: "recu" as const, transactionId: payoutId, userId: yacine.id, amount: 4000, createdAt: daysAgo(4) },
+      { kind: "recu" as const, transactionId: karimPayoutId, userId: karim.id, amount: kp.amount, createdAt: daysAgo(kp.paidDaysAgo) },
     ];
     const numbers = numberDocuments(docs.map((d) => ({ kind: d.kind, at: d.createdAt.getTime() })));
     await db.insert(schema.documents).values(docs.map((d, k) => ({ id: newId(), number: numbers[k], ...d })));

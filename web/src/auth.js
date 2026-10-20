@@ -23,6 +23,72 @@ let authOAuthPending = (() => {
   }
 })();
 
+// ---------- Lien de parrainage (/espace?ref=<code>#/inscription) ----------
+// Le code est lu une fois au chargement, retiré de l'adresse et gardé 30 jours dans ce navigateur (localStorage) : il
+// accompagne l'inscription d'un clipper, par email comme avec Google, Apple ou Discord. L'écran d'inscription affiche
+// « Invité par {prénom} » si le code est valable (GET /api/referral/<code>) ; un code inconnu est oublié sans message
+// (l'inscription reste possible). Le code est oublié dès qu'un compte est ouvert (authForgetReferral, appelé par refresh).
+const AUTH_REF_KEY = "clipboost-ref";
+const AUTH_REF_DAYS = 30;
+// Même règle que normalizeReferralCode (lib/server/rules.ts) : 4 à 16 lettres ou chiffres, en majuscules.
+const authRefCode = (v) => { const c = String(v || "").trim().toUpperCase(); return /^[A-Z0-9]{4,16}$/.test(c) ? c : ""; };
+(() => {
+  try {
+    const q = new URLSearchParams(location.search);
+    if (!q.has("ref")) return;
+    const code = authRefCode(q.get("ref"));
+    q.delete("ref");
+    const rest = q.toString();
+    try { history.replaceState(history.state, "", `${location.pathname}${rest ? `?${rest}` : ""}${location.hash}`); } catch (e) {}
+    if (code) localStorage.setItem(AUTH_REF_KEY, JSON.stringify({ code, at: Date.now() }));
+  } catch (e) {}
+})();
+// Code gardé (moins de 30 jours), sinon "".
+function authStoredReferral() {
+  try {
+    const v = JSON.parse(localStorage.getItem(AUTH_REF_KEY) || "null");
+    if (v && authRefCode(v.code) && Date.now() - Number(v.at) < AUTH_REF_DAYS * 86_400_000) return authRefCode(v.code);
+  } catch (e) {}
+  return "";
+}
+function authForgetReferral() {
+  try { localStorage.removeItem(AUTH_REF_KEY); } catch (e) {}
+  authReferral = { code: "", firstName: "", status: "none" };
+}
+// Parrain du code gardé : status « idle » (à vérifier), « loading », « ok » (firstName connu), « none » (aucun code ou code inconnu).
+let authReferral = { code: "", firstName: "", status: "idle" };
+function authReferralInfo() {
+  const code = authStoredReferral();
+  if (!code) return { code: "", firstName: "", status: "none" };
+  if (authReferral.code !== code) authReferral = { code, firstName: "", status: "idle" };
+  if (authReferral.status === "idle") {
+    authReferral.status = "loading";
+    const asked = authReferral;
+    api("GET", `/api/referral/${encodeURIComponent(code)}`)
+      .then((r) => { if (authReferral === asked) { asked.firstName = String(r.firstName || ""); asked.status = asked.firstName ? "ok" : "none"; } })
+      .catch((e) => {
+        if (authReferral !== asked) return;
+        // Code inconnu : oublié. Autre erreur (réseau) : le code reste envoyé avec l'inscription, sans « Invité par ».
+        asked.status = "none";
+        if (e.status === 404) { try { localStorage.removeItem(AUTH_REF_KEY); } catch (x) {} }
+      })
+      .finally(() => { if (authReferral === asked && state.route.view === "inscription") render(); });
+  }
+  return authReferral;
+}
+// Code envoyé avec l'inscription d'un clipper (le serveur le vérifie de nouveau et l'ignore s'il n'est pas valable).
+const authSignupRef = (role) => (role === "clipper" ? authStoredReferral() || undefined : undefined);
+// Bandeau « Invité par … » de l'écran d'inscription (clipper seulement).
+function authReferralNote(role) {
+  const r = authReferralInfo();
+  if (role !== "clipper" || r.status !== "ok") return "";
+  return `<div class="${TILE} flex items-center gap-3" role="status">
+      <span class="grid size-9 shrink-0 place-items-center rounded-tile bg-brand-soft text-brand-fg" aria-hidden="true">${icon("gift", "size-[18px]")}</span>
+      <div class="min-w-0"><p class="text-sm font-semibold text-fg">${t("Invité par {name}", { name: `<span dir="auto">${esc(r.firstName)}</span>` })}</p>
+        <p class="mt-0.5 text-xs text-fg-muted">${t("Créez votre compte Clipper\u00a0: {name} recevra une prime à votre premier retrait.", { name: `<span dir="auto">${esc(r.firstName)}</span>` })}</p></div>
+    </div>`;
+}
+
 // Messages des codes d'erreur du serveur (OAuthErrorCode), traduits à l'affichage. « email » nomme le fournisseur (authOAuthMessage).
 const AUTH_OAUTH_ERRORS = {
   denied: "Connexion annulée.",
@@ -111,7 +177,9 @@ function authStartOAuth(provider, el) {
   authLeaving = true;
   root.querySelectorAll('[data-action="auth-oauth"]').forEach((b) => { if (b !== el) b.setAttribute("aria-disabled", "true"); });
   if (el) { el.setAttribute("aria-busy", "true"); el.innerHTML = `${AUTH_SPINNER}<span>${t("Redirection vers {provider}…", { provider: P.name })}</span>`; }
-  const q = new URLSearchParams(mode === "signup" ? { mode, role } : { mode });
+  // Inscription d'un clipper par un lien de parrainage : le code part avec le parcours (cookie du serveur).
+  const ref = mode === "signup" ? authSignupRef(role) : undefined;
+  const q = new URLSearchParams(mode === "signup" ? { mode, role, ...(ref ? { ref } : {}) } : { mode });
   location.href = `/api/auth/oauth/${provider}?${q}`;
 }
 // Départ vers le fournisseur en cours (un double clic ne relance pas la redirection).
@@ -217,7 +285,7 @@ async function authOAuthDemo(data) {
   const submit = root.querySelector('[data-form="auth-oauth"] button[type="submit"]');
   if (submit) submit.setAttribute("aria-disabled", "true");
   try {
-    await api("POST", "/api/auth/oauth/demo", { provider: m.provider, name, email, role: m.role, mode: m.mode });
+    await api("POST", "/api/auth/oauth/demo", { provider: m.provider, name, email, role: m.role, mode: m.mode, ref: m.mode === "signup" ? authSignupRef(m.role) : undefined });
     state.modal = null;
     await enter();
   } catch (e) {
@@ -437,6 +505,7 @@ function viewInscription() {
             ${authRoleCard("agence", "building", t("Agence"), t("Je crée des campagnes pour une marque."), isAgency)}
           </div>
         </div>
+        ${authReferralNote(f.role)}
       </div>
       ${oauth}
       <form data-form="signup" class="grid gap-4" novalidate>
@@ -546,6 +615,7 @@ function signupPayload() {
     role: f.role, email: f.email, country: f.country, password: state.auth.pendingPassword, terms: true,
     name: f.role === "agence" ? f.agency : `${f.first} ${f.last}`,
     contact: f.role === "agence" ? f.contact : undefined,
+    ref: authSignupRef(f.role),
   };
 }
 

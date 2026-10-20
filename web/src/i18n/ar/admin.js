@@ -630,3 +630,11 @@ Object.assign(I18N.ar, {
   "Annonce, montants, délais et primes s'appliquent à tout le site dès l'enregistrement.": "يُطبَّق الإعلان والمبالغ والمهل والمكافآت على الموقع كله فور الحفظ.",
   "Prime du {rank} : indiquez un nombre entier entre 0 et 1 000 000.": "مكافأة المركز {rank}: أدخل عددًا صحيحًا بين 0 و1000000.",
 });
+
+// Parrainage : fiche d'un clipper, réglage de la prime.
+Object.assign(I18N.ar, {
+  "Parrainé par": "مدعوّ من",
+  "Personne": "لا أحد",
+  "Prime de parrainage": "مكافأة الإحالة",
+  "Versée au parrain quand son filleul fait son premier retrait. ClipBoost la paie ; 0 DA : pas de prime.": "تُصرف لصاحب الدعوة عندما يُجري المدعوّ أول عملية سحب. يدفعها ClipBoost؛ 0 دج: بلا مكافأة.",
+});

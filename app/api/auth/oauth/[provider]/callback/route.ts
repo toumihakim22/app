@@ -14,8 +14,8 @@ async function callback(req: NextRequest, { params }: Ctx) {
   const { provider } = await params;
   try {
     if (!isOAuthProvider(provider)) throw new OAuthError("config");
-    const { identity, mode, role } = await finishOAuth(req, provider);
-    await oauthSignIn(identity, mode, role);
+    const { identity, mode, role, ref } = await finishOAuth(req, provider);
+    await oauthSignIn(identity, mode, role, ref);
     return NextResponse.redirect(new URL("/espace#/", appOrigin(req)), 303);
   } catch (err) {
     return oauthErrorRedirect(req, err);

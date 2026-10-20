@@ -11,6 +11,7 @@ import {
 } from "./db";
 import { issueDocument } from "./documents";
 import { hashPassword, sha256Hex, strongEnough, verifyPassword } from "./password";
+import { referrerFor, rewardReferral } from "./referrals";
 
 /** Contexte d'une requête : la copie de travail de la base et l'enregistrement immédiat (hors transaction). */
 export type Ctx = { db: Store; commit: () => void };
@@ -110,13 +111,14 @@ async function consumeCode({ db, commit }: Ctx, email: string, purpose: "signup"
   return row;
 }
 
-export async function requestSignup({ db }: Ctx, input: { role: "clipper" | "agence"; name: string; contact?: string; email: string; country: string; password: string }) {
+/** ref : code de parrainage du lien d'inscription, vérifié à la création du compte (verifySignup). */
+export async function requestSignup({ db }: Ctx, input: { role: "clipper" | "agence"; name: string; contact?: string; email: string; country: string; password: string; ref?: string }) {
   const settings = getSettings(db);
   if (!settings.signupsOpen || settings.maintenance) throw forbidden("Les inscriptions sont momentanément fermées");
   const email = normalizeEmail(input.email);
   if (emailTaken(db, email)) throw badRequest("Un compte existe déjà avec cet email");
   if (!strongEnough(input.password)) throw badRequest("Le mot de passe doit contenir au moins 8 caractères, dont une lettre et un chiffre");
-  const payload: SignupPayload = { role: input.role, name: input.name.trim(), contact: input.contact?.trim() || null, country: input.country, passwordHash: await hashPassword(input.password) };
+  const payload: SignupPayload = { role: input.role, name: input.name.trim(), contact: input.contact?.trim() || null, country: input.country, passwordHash: await hashPassword(input.password), ref: input.role === "clipper" ? input.ref ?? null : null };
   const devCode = await issueCode(db, email, "signup", payload);
   return { email, devCode };
 }
@@ -128,7 +130,8 @@ export async function verifySignup(ctx: Ctx, emailInput: string, code: string) {
   const p = row.payload as SignupPayload;
   if (emailTaken(db, email)) throw badRequest("Un compte existe déjà avec cet email");
   const id = newId();
-  insertUser(db, { id, role: p.role, email, passwordHash: p.passwordHash, name: p.name, contact: p.contact, country: p.country });
+  // Clipper : son code de parrainage (insertUser) et son parrain si le code du lien est valable (sinon ignoré).
+  insertUser(db, { id, role: p.role, email, passwordHash: p.passwordHash, name: p.name, contact: p.contact, country: p.country, referredBy: referrerFor(db, { id, role: p.role }, p.ref) });
   logActivity(db, p.role === "agence" ? "🏢" : "👤", `${p.name} s'est inscrit${p.role === "agence" ? " (agence)" : ""}.`);
   createSession(db, id);
   return id;
@@ -179,9 +182,9 @@ export async function changePassword({ db }: Ctx, userId: string, current: strin
  * compte est identifié par « demo:<email> ». Même résolution et mêmes contrôles, dans le même ordre, que le serveur
  * (oauthSignIn, lib/server/services/accounts.ts) : compte déjà relié, sinon compte existant avec cet email (relié au
  * passage), sinon création avec le rôle choisi si mode « signup ». Les messages sont ceux que l'app affiche en ligne
- * pour les mêmes cas (codes oauth_error, web/src/auth.js).
+ * pour les mêmes cas (codes oauth_error, web/src/auth.js). ref : code de parrainage, pris en compte à la création d'un clipper.
  */
-export function oauthDemo({ db }: Ctx, input: { provider: OAuthProvider; name: string; email: string; role: "clipper" | "agence"; mode: "login" | "signup" }) {
+export function oauthDemo({ db }: Ctx, input: { provider: OAuthProvider; name: string; email: string; role: "clipper" | "agence"; mode: "login" | "signup"; ref?: string }) {
   const settings = getSettings(db);
   const email = normalizeEmail(input.email), subject = `demo:${email}`;
   const linked = db.oauth.find((a) => a.provider === input.provider && a.subject === subject);
@@ -196,7 +199,8 @@ export function oauthDemo({ db }: Ctx, input: { provider: OAuthProvider; name: s
     if (settings.maintenance) throw forbidden(maintenance);
     if (!settings.signupsOpen) throw forbidden("Les inscriptions sont fermées pour le moment.");
     // Aucun mot de passe (passwordHash vide) : l'utilisateur pourra en définir un dans ses paramètres.
-    user = insertUser(db, { id: newId(), role: input.role, email, passwordHash: "", name: input.name.trim(), country: "Algérie" });
+    const id = newId();
+    user = insertUser(db, { id, role: input.role, email, passwordHash: "", name: input.name.trim(), country: "Algérie", referredBy: referrerFor(db, { id, role: input.role }, input.ref) });
     logActivity(db, input.role === "agence" ? "🏢" : "👤", `${user.name} s'est inscrit${input.role === "agence" ? " (agence)" : ""}.`);
   }
   if (!linked || linked.userId !== user.id) {
@@ -597,8 +601,9 @@ export function validateRecharge(db: Store, t: TxRow) {
 }
 
 /**
- * L'équipe traite un retrait ou confirme une recharge annoncée (virement, carte Visa / Mastercard). Une recharge payée en
- * ligne ne se traite pas à la main : Chargily la confirme (ici, la page de paiement simulée).
+ * L'équipe traite un retrait (validé : reçu, et prime de parrainage au premier retrait d'un filleul) ou confirme une
+ * recharge annoncée (virement, carte Visa / Mastercard). Une recharge payée en ligne ne se traite pas à la main : Chargily
+ * la confirme (ici, la page de paiement simulée).
  */
 export function reviewTransaction({ db }: Ctx, admin: UserRow, id: string, approve: boolean) {
   const t = db.transactions.find((x) => x.id === id);
@@ -608,8 +613,11 @@ export function reviewTransaction({ db }: Ctx, admin: UserRow, id: string, appro
   if (t.type === "recharge" && approve) validateRecharge(db, t);
   else {
     t.status = approve ? "Validé" : "Refusé";
-    // Retrait versé : son reçu.
-    if (approve) issueDocument(db, t);
+    // Retrait versé : son reçu, puis la prime du parrain s'il s'agit du premier retrait d'un filleul (referrals.ts).
+    if (approve) {
+      issueDocument(db, t);
+      rewardReferral(db, t, getSettings(db));
+    }
   }
   const what = t.type === "retrait" ? `retrait de ${fmt(-t.amount)}` : `recharge de ${fmt(t.amount)}`;
   // Accord du participe : « le retrait » est validé, « la recharge » est validée.

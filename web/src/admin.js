@@ -416,6 +416,9 @@ function aUtilisateur() {
     clipper && u.handle ? fact(t("Compte principal"), `<span class="min-w-0 truncate" dir="ltr">${esc(u.handle)}</span>`) : "",
     fact(t("Pays"), `<span class="inline-flex items-center gap-1.5">${esc(t(country))}${country === "Algérie" ? flagDz() : ""}</span>`),
     fact(agency ? t("Inscrite le") : t("Inscrit le"), `<span class="tabular-nums">${date(u.joined)}</span>`),
+    // Parrainage d'un clipper : son parrain (lien vers sa fiche), ses filleuls et son code.
+    clipper ? fact(t("Parrainé par"), u.referredBy ? admUserLink(userById(u.referredBy) || { id: u.referredBy, name: "" }) : `<span class="text-fg-subtle">${t("Personne")}</span>`) : "",
+    clipper ? fact(t("Filleuls"), `<span class="tabular-nums">${fmt(db.users.filter((x) => x.referredBy === u.id).length)}</span>${u.referralCode ? `<span class="text-fg-subtle">·</span>${code(u.referralCode)}` : ""}`) : "",
     u.locale && LOCALES[u.locale] ? fact(t("Langue"), `<span lang="${u.locale}" dir="${LOCALES[u.locale].dir}">${esc(LOCALES[u.locale].label)}</span>`) : "",
   ].filter(Boolean).join("");
   const header = `<section class="mt-4 overflow-hidden ${CARD}">
@@ -875,7 +878,7 @@ const admSwitchRow = (s, key, title, desc) =>
 const ADM_LIMITS = {
   minWithdraw: ["Retrait minimum", 0, Infinity], minBudget: ["Budget minimum d'une campagne", 0, Infinity], commissionRate: ["Commission ClipBoost", 0, 50],
   instantFeePercent: ["Frais du retrait instantané", 0, 20, true], instantMinFee: ["Frais minimum du retrait instantané", 0, Infinity],
-  holdDays: ["Rétention des gains", 0, 60], earningDays: ["Fenêtre de gains", 1, 60],
+  holdDays: ["Rétention des gains", 0, 60], earningDays: ["Fenêtre de gains", 1, 60], referralBonus: ["Prime de parrainage", 0, 1000000],
 };
 // Valeur affichée avec séparateur de milliers (« 50 000 ») ou virgule décimale (« 2,5 »). unit : "DA", "%" ou "jours"
 // (accordé à la valeur enregistrée : « 1 jour », « 14 jours » ; « 14 يومًا » en arabe).
@@ -906,7 +909,8 @@ function aParametres() {
           + admSettingRow(t("Budget minimum d'une campagne"), t("Budget exigé pour créer une campagne."), admNumber(s, "minBudget", "DA"), "set-minBudget")
           + admSettingRow(t("Commission ClipBoost"), t("Ajoutée au budget des nouvelles campagnes."), admNumber(s, "commissionRate", "%"), "set-commissionRate")
           + admSettingRow(t("Frais du retrait instantané"), t("Pourcentage prélevé sur un retrait instantané."), admNumber(s, "instantFeePercent", "%"), "set-instantFeePercent")
-          + admSettingRow(t("Frais minimum du retrait instantané"), t("Montant prélevé au minimum sur un retrait instantané."), admNumber(s, "instantMinFee", "DA"), "set-instantMinFee"))}
+          + admSettingRow(t("Frais minimum du retrait instantané"), t("Montant prélevé au minimum sur un retrait instantané."), admNumber(s, "instantMinFee", "DA"), "set-instantMinFee")
+          + admSettingRow(t("Prime de parrainage"), t("Versée au parrain quand son filleul fait son premier retrait. ClipBoost la paie ; 0 DA : pas de prime."), admNumber(s, "referralBonus", "DA"), "set-referralBonus"))}
         ${group(t("Délais"), t("Contrôle et rémunération des clips validés."),
           admSettingRow(t("Rétention des gains"), t("Délai de contrôle avant qu'un gain validé devienne retirable."), admNumber(s, "holdDays", "jours"), "set-holdDays")
           + admSettingRow(t("Fenêtre de gains"), t("Après la validation, chaque nouveau relevé paie les vues supplémentaires pendant ce délai."), admNumber(s, "earningDays", "jours"), "set-earningDays"))}

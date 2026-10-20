@@ -1,5 +1,5 @@
 // Espace Clipper : accueil (activité et statistiques), découvrir (toutes les campagnes), agences et page d'une agence,
-// publications, classement de la semaine, portefeuille, profil (et comptes sociaux), paramètres. Modales : fiche d'une
+// publications, classement de la semaine, parrainage, portefeuille, profil (et comptes sociaux), paramètres. Modales : fiche d'une
 // campagne, soumission d'un clip, retrait, retrait d'un compte social vérifié. Messages : questions posées aux
 // organisateurs des campagnes.
 // Recettes et helpers : docs/design-system.md §4 et §6.2 (web/src/ui.js). Helpers locaux préfixés « cl ».
@@ -31,6 +31,7 @@ const CLIPPER_NAV = [
   { id: "publications", get label() { return t("Mes publications"); }, get short() { return t("Clips"); }, icon: "film" },
   { id: "messages", get label() { return t("Messages"); }, icon: "message" },
   { id: "classement", get label() { return t("Classement"); }, icon: "trophy" },
+  { id: "parrainage", get label() { return t("Parrainage"); }, icon: "gift" },
   { id: "portefeuille", get label() { return t("Portefeuille"); }, icon: "wallet" },
   { id: "profil", get label() { return t("Profil"); }, icon: "user" },
   { id: "parametres", get label() { return t("Paramètres"); }, icon: "gear" },
@@ -55,10 +56,10 @@ const clOnHold = (x) => x.type === "gain" && x.availableAt && new Date(x.availab
 const clTxBadge = (x) => (clOnHold(x) ? badge(t("En rétention"), "idle", { ic: "clock" }) : statusBadge(x.status));
 // Libellé d'une opération : un gain porte le titre de sa campagne (texte de l'agence, jamais traduit), suivi le cas
 // échéant de « · vues supplémentaires » ; les autres libellés viennent du serveur (« Retrait vers CCP », prime du
-// classement « Prime classement · semaine 43 (1er) ») : tServer.
+// classement « Prime classement · semaine 43 (1er) », prime de parrainage « Parrainage · premier retrait de … ») : tServer.
 const clTxLabel = (x) => {
   const s = String(x.label || ""), extra = s.match(/^(.*) · vues supplémentaires$/);
-  if (x.type !== "gain" || /^Prime classement · semaine \d+ \(\d+(?:er|e)\)$/.test(s)) return tServer(s);
+  if (x.type !== "gain" || /^Prime classement · semaine \d+ \(\d+(?:er|e)\)$/.test(s) || /^Parrainage · premier retrait de /.test(s)) return tServer(s);
   return extra ? t("{title} · vues supplémentaires", { title: extra[1] }) : s;
 };
 // Mois de l'historique (« Janvier 2026 ») dans la langue de l'interface, chiffres latins. key : « 2026-01 ».
@@ -770,6 +771,65 @@ function cClassement() {
     </div>`;
 }
 
+// ---------- Parrainage ----------
+// Lien de parrainage du clipper (champ, « Copier », partage WhatsApp), règle de la prime (réglage referralBonus), chiffres
+// clés et liste des filleuls (db.referral). La prime est versée au premier retrait validé de chaque filleul.
+
+// Lien d'inscription avec le code : l'adresse de l'app (/espace en ligne, le fichier HTML hors ligne), sans paramètres.
+const clReferralLink = (refCode) => `${location.href.split(/[?#]/)[0]}?ref=${encodeURIComponent(refCode)}#/inscription`;
+
+function cParrainage() {
+  const r = db.referral, bonus = db.settings.referralBonus || 0, hold = db.settings.holdDays;
+  if (!r || !r.code) return `${pageHeader(t("Parrainage"), "")}<div class="mt-6">${emptyState("gift", t("Parrainage indisponible"), t("Rechargez la page pour afficher votre lien de parrainage."))}</div>`;
+  const url = clReferralLink(r.code);
+  const share = `https://wa.me/?text=${encodeURIComponent(t("Rejoins-moi sur ClipBoost : publie des clips et sois payé à la vue. Inscris-toi avec mon lien : {link}", { link: url }))}`;
+  const rule = bonus > 0 ? t("Recevez {montant} quand votre filleul fait son premier retrait", { montant: `<strong class="font-semibold">${da(bonus)}</strong>` }) : t("Aucune prime de parrainage pour le moment : invitez quand même vos amis, la prime pourra revenir.");
+
+  const linkCard = card(`${cardHeader(t("Votre lien de parrainage"), t("Partagez-le avec d'autres clippers : ils s'inscrivent sur ClipBoost avec votre code."))}
+    <div class="mt-4 flex flex-col gap-2 sm:flex-row">
+      <label class="min-w-0 flex-1"><span class="sr-only">${t("Lien de parrainage")}</span><input readonly value="${esc(url)}" dir="ltr" class="${inputCls} truncate font-mono text-small"/></label>
+      <div class="grid grid-cols-2 gap-2 sm:flex sm:shrink-0">
+        <button type="button" data-action="cl-ref-copy" data-value="${esc(url)}" class="${btn("primary")}">${icon("copy")}${t("Copier")}</button>
+        <a href="${esc(share)}" target="_blank" rel="noopener" class="${btn("secondary")}">${icon("send", "size-4 rtl:-scale-x-100")}${t("WhatsApp")}</a>
+      </div>
+    </div>
+    <p class="mt-3 text-small text-fg-muted">${t("Votre code : {code}", { code: `<span class="font-semibold text-fg">${code(r.code)}</span>` })}</p>
+    <div class="mt-4">${alertBox(bonus > 0 ? "success" : "info", rule)}</div>`, "p-5");
+
+  const st = r.stats || { referees: 0, firstWithdrawals: 0, bonus: 0 };
+  const kpis = [
+    kpi({ label: t("Filleuls"), value: kpiValue(fmt(st.referees)), sub: t("inscrits avec votre lien"), ic: "users" }),
+    kpi({ label: t("Premiers retraits"), value: kpiValue(fmt(st.firstWithdrawals)), sub: st.referees ? t("sur {count}", { count: plural(st.referees, "filleul", "filleuls") }) : t("aucun filleul pour l'instant"), ic: "wallet" }),
+    kpi({ label: t("Primes reçues"), value: bigMoney(st.bonus), sub: t("versées dans votre portefeuille"), ic: "gift" }),
+  ];
+
+  const row = (x) => `<li class="flex items-center gap-3 py-3 first:pt-0 last:pb-0">
+      ${avatar({ id: x.name + x.joined, name: x.name }, "md")}
+      <div class="min-w-0 flex-1"><p class="truncate text-sm font-medium text-fg">${esc(x.name)}</p>
+        <p class="truncate text-xs tabular-nums text-fg-subtle">${t("Inscrit le {date}", { date: date(x.joined) })}${x.bonus ? ` · ${t("prime de {amount}", { amount: da(x.bonus) })}` : ""}</p></div>
+      ${x.firstWithdrawal ? badge(t("Premier retrait effectué"), "success", { ic: "check" }) : badge(t("Inscrit"), "idle", { dot: true })}
+    </li>`;
+  const list = card(`${cardHeader(t("Vos filleuls"), r.referees.length ? t("Du plus récent au plus ancien.") : "")}
+    ${r.referees.length ? `<ul class="mt-4 divide-y divide-line">${r.referees.map(row).join("")}</ul>`
+      : emptyState("users", t("Aucun filleul pour l'instant"), t("Les clippers inscrits avec votre lien apparaîtront ici."), "", { inCard: true })}`, "p-5");
+
+  const rules = [
+    t("Votre filleul s'inscrit comme clipper avec votre lien, par email ou avec Google, Apple ou Discord."),
+    t("Dès que son premier retrait est validé par l'équipe, vous recevez la prime : une seule fois par filleul."),
+    t("Comme vos autres gains, la prime reste en rétention {days} avant d'être retirable.", { days: plural(hold, "jour", "jours") }),
+    t("Pas de prime si votre filleul retire vers le même compte que vous, ou si votre compte est suspendu."),
+  ];
+  const rulesCard = card(`${cardHeader(t("Comment ça marche"))}<ul class="mt-3 grid gap-2.5">${rules.map((x) => `<li class="flex gap-2.5 text-small text-fg-muted">${icon("check", "mt-0.5 size-4 shrink-0 text-income")}<span>${x}</span></li>`).join("")}</ul>`, "p-5");
+
+  return `${pageHeader(t("Parrainage"), t("Invitez d'autres clippers sur ClipBoost et recevez une prime à leur premier retrait."))}
+    <div class="mt-6 grid grid-cols-[minmax(0,1fr)] items-start gap-4 lg:grid-cols-[minmax(0,1fr)_340px] lg:gap-5">
+      <div class="grid min-w-0 grid-cols-[minmax(0,1fr)] content-start gap-4 lg:gap-5">${linkCard}
+        <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4">${kpis[0]}${kpis[1]}<div class="col-span-2 sm:col-span-1">${kpis[2]}</div></div>
+        ${list}</div>
+      <div class="grid content-start gap-4 lg:gap-5">${rulesCard}</div>
+    </div>`;
+}
+
 function cPortefeuille() {
   const u = me(), all = myTx();
   const list = all.filter((x) => state.tx.type === "tous" || x.type === state.tx.type);
@@ -917,7 +977,7 @@ function cParametres() {
 }
 
 // agence : page hors navigation (ITEM_PAGES dans main.js), « Agences » y reste l'entrée courante.
-const CLIPPER_VIEWS = { accueil: cAccueil, decouvrir: cDecouvrir, agences: cAgences, agence: cAgence, publications: cPublications, messages: cMessages, classement: cClassement, portefeuille: cPortefeuille, profil: cProfil, parametres: cParametres };
+const CLIPPER_VIEWS = { accueil: cAccueil, decouvrir: cDecouvrir, agences: cAgences, agence: cAgence, publications: cPublications, messages: cMessages, classement: cClassement, parrainage: cParrainage, portefeuille: cPortefeuille, profil: cProfil, parametres: cParametres };
 
 // ---------- Récapitulatifs en direct (main.js appelle LIVE[nom] à chaque saisie) ----------
 LIVE.withdraw = (d) => {
@@ -1197,6 +1257,7 @@ function handleClipperAction(action, el) {
     // Comptes sociaux (Profil) : code copié, vérification (« simulated » : plateforme sans identifiants sur le serveur,
     // bio non lue), retrait (direct pour un compte en attente, après confirmation pour un compte vérifié).
     case "cl-social-copy": return copy(value, t("Code {code} copié", { code: value }));
+    case "cl-ref-copy": return copy(value, t("Lien de parrainage copié"));
     case "cl-social-verify": {
       const a = clSocial().find((x) => x.id === id);
       if (!a) return;

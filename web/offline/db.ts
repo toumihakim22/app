@@ -3,7 +3,7 @@
 // (photo de profil, couverture, photo de campagne) est gardée en data URL dans sa propre colonne.
 import type * as schema from "../../lib/server/db/schema";
 import { documentKindOf, numberDocuments } from "../../lib/server/documents";
-import { socialCode } from "../../lib/server/rules";
+import { referralCode, socialCode } from "../../lib/server/rules";
 import { DEFAULT_SETTINGS, type Settings } from "../../lib/server/settings";
 import { seed } from "./seed";
 
@@ -33,6 +33,8 @@ export type DocumentRow = Row<typeof schema.documents.$inferSelect, "createdAt">
 export type MessageRow = Row<typeof schema.messages.$inferSelect, "createdAt" | "readAt">;
 /** Prime d'un rang classé d'une semaine clôturée du classement hebdomadaire. */
 export type WeeklyAwardRow = Row<typeof schema.weeklyAwards.$inferSelect, "createdAt">;
+/** Prime de parrainage versée (ou de 0 DA) au premier retrait validé d'un filleul : une ligne par filleul. */
+export type ReferralRewardRow = Row<typeof schema.referralRewards.$inferSelect, "createdAt">;
 
 export type Store = {
   version: number;
@@ -52,6 +54,7 @@ export type Store = {
   documents: DocumentRow[];
   messages: MessageRow[];
   weeklyAwards: WeeklyAwardRow[];
+  referralRewards: ReferralRewardRow[];
   settings: Partial<Settings>;
   /** Session du navigateur (l'équivalent du cookie cb_session). */
   session: { userId: string; expiresAt: number } | null;
@@ -64,7 +67,7 @@ export const STORAGE_KEY = `clipboost-offline-v${VERSION}`;
 
 export const emptyStore = (): Store => ({
   version: VERSION, users: [], emailCodes: [], campaigns: [], members: [], publications: [], transactions: [],
-  notifications: [], activity: [], oauth: [], social: [], snapshots: [], jobRuns: [], appeals: [], documents: [], messages: [], weeklyAwards: [], settings: {}, session: null,
+  notifications: [], activity: [], oauth: [], social: [], snapshots: [], jobRuns: [], appeals: [], documents: [], messages: [], weeklyAwards: [], referralRewards: [], settings: {}, session: null,
 });
 
 // ---------- Persistance ----------
@@ -97,6 +100,7 @@ function upgrade(s: Store): Store {
   s.appeals ??= [];
   s.messages ??= [];
   s.weeklyAwards ??= [];
+  s.referralRewards ??= [];
   // Base d'avant les factures et reçus : un document pour chaque recharge ou retrait déjà validé (comme la migration 0007).
   if (!s.documents) {
     const done = s.transactions.filter((t) => t.status === "Validé" && documentKindOf(t.type));
@@ -109,6 +113,9 @@ function upgrade(s: Store): Store {
     u.verification ??= "none";
     u.verificationNote ??= null;
     u.locale ??= "fr";
+    u.referredBy ??= null;
+    // Clippers inscrits avant le parrainage : un code tiré au hasard (le serveur le tire de l'identifiant, migration 0010).
+    u.referralCode ??= u.role === "clipper" ? newReferralCode(s) : null;
   }
   for (const c of s.campaigns) {
     c.image ??= null;
@@ -203,6 +210,14 @@ export function newSocialCode(db: Store) {
   }
 }
 
+/** Code de parrainage libre (même format que le serveur, lib/server/rules.ts). */
+export function newReferralCode(db: Store) {
+  for (;;) {
+    const code = referralCode(crypto.getRandomValues(new Uint8Array(8)));
+    if (!db.users.some((u) => u.referralCode === code)) return code;
+  }
+}
+
 /** Entier aléatoire uniforme dans [min, max[. */
 export function randomInt(min: number, max: number) {
   const range = max - min, limit = Math.floor(0x1_0000_0000 / range) * range, buf = new Uint32Array(1);
@@ -242,10 +257,12 @@ export function logActivity(db: Store, icon: string, text: string) {
 
 // ---------- Insertion avec les valeurs par défaut des colonnes ----------
 
+/** Un clipper reçoit son code de parrainage à la création (comme referralFields sur le serveur), sauf s'il est donné. */
 export function insertUser(db: Store, v: Pick<UserRow, "id" | "role" | "email" | "passwordHash" | "name"> & Partial<UserRow>) {
   const row: UserRow = {
     contact: null, country: "Algérie", status: "Actif", level: "Nouveau", credit: 0, payoutMethod: null, payoutAccount: null, handles: {}, bio: "",
-    avatar: null, cover: null, verification: "none", verificationNote: null, locale: "fr", createdAt: Date.now(), ...v,
+    avatar: null, cover: null, verification: "none", verificationNote: null, locale: "fr", referredBy: null, createdAt: Date.now(), ...v,
+    referralCode: v.referralCode ?? (v.role === "clipper" ? newReferralCode(db) : null),
   };
   db.users.push(row);
   return row;

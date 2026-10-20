@@ -3,6 +3,7 @@ import { z } from "zod";
 // (web/offline/build.mjs écarte les autres de z.locales).
 import fr from "zod/v4/locales/fr.js";
 import { PLATFORMS } from "./gradients";
+import { normalizeReferralCode } from "./rules";
 
 // Messages par défaut de zod en français (champs sans message dédié) : l'API répond dans la langue source de l'app,
 // que l'interface traduit à l'affichage (dictionnaires « server » de web/src/i18n/). Vaut aussi pour la version autonome.
@@ -15,12 +16,19 @@ export const email = z.string().trim().toLowerCase().email("Adresse email invali
 export const password = z.string().min(1, "Mot de passe obligatoire").max(200);
 export const code = z.string().trim().regex(/^\d{6}$/, "Le code contient 6 chiffres");
 
+/**
+ * Code de parrainage reçu avec une inscription (lien « ?ref= ») : facultatif, et une valeur qui ne peut pas être un code
+ * est ignorée (jamais une erreur : un lien abîmé ne doit pas empêcher l'inscription).
+ */
+const referralRef = z.unknown().transform((v) => normalizeReferralCode(v) ?? undefined).optional();
+
 export const signupSchema = z.object({
   role: z.enum(["clipper", "agence"]),
   name: text("Nom", 80),
   contact: z.string().trim().max(80).optional(),
   email, country: text("Pays", 60), password,
   terms: z.literal(true, { error: "Vous devez accepter les conditions d'utilisation" }),
+  ref: referralRef,
 });
 export const verifySchema = z.object({ email, code });
 export const loginSchema = z.object({ email, password });
@@ -182,7 +190,7 @@ export const OAUTH_PROVIDERS = ["google", "apple", "discord"] as const;
 export type OAuthProvider = (typeof OAUTH_PROVIDERS)[number];
 /** Version autonome uniquement : connexion simulée (aucun échange avec le fournisseur). */
 // mode : « login » (connexion d'un compte existant) ou « signup » (inscription avec le rôle choisi, ou connexion si le compte existe).
-export const oauthDemoSchema = z.object({ provider: z.enum(OAUTH_PROVIDERS), name: text("Nom", 80), email, role: z.enum(["clipper", "agence"]).default("clipper"), mode: z.enum(["login", "signup"]).default("signup") });
+export const oauthDemoSchema = z.object({ provider: z.enum(OAUTH_PROVIDERS), name: text("Nom", 80), email, role: z.enum(["clipper", "agence"]).default("clipper"), mode: z.enum(["login", "signup"]).default("signup"), ref: referralRef });
 export const settingsSchema = z.object({
   maintenance: z.boolean(), signupsOpen: z.boolean(), announcement: z.string().trim().max(200),
   minWithdraw: z.number().int().min(0), commissionRate: z.number().int().min(0).max(50), minBudget: z.number().int().min(0),
@@ -191,4 +199,6 @@ export const settingsSchema = z.object({
   // Primes du classement hebdomadaire : une par rang, du 1er au 10e, en DA.
   weeklyPrizes: z.array(z.number({ error: "Prime du classement invalide" }).int("Prime du classement invalide").min(0, "Prime du classement invalide").max(1_000_000, "Prime du classement trop élevée (1 000 000 DA maximum)"), { error: "Primes du classement invalides" })
     .length(10, "Indiquez les 10 primes du classement"),
+  // Prime de parrainage versée au premier retrait d'un filleul, en DA.
+  referralBonus: z.number({ error: "Prime de parrainage invalide" }).int("Prime de parrainage invalide").min(0, "Prime de parrainage invalide").max(1_000_000, "Prime de parrainage trop élevée (1 000 000 DA maximum)"),
 }).partial();

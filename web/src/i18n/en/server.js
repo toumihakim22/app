@@ -352,3 +352,18 @@ I18N_RX.en.push(
   [/^Classement de la semaine (\d+) clôturé : 1 prime versée \(([\d\s]+ DA)\)\.$/, "Week $1 leaderboard closed: 1 prize paid ($2)."],
   [/^Classement de la semaine (\d+) clôturé : (\d+) primes versées \(([\d\s]+ DA)\)\.$/, "Week $1 leaderboard closed: $2 prizes paid ($3)."],
 );
+
+// Parrainage (lib/server/services/referrals.ts, rules.ts : referralLabel, referralNotice, referralPaidText,
+// referralRefusedText ; validation.ts : prime des réglages). Les noms ($1, $2…) restent tels quels.
+Object.assign(I18N.en, {
+  "Code de parrainage inconnu": "Unknown referral code",
+  "Prime de parrainage invalide": "Invalid referral bonus",
+  "Prime de parrainage trop élevée (1 000 000 DA maximum)": "Referral bonus too high (1,000,000 DA maximum)",
+});
+I18N_RX.en.push(
+  [/^Parrainage · premier retrait de (.+)$/, "Referral · first withdrawal by $1"],
+  [/^(.+) a fait son premier retrait : \+([\d\s]+ DA) de parrainage$/, "$1 made their first withdrawal: +$2 referral bonus"],
+  [/^Prime de parrainage de ([\d\s]+ DA) versée à (.+) \(premier retrait de (.+)\)\.$/, "Referral bonus of $1 paid to $2 (first withdrawal by $3)."],
+  [/^Prime de parrainage non versée : (.+), parrain de (.+), est suspendu\.$/, "Referral bonus not paid: $1, who referred $2, is suspended."],
+  [/^Prime de parrainage non versée : (.+) retire vers le même compte que son parrain (.+)\.$/, "Referral bonus not paid: $1 withdraws to the same account as their referrer $2."],
+);

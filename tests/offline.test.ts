@@ -47,7 +47,8 @@ test("données d'exemple, connexion et contrôle d'accès", async () => {
   assert.equal((await login("yacine@clipboost.dz")).status, 200);
   const s = (await call("GET", "/api/state")).data;
   const prize = prizeSplit(s);
-  assert.deepEqual([s.me.available, s.me.pending, s.me.earned], [3078 + prize.free, 7230 + prize.held, 14308 + prize.free + prize.held]);
+  // Prime de parrainage de 1 000 DA (premier retrait de Karim, il y a 2 jours) : encore en rétention.
+  assert.deepEqual([s.me.available, s.me.pending, s.me.earned], [3078 + prize.free, 7230 + 1000 + prize.held, 14308 + 1000 + prize.free + prize.held]);
   // Notifications d'exemple : chacune mène à un élément de l'espace Clipper qui existe.
   type Note = { text: string; link: string | null };
   const ids = new Set([...s.campaigns, ...s.publications, ...s.transactions].map((x: { id: string }) => x.id));
@@ -128,7 +129,7 @@ test("inscription avec code, campagne financée, clip payé et retrait instantan
   const s = (await call("GET", "/api/state")).data;
   assert.equal(s.publications.find((p: { id: string }) => p.id === clipId).paid, 6750);
   const prize = prizeSplit(s);
-  assert.deepEqual([s.me.available, s.me.pending, s.me.earned], [3078 - 2000 + prize.free, 7230 + 6750 + prize.held, 14308 + 6750 + prize.free + prize.held]);
+  assert.deepEqual([s.me.available, s.me.pending, s.me.earned], [3078 - 2000 + prize.free, 7230 + 1000 + 6750 + prize.held, 14308 + 1000 + 6750 + prize.free + prize.held]);
   assert.equal(s.notifications[0].text, "Votre retrait de 2 000 DA a été validé (1 900 DA versés après 100 DA de frais).");
 
   // Liens des notifications : chaque événement mène à l'élément concerné.
@@ -183,9 +184,9 @@ test("anciennes notifications sans lien : lien déduit du texte", async () => {
   };
   const before = await linksOf();
   const store = JSON.parse(storage.get(STORAGE_KEY)!);
-  // Les demandes de badge, les recours, les paiements en ligne, les messages et les primes du classement sont postérieurs
+  // Les demandes de badge, les recours, les paiements en ligne, les messages, les primes du classement et du parrainage sont postérieurs
   // aux liens : une ancienne copie n'en contient pas.
-  for (const n of store.notifications) if (!/badge de vérification| conteste le refus du clip | a payé en ligne une recharge |^(Nouvelle question|Nouveau message|Réponse) de |^L'équipe ClipBoost a répondu |^Vous êtes \d+(er|e) du classement /.test(n.text)) delete n.link;
+  for (const n of store.notifications) if (!/badge de vérification| conteste le refus du clip | a payé en ligne une recharge |^(Nouvelle question|Nouveau message|Réponse) de |^L'équipe ClipBoost a répondu |^Vous êtes \d+(er|e) du classement | a fait son premier retrait : /.test(n.text)) delete n.link;
   storage.set(STORAGE_KEY, JSON.stringify(store));
   const after = await linksOf();
   let exact = 0, total = 0;
@@ -739,12 +740,14 @@ test("factures et reçus PDF, export CSV des transactions", async () => {
   const yacineId = s.users.find((u: { email: string }) => u.email === "yacine@clipboost.dz").id;
   const wd = s.transactions.find((t: Tx & { userId: string }) => t.type === "retrait" && t.status === "En cours" && t.userId === yacineId);
   const before = s.transactions.filter((t: Tx) => t.document?.startsWith("FAC-")).length;
+  // Reçus déjà émis cette année : celui de Yacine et celui du premier retrait de Karim (filleul de Yacine).
+  const receipts = s.transactions.filter((t: Tx) => t.document?.startsWith(`REC-${new Date().getUTCFullYear()}-`)).length;
   assert.equal((await call("POST", `/api/transactions/${pendingTx.id}/review`, { approve: true })).status, 200);
   assert.equal((await call("POST", `/api/transactions/${wd.id}/review`, { approve: true })).status, 200);
   s = await state();
   const year = new Date().getUTCFullYear();
   assert.equal(s.transactions.find((t: Tx) => t.id === pendingTx.id).document, `FAC-${year}-${String(before + 1).padStart(5, "0")}`);
-  assert.equal(s.transactions.find((t: Tx) => t.id === wd.id).document, `REC-${year}-00002`);
+  assert.equal(s.transactions.find((t: Tx) => t.id === wd.id).document, `REC-${year}-${String(receipts + 1).padStart(5, "0")}`);
   // L'équipe télécharge le document de n'importe quel compte.
   assert.equal((await raw(`/api/transactions/${wd.id}/document`)).status, 200);
 
@@ -928,6 +931,107 @@ test("classement hebdomadaire : semaine écoulée clôturée une seule fois, pri
   const note = s.notifications.find((x: { text: string }) => x.text === `Vous êtes 1er du classement de la semaine ${n} : +12 345 DA`);
   assert.deepEqual([note?.link, note?.unread], [`#/clipper/portefeuille/${tx.id}`, true]);
   assert.equal(s.leaderboard.last.winners[0].userId, first.userId);
+});
+
+test("parrainage : lien, inscription avec code, prime au premier retrait seulement, même compte de retrait", async () => {
+  type User = { id: string; email: string; referralCode: string | null; referredBy: string | null };
+  type Tx = { id: string; type: string; label: string; amount: number; status: string; userId: string; availableAt: string | null };
+  await offlineApi.reset();
+  await call("GET", "/api/state");
+  // Lien public : prénom du parrain seulement ; code en minuscules accepté ; code inconnu : 404.
+  assert.deepEqual(await call("GET", "/api/referral/yacine26"), { status: 200, data: { code: "YACINE26", firstName: "Yacine" } });
+  assert.deepEqual(await call("GET", "/api/referral/ZZZZ9999"), { status: 404, data: { error: "Code de parrainage inconnu" } });
+  assert.equal((await call("GET", "/api/referral/agence")).status, 404);
+
+  // Inscription d'un clipper avec le code (email + code) : filleul de Yacine, avec son propre code.
+  const signup = async (email: string, ref: unknown, role = "clipper") => {
+    await call("POST", "/api/auth/logout");
+    const res = await call("POST", "/api/auth/signup", { role, name: `Test ${email.split("@")[0]}`, contact: role === "agence" ? "Sara" : undefined, email, country: "Algérie", password: "Filleul2026", terms: true, ref });
+    assert.equal(res.status, 200, `${email} : ${JSON.stringify(res.data)}`);
+    assert.equal((await call("POST", "/api/auth/verify", { email, code: res.data.devCode })).status, 200);
+    return (await state()).me as User;
+  };
+  await login("admin@clipboost.dz", "AdminClip2026");
+  let adm = await state();
+  const yacine = (adm.users as User[]).find((u) => u.email === "yacine@clipboost.dz")!;
+  assert.equal(yacine.referralCode, "YACINE26");
+  assert.deepEqual((adm.users as User[]).filter((u) => u.referredBy === yacine.id).map((u) => u.email).sort(), ["amira@clipboost.dz", "karim@clipboost.dz", "lina@clipboost.dz"]);
+  const sami = await signup("sami@test.dz", "yacine26");
+  assert.equal(sami.referredBy, yacine.id);
+  assert.match(sami.referralCode!, /^[A-Z2-9]{8}$/);
+  // Un code invalide, inconnu ou d'un autre format n'empêche jamais l'inscription : il est ignoré.
+  for (const [email, ref] of [["nadia@test.dz", "ZZZZ9999"], ["omar@test.dz", "!!pas un code!!"], ["rym@test.dz", 42], ["walid@test.dz", "x".repeat(500)]] as const) {
+    assert.equal((await signup(email, ref)).referredBy, null, email);
+  }
+  // Une agence n'est jamais filleule (ni n'a de code) ; le code d'un filleul fonctionne aussi.
+  assert.deepEqual(await signup("studio@test.dz", "YACINE26", "agence").then((u) => [u.referredBy, u.referralCode]), [null, null]);
+  assert.equal((await signup("ines@test.dz", sami.referralCode)).referredBy, sami.id);
+  // Connexion Google simulée : même règle, le code passe par la connexion simulée.
+  await call("POST", "/api/auth/logout");
+  assert.equal((await call("POST", "/api/auth/oauth/demo", { provider: "google", name: "Amine Bensalem", email: "amine@gmail.com", role: "clipper", mode: "signup", ref: "YACINE26" })).status, 200);
+  assert.equal((await state()).me.referredBy, yacine.id);
+
+  // Prime du réglage (modifiée par l'équipe) au premier retrait validé d'Amira, en attente dans les données d'exemple.
+  await login("admin@clipboost.dz", "AdminClip2026");
+  assert.deepEqual(await call("PATCH", "/api/admin/settings", { referralBonus: -5 }), { status: 400, data: { error: "Prime de parrainage invalide" } });
+  assert.equal((await call("PATCH", "/api/admin/settings", { referralBonus: 1500, holdDays: 0 })).status, 200);
+  adm = await state();
+  assert.equal(adm.settings.referralBonus, 1500);
+  const amira = (adm.users as User[]).find((u) => u.email === "amira@clipboost.dz")!;
+  const amiraWd = (adm.transactions as Tx[]).find((t) => t.userId === amira.id && t.type === "retrait" && t.status === "En cours")!;
+  assert.equal((await call("POST", `/api/transactions/${amiraWd.id}/review`, { approve: true })).status, 200);
+  adm = await state();
+  assert.ok(adm.activity.some((a: { text: string }) => a.text === "Prime de parrainage de 1 500 DA versée à Yacine Benali (premier retrait de Amira Khelifi)."));
+  const bonuses = async () => {
+    await login("yacine@clipboost.dz");
+    const st = await state();
+    return { st, list: (st.transactions as Tx[]).filter((t) => t.type === "gain" && t.label.startsWith("Parrainage · premier retrait de ")) };
+  };
+  let { st, list } = await bonuses();
+  const amiraBonus = list.find((t) => t.label === "Parrainage · premier retrait de Amira Khelifi")!;
+  assert.deepEqual([amiraBonus.amount, amiraBonus.status], [1500, "Validé"]);
+  assert.ok(Math.abs(Date.parse(amiraBonus.availableAt!) - Date.now()) < 60_000);
+  const note = st.notifications[0];
+  assert.deepEqual([note.text, note.link], ["Amira Khelifi a fait son premier retrait : +1 500 DA de parrainage", `#/clipper/portefeuille/${amiraBonus.id}`]);
+  assert.deepEqual(st.referral.stats, { referees: 5, firstWithdrawals: 2, bonus: 2500 });
+  assert.equal(st.referral.code, "YACINE26");
+  const amiraRow = st.referral.referees.find((r: { name: string }) => r.name === "Amira Khelifi");
+  assert.deepEqual(amiraRow, { name: "Amira Khelifi", joined: amiraRow.joined, firstWithdrawal: true, bonus: 1500 });
+  for (const r of st.referral.referees) assert.deepEqual(Object.keys(r).sort(), ["bonus", "firstWithdrawal", "joined", "name"]);
+
+  // Deuxième retrait d'Amira validé (après la validation de son clip en attente) : aucune nouvelle prime.
+  await login("admin@clipboost.dz", "AdminClip2026");
+  const amiraClip = (await state()).publications.find((p: { userId: string; status: string }) => p.userId === amira.id && p.status === "En attente");
+  assert.equal((await call("POST", `/api/clips/${amiraClip.id}/review`, { approve: true })).status, 200);
+  await login("amira@clipboost.dz");
+  assert.equal((await call("POST", "/api/withdrawals", { amount: 2000 })).status, 201);
+  await login("admin@clipboost.dz", "AdminClip2026");
+  const second = ((await state()).transactions as Tx[]).find((t) => t.userId === amira.id && t.status === "En cours")!;
+  assert.equal((await call("POST", `/api/transactions/${second.id}/review`, { approve: true })).status, 200);
+  ({ st, list } = await bonuses());
+  assert.equal(list.filter((t) => t.label === "Parrainage · premier retrait de Amira Khelifi").length, 1);
+  assert.equal(st.referral.stats.bonus, 2500);
+
+  // Même compte de retrait que le parrain (écrit autrement) : premier retrait de Lina validé, aucune prime, noté au journal.
+  await login("lina@clipboost.dz");
+  assert.equal((await call("PATCH", "/api/me", { payoutMethod: "CCP", payoutAccount: "0021234567 CLÉ 89" })).status, 200);
+  await login("admin@clipboost.dz", "AdminClip2026");
+  adm = await state();
+  const lina = (adm.users as User[]).find((u) => u.email === "lina@clipboost.dz")!;
+  const clip = adm.publications.find((p: { userId: string; status: string }) => p.userId === lina.id && p.status === "En attente");
+  assert.equal((await call("POST", `/api/clips/${clip.id}/review`, { approve: true })).status, 200);
+  await login("lina@clipboost.dz");
+  assert.equal((await call("POST", "/api/withdrawals", { amount: 2000 })).status, 201);
+  await login("admin@clipboost.dz", "AdminClip2026");
+  const linaWd = ((await state()).transactions as Tx[]).find((t) => t.userId === lina.id && t.status === "En cours")!;
+  assert.equal((await call("POST", `/api/transactions/${linaWd.id}/review`, { approve: true })).status, 200);
+  assert.ok((await state()).activity.some((a: { text: string }) => a.text === "Prime de parrainage non versée : Lina Mansouri retire vers le même compte que son parrain Yacine Benali."));
+  ({ st, list } = await bonuses());
+  assert.ok(!list.some((t) => t.label.endsWith("Lina Mansouri")));
+  assert.deepEqual(st.referral.stats, { referees: 5, firstWithdrawals: 3, bonus: 2500 });
+  // Un autre rôle ne reçoit pas de parrainage dans son état.
+  await login("agence@clipboost.dz");
+  assert.equal((await state()).referral, undefined);
 });
 
 test("réinitialisation : retour aux données d'exemple", async () => {

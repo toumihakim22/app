@@ -10,6 +10,7 @@ import { newId } from "../ids";
 import { OAuthError, type OAuthIdentity, type OAuthMode, type OAuthRole } from "../oauth";
 import { hashPassword, strongEnough, verifyPassword } from "../password";
 import { getSettings } from "../settings";
+import { referralFields } from "./referrals";
 
 const CODE_MINUTES = 10;
 const MAX_ATTEMPTS = 5;
@@ -49,13 +50,14 @@ async function emailTaken(email: string) {
   return Boolean(row);
 }
 
-export async function requestSignup(input: { role: "clipper" | "agence"; name: string; contact?: string; email: string; country: string; password: string }) {
+/** ref : code de parrainage du lien d'inscription, gardé avec la demande et vérifié à la création du compte (verifySignup). */
+export async function requestSignup(input: { role: "clipper" | "agence"; name: string; contact?: string; email: string; country: string; password: string; ref?: string }) {
   const settings = await getSettings();
   if (!settings.signupsOpen || settings.maintenance) throw forbidden("Les inscriptions sont momentanément fermées");
   const email = normalizeEmail(input.email);
   if (await emailTaken(email)) throw badRequest("Un compte existe déjà avec cet email");
   if (!strongEnough(input.password)) throw badRequest("Le mot de passe doit contenir au moins 8 caractères, dont une lettre et un chiffre");
-  const payload: SignupPayload = { role: input.role, name: input.name.trim(), contact: input.contact?.trim() || null, country: input.country, passwordHash: await hashPassword(input.password) };
+  const payload: SignupPayload = { role: input.role, name: input.name.trim(), contact: input.contact?.trim() || null, country: input.country, passwordHash: await hashPassword(input.password), ref: input.role === "clipper" ? input.ref ?? null : null };
   const devCode = await issueCode(email, "signup", payload);
   return { email, devCode };
 }
@@ -67,8 +69,12 @@ export async function verifySignup(emailInput: string, code: string) {
   if (await emailTaken(email)) throw badRequest("Un compte existe déjà avec cet email");
   const db = await getDb();
   const id = newId();
-  await db.insert(schema.users).values({ id, role: p.role, email, passwordHash: p.passwordHash, name: p.name, contact: p.contact, country: p.country });
-  await logActivity(db, p.role === "agence" ? "🏢" : "👤", `${p.name} s'est inscrit${p.role === "agence" ? " (agence)" : ""}.`);
+  await db.transaction(async (tx) => {
+    // Clipper : son code de parrainage, et son parrain si le code du lien est valable (sinon ignoré).
+    const referral = await referralFields(tx, { id, role: p.role }, p.ref);
+    await tx.insert(schema.users).values({ id, role: p.role, email, passwordHash: p.passwordHash, name: p.name, contact: p.contact, country: p.country, ...referral });
+    await logActivity(tx, p.role === "agence" ? "🏢" : "👤", `${p.name} s'est inscrit${p.role === "agence" ? " (agence)" : ""}.`);
+  });
   await createSession(id);
   return id;
 }
@@ -94,9 +100,10 @@ export async function login(emailInput: string, password: string) {
  * 2. sinon compte ClipBoost de la même adresse email (vérifiée par le fournisseur), relié au passage ;
  * 3. sinon, en mode inscription, nouveau compte sans mot de passe avec le rôle choisi (il pourra en définir un dans Paramètres).
  * Mêmes règles que la connexion par mot de passe (suspension, maintenance) et que l'inscription (inscriptions fermées).
- * Les administrateurs se connectent uniquement avec leur mot de passe.
+ * Les administrateurs se connectent uniquement avec leur mot de passe. ref : code de parrainage gardé dans le cookie du
+ * parcours, pris en compte seulement à la création d'un compte clipper (comme l'inscription par email).
  */
-export async function oauthSignIn(identity: OAuthIdentity, mode: OAuthMode, role: OAuthRole): Promise<User> {
+export async function oauthSignIn(identity: OAuthIdentity, mode: OAuthMode, role: OAuthRole, ref?: string | null): Promise<User> {
   const db = await getDb();
   const settings = await getSettings();
   const email = normalizeEmail(identity.email);
@@ -116,7 +123,8 @@ export async function oauthSignIn(identity: OAuthIdentity, mode: OAuthMode, role
     const name = (identity.name.trim() || email.split("@")[0]).slice(0, 80);
     const id = newId();
     user = await db.transaction(async (tx) => {
-      const [created] = await tx.insert(schema.users).values({ id, role, email, passwordHash: "", name, country: "Algérie" }).returning();
+      const referral = await referralFields(tx, { id, role }, ref);
+      const [created] = await tx.insert(schema.users).values({ id, role, email, passwordHash: "", name, country: "Algérie", ...referral }).returning();
       await tx.insert(A).values({ provider: identity.provider, subject: identity.subject, userId: id, email });
       await logActivity(tx, role === "agence" ? "🏢" : "👤", `${name} s'est inscrit${role === "agence" ? " (agence)" : ""}.`);
       return created;

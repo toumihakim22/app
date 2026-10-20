@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { boolean, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { boolean, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex, type AnyPgColumn } from "drizzle-orm/pg-core";
 
 const id = () => text("id").primaryKey();
 const createdAt = () => timestamp("created_at", { withTimezone: true }).notNull().defaultNow();
@@ -34,8 +34,12 @@ export const users = pgTable("users", {
   /** Message de l'agence avec sa demande, puis motif d'un refus. */
   verificationNote: text("verification_note"),
   locale: text("locale").$type<Locale>().notNull().default("fr"),
+  /** Code de parrainage d'un clipper (8 signes en majuscules, lien « /espace?ref=<code>#/inscription ») ; null pour les autres rôles. */
+  referralCode: text("referral_code"),
+  /** Parrain : le clipper dont le code a servi à l'inscription de ce clipper (null si aucun, ou parrain supprimé). */
+  referredBy: text("referred_by").references((): AnyPgColumn => users.id, { onDelete: "set null" }),
   createdAt: createdAt(),
-}, (t) => [uniqueIndex("users_email_idx").on(t.email)]);
+}, (t) => [uniqueIndex("users_email_idx").on(t.email), uniqueIndex("users_referral_code_idx").on(t.referralCode), index("users_referred_by_idx").on(t.referredBy)]);
 
 /** Comptes Google, Apple ou Discord reliés à un utilisateur (connexion sans mot de passe). */
 export const oauthAccounts = pgTable("oauth_accounts", {
@@ -91,7 +95,8 @@ export const sessions = pgTable("sessions", {
   createdAt: createdAt(),
 }, (t) => [index("sessions_user_idx").on(t.userId)]);
 
-export type SignupPayload = { role: "clipper" | "agence"; name: string; contact: string | null; country: string; passwordHash: string };
+/** ref : code de parrainage reçu avec l'inscription (vérifié à la création du compte, ignoré s'il n'est pas valable). */
+export type SignupPayload = { role: "clipper" | "agence"; name: string; contact: string | null; country: string; passwordHash: string; ref?: string | null };
 
 // Codes à 6 chiffres envoyés par email : inscription et mot de passe oublié.
 export const emailCodes = pgTable("email_codes", {
@@ -268,6 +273,20 @@ export const weeklyAwards = pgTable("weekly_awards", {
   transactionId: text("transaction_id").references(() => transactions.id, { onDelete: "set null" }),
   createdAt: createdAt(),
 }, (t) => [primaryKey({ columns: [t.week, t.rank] }), index("weekly_awards_user_idx").on(t.userId)]);
+
+/**
+ * Primes de parrainage : une ligne par filleul (clé referee_id), écrite quand son PREMIER retrait est validé par l'équipe
+ * (reviewTransaction, dans la même transaction SQL : services/referrals.ts). amount : la prime du réglage referralBonus à
+ * ce moment ; transaction_id : le gain versé au parrain (null pour une prime de 0 DA). La clé empêche de payer deux fois.
+ * Aucune ligne quand la prime est refusée (parrain suspendu, même compte de retrait) : le refus est noté au journal.
+ */
+export const referralRewards = pgTable("referral_rewards", {
+  refereeId: text("referee_id").primaryKey().references(() => users.id, { onDelete: "cascade" }),
+  referrerId: text("referrer_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  amount: integer("amount").notNull(),
+  transactionId: text("transaction_id").references(() => transactions.id, { onDelete: "set null" }),
+  createdAt: createdAt(),
+}, (t) => [index("referral_rewards_referrer_idx").on(t.referrerId)]);
 
 export type DocumentKind = "facture" | "recu";
 

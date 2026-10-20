@@ -3,6 +3,7 @@ import { test } from "node:test";
 import {
   viewRates, belowMin, isTeamCampaign, messageExcerpt, messageThreads, replyText, bioHasCode, clipRisk, dailyGains, fraudRisk, fundingCost, handleInUrl, instantFee, normalizeHandle, payoutDelta, payoutFor, RISK_LOW_LIKES, RISK_NEW_ACCOUNT,
   RISK_SPIKE, RISK_WINDOW_DAYS, riskLevel, sentence, simulatedHistory, simulatedProfile, simulatedStats, socialCode, socialLinkError, utcDay, validateCampaignNumbers, viewsFor, viewsTrackedText,
+  acceptedReferrer, normalizeReferralCode, payoutKey, referralCode, referralDecision, referralFirstName, referralLabel, referralNotice, referralRefusedText,
   keepsWeekReading, prizeLabel, prizeNotice, rankText, weekBounds, weekClosedText, weekGains, weekKey, weeklyRanking, weekNumber, weeksToClose, weekStart,
 } from "../lib/server/rules";
 
@@ -307,4 +308,27 @@ test("textes du classement : libellé de la prime, notification, journal", () =>
   assert.equal(weekClosedText("2026-W43", 0, 0), "Classement de la semaine 43 clôturé : aucune prime versée.");
   assert.equal(weekClosedText("2026-W43", 1, 10000), "Classement de la semaine 43 clôturé : 1 prime versée (10 000 DA).");
   assert.equal(weekClosedText("2026-W43", 10, 37000), "Classement de la semaine 43 clôturé : 10 primes versées (37 000 DA).");
+});
+
+test("parrainage : codes, parrain accepté, décision de la prime et textes", () => {
+  assert.equal(referralCode([0, 1, 2, 3, 31, 32, 255, 100]), "ABCD9A9E");
+  assert.match(referralCode(Array.from({ length: 8 }, (_, i) => i * 37)), /^[A-HJ-NP-Z2-9]{8}$/);
+  assert.deepEqual(["  yacine26 ", "1A2B3C4D", "abc", "x".repeat(17), "YAC-INE", 42, null].map(normalizeReferralCode), ["YACINE26", "1A2B3C4D", null, null, null, null, null]);
+  assert.equal(referralFirstName("  Nour El Houda Saidi "), "Nour");
+  const yacine = { id: "y", role: "clipper", status: "Actif" };
+  assert.equal(acceptedReferrer(yacine, { id: "n", role: "clipper" }), yacine);
+  assert.equal(acceptedReferrer(yacine, { id: "n", role: "agence" }), null);
+  assert.equal(acceptedReferrer(yacine, { id: "y", role: "clipper" }), null);
+  assert.equal(acceptedReferrer({ ...yacine, status: "Suspendu" }, { id: "n", role: "clipper" }), null);
+  assert.equal(acceptedReferrer({ ...yacine, role: "agence" }, { id: "n", role: "clipper" }), null);
+  assert.equal(acceptedReferrer(null, { id: "n", role: "clipper" }), null);
+  assert.equal(payoutKey(" 0021234567 Clé-89 "), payoutKey("0021234567clé89"));
+  assert.equal(referralDecision({ status: "Actif", payoutAccount: "0021234567 clé 89" }, { payoutAccount: "00799999001234567890" }), "pay");
+  assert.equal(referralDecision({ status: "Actif", payoutAccount: "0021234567 clé 89" }, { payoutAccount: "0021234567 CLÉ 89" }), "same-account");
+  assert.equal(referralDecision({ status: "Suspendu", payoutAccount: null }, { payoutAccount: "1" }), "suspended");
+  // Comptes vides : jamais « le même compte ».
+  assert.equal(referralDecision({ status: "Actif", payoutAccount: null }, { payoutAccount: "" }), "pay");
+  assert.equal(referralLabel("Karim Belkacem"), "Parrainage · premier retrait de Karim Belkacem");
+  assert.equal(referralNotice("Karim Belkacem", 1000), "Karim Belkacem a fait son premier retrait : +1 000 DA de parrainage");
+  assert.equal(referralRefusedText("Yacine Benali", "Lina Mansouri", "suspended"), "Prime de parrainage non versée : Yacine Benali, parrain de Lina Mansouri, est suspendu.");
 });

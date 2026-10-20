@@ -459,3 +459,59 @@ export const prizeNotice = (week: string, rank: number, amount: number) => `Vous
 /** Ligne du journal d'activité à la clôture d'une semaine. */
 export const weekClosedText = (week: string, winners: number, paid: number) =>
   `Classement de la semaine ${weekNumber(week)} clôturé : ${winners ? `${winners} prime${winners > 1 ? "s" : ""} versée${winners > 1 ? "s" : ""} (${amountText(paid)})` : "aucune prime versée"}.`;
+
+// ---------- Parrainage ----------
+
+/** Longueur des codes de parrainage tirés au hasard (mêmes signes que les codes « CB-XXXX », sans signe ambigu). */
+export const REFERRAL_CODE_LENGTH = 8;
+
+/** Code de parrainage d'un clipper tiré de 8 octets aléatoires (node:crypto sur le serveur, Web Crypto hors ligne). */
+export const referralCode = (bytes: ArrayLike<number>) => Array.from({ length: REFERRAL_CODE_LENGTH }, (_, i) => SOCIAL_CODE_ALPHABET[bytes[i] % 32]).join("");
+
+/**
+ * Code reçu dans un lien (« ?ref= ») ou un formulaire, en majuscules et sans espaces ; null s'il ne peut pas être un code
+ * (4 à 16 lettres ou chiffres : codes tirés au hasard, et codes des comptes inscrits avant le parrainage, en hexadécimal).
+ */
+export function normalizeReferralCode(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const code = value.trim().toUpperCase();
+  return /^[A-Z0-9]{4,16}$/.test(code) ? code : null;
+}
+
+/** Prénom affiché aux visiteurs d'un lien de parrainage (« Invité par Yacine ») : le premier mot du nom, rien d'autre. */
+export const referralFirstName = (name: string) => name.trim().split(/\s+/)[0] ?? "";
+
+/**
+ * Parrain retenu à l'inscription d'un clipper : un clipper actif, autre que le compte inscrit. Sinon null : un code
+ * inconnu ou refusé n'empêche jamais l'inscription, il est simplement ignoré.
+ */
+export function acceptedReferrer<U extends { id: string; role: string; status: string }>(referrer: U | null | undefined, signup: { id: string; role: string }): U | null {
+  if (!referrer || signup.role !== "clipper" || referrer.role !== "clipper" || referrer.status !== "Actif" || referrer.id === signup.id) return null;
+  return referrer;
+}
+
+/** Compte de retrait comparé sans espaces, tirets ni points, et sans tenir compte des majuscules (« 0021234567 clé 89 »). */
+export const payoutKey = (account: string | null | undefined) => (account ?? "").toLowerCase().replace(/[\s.\-_/]+/g, "");
+
+/**
+ * Prime de parrainage due au premier retrait validé d'un filleul : « pay » (la prime est versée), « suspended » (parrain
+ * suspendu) ou « same-account » (le filleul retire vers le même compte que son parrain : même personne probable).
+ * Les cas sans prime du tout (pas de parrain, retrait qui n'est pas le premier, prime déjà versée) sont écartés avant.
+ */
+export function referralDecision(referrer: { status: string; payoutAccount: string | null }, referee: { payoutAccount: string | null }): "pay" | "suspended" | "same-account" {
+  if (referrer.status !== "Actif") return "suspended";
+  const a = payoutKey(referee.payoutAccount);
+  if (a && a === payoutKey(referrer.payoutAccount)) return "same-account";
+  return "pay";
+}
+
+/** Libellé du gain versé au parrain (même texte sur le serveur, hors ligne et dans les données d'exemple). */
+export const referralLabel = (refereeName: string) => `Parrainage · premier retrait de ${refereeName}`;
+/** Notification du parrain. */
+export const referralNotice = (refereeName: string, amount: number) => `${refereeName} a fait son premier retrait : +${amountText(amount)} de parrainage`;
+/** Lignes du journal d'activité : prime versée, ou refusée avec sa raison. */
+export const referralPaidText = (referrerName: string, refereeName: string, amount: number) => `Prime de parrainage de ${amountText(amount)} versée à ${referrerName} (premier retrait de ${refereeName}).`;
+export const referralRefusedText = (referrerName: string, refereeName: string, reason: "suspended" | "same-account") =>
+  reason === "suspended"
+    ? `Prime de parrainage non versée : ${referrerName}, parrain de ${refereeName}, est suspendu.`
+    : `Prime de parrainage non versée : ${refereeName} retire vers le même compte que son parrain ${referrerName}.`;

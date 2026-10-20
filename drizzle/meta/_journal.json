@@ -71,6 +71,13 @@
       "when": 1792458183376,
       "tag": "0009_weekly_leaderboard",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1792460128092,
+      "tag": "0010_referrals",
+      "breakpoints": true
     }
   ]
 }

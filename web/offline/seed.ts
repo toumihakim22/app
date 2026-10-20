@@ -3,9 +3,10 @@
 import type { CampaignStatus, PublicationStatus } from "../../lib/server/db/schema";
 import { DEMO_APPEAL_MESSAGE, DEMO_PROOF_DATA_URL } from "../../lib/server/demo-appeal";
 import { DEMO_CONTENDERS, demoLastWeek } from "../../lib/server/demo-leaderboard";
+import { DEMO_REFEREE_PAYOUT, DEMO_REFEREES, DEMO_REFERRAL_CODE } from "../../lib/server/demo-referrals";
 import { demoThreads } from "../../lib/server/demo-messages";
 import { numberDocuments } from "../../lib/server/documents";
-import { clipRisk, payoutFor, prizeLabel, prizeNotice, sentence, simulatedHistory, weekClosedText } from "../../lib/server/rules";
+import { clipRisk, payoutFor, prizeLabel, prizeNotice, referralLabel, referralNotice, referralPaidText, sentence, simulatedHistory, weekClosedText } from "../../lib/server/rules";
 import { link } from "../../lib/server/links";
 import { DEFAULT_SETTINGS } from "../../lib/server/settings";
 import { emptyStore, insertCampaign, insertPublication, insertTransaction, insertUser, newId, newRef, newSocialCode, type CampaignRow, type Store, type UserRow } from "./db";
@@ -22,7 +23,8 @@ export async function seed(): Promise<Store> {
   const daysAgo = (n: number) => Date.now() - n * 86_400_000;
   const U = async (role: "clipper" | "agence", name: string, email: string, extra: Partial<UserRow> = {}) =>
     insertUser(db, { id: newId(), role, name, email, passwordHash: await hashPassword(DEMO_PASSWORD), ...extra });
-  const yacine = await U("clipper", "Yacine Benali", "yacine@clipboost.dz", { level: "Clipper Argent", bio: "Monteur passionné de foot et d'humour.", handles: { tiktok: "@yacine.clips", instagram: "@yacine.clips", youtube: "@yacineclips" }, payoutMethod: "CCP", payoutAccount: "0021234567 clé 89", createdAt: daysAgo(210) });
+  // Chaque clipper reçoit un code de parrainage (insertUser) ; celui de Yacine est fixe (DEMO_REFERRAL_CODE).
+  const yacine = await U("clipper", "Yacine Benali", "yacine@clipboost.dz", { referralCode: DEMO_REFERRAL_CODE, level: "Clipper Argent", bio: "Monteur passionné de foot et d'humour.", handles: { tiktok: "@yacine.clips", instagram: "@yacine.clips", youtube: "@yacineclips" }, payoutMethod: "CCP", payoutAccount: "0021234567 clé 89", createdAt: daysAgo(210) });
   const amira = await U("clipper", "Amira Khelifi", "amira@clipboost.dz", { level: "Clipper Or", bio: "Lifestyle et mode à Oran.", handles: { instagram: "@amira.style" }, payoutMethod: "BaridiMob", payoutAccount: "00799999001234567890", createdAt: daysAgo(190) });
   const lina = await U("clipper", "Lina Mansouri", "lina@clipboost.dz", { level: "Clipper Bronze", handles: { tiktok: "@lina.lol", youtube: "@lina.lol" }, createdAt: daysAgo(60) });
   const tassili = await U("agence", "Tassili Sport", "agence@clipboost.dz", { contact: "Nassim Ait Ali", bio: "Équipementier sportif algérien : maillots, ballons et tenues d'entraînement. Nous cherchons des clippers passionnés de foot pour faire vivre chaque match.", credit: 400000, createdAt: daysAgo(240) });
@@ -30,6 +32,10 @@ export async function seed(): Promise<Store> {
   // Clippers de plus pour le classement hebdomadaire (lib/server/demo-leaderboard.ts) : un compte vérifié et un clip validé chacun.
   const contenders: { d: (typeof DEMO_CONTENDERS)[number]; u: UserRow }[] = [];
   for (const d of DEMO_CONTENDERS) contenders.push({ d, u: await U("clipper", d.name, d.email, { level: d.level, handles: { [d.platform.toLowerCase()]: `@${d.handle}` }, createdAt: daysAgo(d.createdDaysAgo) }) });
+  // Parrainage (lib/server/demo-referrals.ts) : filleuls de Yacine ; Karim retire vers son propre compte BaridiMob.
+  for (const u of db.users) if (DEMO_REFEREES.includes(u.email)) u.referredBy = yacine.id;
+  const karim = db.users.find((u) => u.email === DEMO_REFEREE_PAYOUT.email)!;
+  Object.assign(karim, { payoutMethod: DEMO_REFEREE_PAYOUT.method, payoutAccount: DEMO_REFEREE_PAYOUT.account });
   const djurdjura = await U("agence", "Djurdjura Médias", "djurdjura@clipboost.dz", { contact: "Karim Ouali", country: "Algérie", bio: "Studio de production basé à Tizi Ouzou : courts-métrages, clips musicaux et documentaires.", credit: 150000, verification: "verified", createdAt: daysAgo(120) });
 
   const C = (ownerId: string | null, title: string, brand: string, category: string, rate: number, budget: number, status: CampaignStatus, emoji: string, gradient: string, platforms: string[], rules: string[], extra: Partial<CampaignRow> = {}) =>
@@ -181,10 +187,18 @@ export async function seed(): Promise<Store> {
   const transferId = newId(), payoutId = newId();
   insertTransaction(db, { id: transferId, ref: newRef(), userId: djurdjura.id, type: "recharge", label: "Recharge par virement bancaire", amount: 500000, status: "Validé", method: "virement bancaire", createdAt: daysAgo(8.2) });
   insertTransaction(db, { id: payoutId, ref: newRef(), userId: yacine.id, type: "retrait", label: "Retrait vers CCP", amount: -4000, status: "Validé", method: "CCP", createdAt: daysAgo(4.2) });
+  // Premier retrait de Karim, filleul de Yacine, versé : son reçu, et la prime de parrainage payée à Yacine (en rétention).
+  const karimPayoutId = newId(), bonusId = newId(), kp = DEMO_REFEREE_PAYOUT, bonus = DEFAULT_SETTINGS.referralBonus;
+  insertTransaction(db, { id: karimPayoutId, ref: newRef(), userId: karim.id, type: "retrait", label: `Retrait vers ${kp.method}`, amount: -kp.amount, status: "Validé", method: kp.method, createdAt: daysAgo(kp.requestedDaysAgo) });
+  insertTransaction(db, { id: bonusId, ref: newRef(), userId: yacine.id, type: "gain", label: referralLabel(karim.name), amount: bonus, status: "Validé", availableAt: daysAgo(kp.paidDaysAgo - DEFAULT_SETTINGS.holdDays), createdAt: daysAgo(kp.paidDaysAgo) });
+  db.referralRewards.push({ refereeId: karim.id, referrerId: yacine.id, amount: bonus, transactionId: bonusId, createdAt: daysAgo(kp.paidDaysAgo) });
+  notes.push([karim, kp.paidDaysAgo, "✅", `Votre retrait de ${fmt(kp.amount)} a été validé.`, link.clipperTx(karimPayoutId)], [yacine, kp.paidDaysAgo, "🎁", referralNotice(karim.name, bonus), link.clipperTx(bonusId)]);
+  acts.push([kp.requestedDaysAgo, "💸", `${karim.name} a demandé un retrait de ${fmt(kp.amount)}.`], [kp.paidDaysAgo, "✅", `Retrait de ${fmt(kp.amount)} validé par Équipe ClipBoost.`], [kp.paidDaysAgo, "🎁", referralPaidText(yacine.name, karim.name, bonus)]);
   const docs = [
     { kind: "facture" as const, transactionId: onlineId, userId: tassili.id, amount: 300000, createdAt: daysAgo(11) },
     { kind: "facture" as const, transactionId: transferId, userId: djurdjura.id, amount: 500000, createdAt: daysAgo(8) },
     { kind: "recu" as const, transactionId: payoutId, userId: yacine.id, amount: 4000, createdAt: daysAgo(4) },
+    { kind: "recu" as const, transactionId: karimPayoutId, userId: karim.id, amount: kp.amount, createdAt: daysAgo(kp.paidDaysAgo) },
   ];
   const numbers = numberDocuments(docs.map((d) => ({ kind: d.kind, at: d.createdAt })));
   for (const [k, d] of docs.entries()) db.documents.push({ id: newId(), number: numbers[k], ...d });

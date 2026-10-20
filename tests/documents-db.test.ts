@@ -35,7 +35,10 @@ test("migration 0007 : documents des recharges et retraits déjà validés, par 
   const client = new PGlite(process.env.PGLITE_DIR);
   const db = drizzle(client, { schema });
   await migrate(db, { migrationsFolder: old });
-  await db.insert(schema.users).values([user("ag", "agence", "en"), user("cl", "clipper"), user("admin", "admin")]);
+  // Comptes écrits en SQL : la table users du schéma actuel a des colonnes plus récentes que la migration 0006 (parrainage).
+  for (const u of [user("ag", "agence", "en"), user("cl", "clipper"), user("admin", "admin")]) {
+    await client.query(`insert into users (id, role, email, password_hash, name, locale) values ($1, $2, $3, $4, $5, $6)`, [u.id, u.role, u.email, u.passwordHash, u.name, u.locale]);
+  }
   await db.insert(T).values([
     tx("r1", "ag", "recharge", 100000, "Validé", "2025-12-30T10:00:00Z"),
     tx("r2", "ag", "recharge", 200000, "Validé", "2026-01-05T10:00:00Z"),
@@ -50,6 +53,10 @@ test("migration 0007 : documents des recharges et retraits déjà validés, par 
     ["r1", "FAC-2025-00001", "facture", 100000], ["r2", "FAC-2026-00001", "facture", 200000], ["r3", "FAC-2026-00002", "facture", 300000], ["w1", "REC-2026-00001", "recu", 3000],
   ]);
   assert.deepEqual(docs.map((d) => d.createdAt.toISOString().slice(0, 10)), ["2025-12-30", "2026-01-05", "2026-02-05", "2026-03-01"]);
+  // Migration 0010 : code de parrainage des clippers déjà inscrits (empreinte md5 de l'identifiant), aucun pour les autres.
+  const codes = Object.fromEntries((await db.select({ id: schema.users.id, code: schema.users.referralCode }).from(schema.users)).map((u) => [u.id, u.code]));
+  assert.match(codes.cl ?? "", /^[0-9A-F]{8}$/);
+  assert.deepEqual([codes.ag, codes.admin], [null, null]);
   await client.close();
 });
 

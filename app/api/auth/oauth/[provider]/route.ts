@@ -5,7 +5,8 @@ import { OAuthError, isOAuthProvider, oauthErrorRedirect, startOAuth } from "@/l
 type Ctx = { params: Promise<{ provider: string }> };
 
 /**
- * Bouton « Continuer avec Google / Apple / Discord » : GET /api/auth/oauth/<fournisseur>?mode=login|signup&role=clipper|agence.
+ * Bouton « Continuer avec Google / Apple / Discord » : GET /api/auth/oauth/<fournisseur>?mode=login|signup&role=clipper|agence,
+ * et &ref=<code> pour une inscription de clipper par un lien de parrainage.
  * Navigation de premier niveau : les erreurs reviennent à l'app (/espace?oauth_error=<code>), jamais en JSON.
  */
 export async function GET(req: NextRequest, { params }: Ctx) {

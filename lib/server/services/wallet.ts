@@ -9,6 +9,7 @@ import { instantFee } from "../rules";
 import { getSettings } from "../settings";
 import { issueDocument } from "./documents";
 import { balances } from "./money";
+import { rewardReferral } from "./referrals";
 
 const fmt = (n: number) => `${n.toLocaleString("fr-FR").replace(/ | /g, " ")} DA`;
 
@@ -67,11 +68,13 @@ export async function validateRecharge(tx: Tx, t: Transaction) {
 }
 
 /**
- * L'équipe traite un retrait (validé : reçu créé) ou confirme une recharge annoncée (virement, carte Visa / Mastercard). Une recharge payée en
- * ligne ne se traite pas à la main : Chargily la confirme (webhook), ce qui évite de créditer deux fois le même paiement.
+ * L'équipe traite un retrait (validé : reçu créé, et prime de parrainage au premier retrait d'un filleul) ou confirme une
+ * recharge annoncée (virement, carte Visa / Mastercard). Une recharge payée en ligne ne se traite pas à la main : Chargily
+ * la confirme (webhook), ce qui évite de créditer deux fois le même paiement.
  */
 export async function reviewTransaction(admin: User, id: string, approve: boolean) {
   const db = await getDb();
+  const settings = await getSettings();
   await db.transaction(async (tx) => {
     const [t] = await tx.select().from(schema.transactions).where(eq(schema.transactions.id, id)).for("update");
     if (!t) throw notFound("Transaction introuvable");
@@ -80,8 +83,11 @@ export async function reviewTransaction(admin: User, id: string, approve: boolea
     if (t.type === "recharge" && approve) await validateRecharge(tx, t);
     else {
       await tx.update(schema.transactions).set({ status: approve ? "Validé" : "Refusé" }).where(eq(schema.transactions.id, id));
-      // Retrait versé : son reçu, dans la même transaction.
-      if (approve) await issueDocument(tx, t);
+      // Retrait versé : son reçu, puis la prime du parrain s'il s'agit du premier retrait d'un filleul (services/referrals.ts).
+      if (approve) {
+        await issueDocument(tx, t);
+        await rewardReferral(tx, t, settings);
+      }
     }
     const what = t.type === "retrait" ? `retrait de ${fmt(-t.amount)}` : `recharge de ${fmt(t.amount)}`;
     // Accord du participe : « le retrait » est validé, « la recharge » est validée.

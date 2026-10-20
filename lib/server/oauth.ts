@@ -1,14 +1,16 @@
 // Connexion et inscription avec Google, Apple ou Discord (OAuth 2.0 / OpenID Connect), sans dépendance :
 // node:crypto pour l'état, le PKCE, le nonce et le secret client d'Apple ; fetch pour les échanges avec les fournisseurs.
 //
-// 1. GET /api/auth/oauth/<fournisseur>?mode=login|signup&role=clipper|agence : un cookie HttpOnly (cb_oauth, 10 minutes)
-//    garde l'état, le vérificateur PKCE, le nonce, le mode et le rôle ; redirection vers la page de consentement.
+// 1. GET /api/auth/oauth/<fournisseur>?mode=login|signup&role=clipper|agence[&ref=<code>] : un cookie HttpOnly (cb_oauth,
+//    10 minutes) garde l'état, le vérificateur PKCE, le nonce, le mode, le rôle et le code de parrainage ; redirection
+//    vers la page de consentement.
 // 2. Retour sur /api/auth/oauth/<fournisseur>/callback (GET ; POST pour Apple, « form_post ») : l'état reçu doit être
 //    celui du cookie (comparaison à temps constant), puis le code est échangé contre l'identité du compte.
 // Le compte ClipBoost est ensuite retrouvé, relié ou créé par oauthSignIn (services/accounts.ts).
 import { createHash, createPrivateKey, randomBytes, sign, timingSafeEqual } from "node:crypto";
 import { cookies } from "next/headers";
 import { NextResponse, type NextRequest } from "next/server";
+import { normalizeReferralCode } from "./rules";
 import { OAUTH_PROVIDERS, type OAuthProvider } from "./validation";
 
 /** Codes d'erreur transmis à l'app (/espace?oauth_error=<code>), qui affiche le message correspondant (web/src/auth.js). */
@@ -90,8 +92,11 @@ export const callbackUrl = (req: NextRequest, provider: OAuthProvider) => `${app
 
 // ── Cookie du parcours ────────────────────────────────────────────────────────────────────────────────────────────
 
-/** s : état, v : vérificateur PKCE, n : nonce, m : mode, r : rôle choisi à l'inscription, e : expiration (ms). */
-type Flow = { p: OAuthProvider; s: string; v: string; n: string; m: OAuthMode; r: OAuthRole; e: number };
+/**
+ * s : état, v : vérificateur PKCE, n : nonce, m : mode, r : rôle choisi à l'inscription, e : expiration (ms),
+ * f : code de parrainage du lien d'inscription (facultatif ; vérifié à la création du compte).
+ */
+type Flow = { p: OAuthProvider; s: string; v: string; n: string; m: OAuthMode; r: OAuthRole; e: number; f?: string };
 
 const random = (bytes = 32) => randomBytes(bytes).toString("base64url");
 const b64url = (s: string | Buffer) => Buffer.from(s).toString("base64url");
@@ -119,7 +124,8 @@ function readFlow(raw: string | undefined): Flow | null {
     const f = JSON.parse(Buffer.from(raw, "base64url").toString("utf8")) as Flow;
     const strings = [f.s, f.v, f.n].every((x) => typeof x === "string" && x.length >= 32);
     if (!strings || !isOAuthProvider(f.p) || (f.m !== "login" && f.m !== "signup") || (f.r !== "clipper" && f.r !== "agence") || typeof f.e !== "number") return null;
-    return f;
+    // Code de parrainage illisible : ignoré, comme à l'inscription par email.
+    return { ...f, f: normalizeReferralCode(f.f) ?? undefined };
   } catch {
     return null;
   }
@@ -138,6 +144,7 @@ export async function startOAuth(req: NextRequest, provider: OAuthProvider): Pro
     m: q.get("mode") === "login" ? "login" : "signup",
     r: q.get("role") === "agence" ? "agence" : "clipper",
     e: Date.now() + FLOW_SECONDS * 1000,
+    f: q.get("mode") !== "login" && q.get("role") !== "agence" ? normalizeReferralCode(q.get("ref")) ?? undefined : undefined,
   };
   (await cookies()).set(COOKIE, b64url(JSON.stringify(flow)), cookieOptions(provider, FLOW_SECONDS));
   const params: Record<string, string> = { client_id: conf.clientId(), redirect_uri: callbackUrl(req, provider), response_type: "code", scope: conf.scope, state: flow.s };
@@ -251,9 +258,9 @@ async function exchange(provider: OAuthProvider, req: NextRequest, flow: Flow, p
 
 /**
  * Retour du fournisseur : contrôle de l'état (cookie, à usage unique), puis échange du code contre l'identité vérifiée.
- * Renvoie aussi le mode et le rôle choisis au départ.
+ * Renvoie aussi le mode, le rôle et le code de parrainage choisis au départ.
  */
-export async function finishOAuth(req: NextRequest, provider: OAuthProvider): Promise<{ identity: OAuthIdentity; mode: OAuthMode; role: OAuthRole }> {
+export async function finishOAuth(req: NextRequest, provider: OAuthProvider): Promise<{ identity: OAuthIdentity; mode: OAuthMode; role: OAuthRole; ref: string | null }> {
   const conf = PROVIDERS[provider];
   if (!conf.configured()) throw new OAuthError("config");
   const jar = await cookies();
@@ -264,5 +271,5 @@ export async function finishOAuth(req: NextRequest, provider: OAuthProvider): Pr
   if (params.error) throw new OAuthError(/denied|cancel/i.test(params.error) ? "denied" : "failed", `${provider} : ${params.error}`);
   if (!flow || flow.p !== provider || flow.e < Date.now() || !same(params.state, flow.s)) throw new OAuthError("state");
   if (!params.code) throw new OAuthError("failed", `${provider} : code absent`);
-  return { identity: await exchange(provider, req, flow, params), mode: flow.m, role: flow.r };
+  return { identity: await exchange(provider, req, flow, params), mode: flow.m, role: flow.r, ref: flow.f ?? null };
 }

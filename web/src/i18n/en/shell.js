@@ -371,3 +371,9 @@ Object.assign(I18N.en, {
   "Fin de la semaine dans": "Week ends in",
   "Aucune vue validée cette semaine pour l'instant": "No approved views this week yet",
 });
+
+// Parrainage : écran d'inscription ouvert par un lien de parrainage (web/src/auth.js).
+Object.assign(I18N.en, {
+  "Invité par {name}": "Invited by {name}",
+  "Créez votre compte Clipper : {name} recevra une prime à votre premier retrait.": "Create your Clipper account: {name} will receive a bonus on your first withdrawal.",
+});

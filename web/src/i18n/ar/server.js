@@ -366,3 +366,18 @@ I18N_RX.ar.push(
   [/^Classement de la semaine (\d+) clôturé : ([3-9]|10) primes versées \(([\d\s]+ DA)\)\.$/, "أُغلق ترتيب الأسبوع $1: صُرفت $2 مكافآت ($3)."],
   [/^Classement de la semaine (\d+) clôturé : (\d+) primes versées \(([\d\s]+ DA)\)\.$/, "أُغلق ترتيب الأسبوع $1: صُرفت $2 مكافأة ($3)."],
 );
+
+// Parrainage (lib/server/services/referrals.ts, rules.ts : referralLabel, referralNotice, referralPaidText,
+// referralRefusedText ; validation.ts : prime des réglages). Les noms ($1, $2…) restent tels quels.
+Object.assign(I18N.ar, {
+  "Code de parrainage inconnu": "رمز الإحالة غير معروف",
+  "Prime de parrainage invalide": "مكافأة الإحالة غير صالحة",
+  "Prime de parrainage trop élevée (1 000 000 DA maximum)": "مكافأة الإحالة مرتفعة جدًا (الحد الأقصى 1000000 دج)",
+});
+I18N_RX.ar.push(
+  [/^Parrainage · premier retrait de (.+)$/, "إحالة · أول سحب لـ $1"],
+  [/^(.+) a fait son premier retrait : \+([\d\s]+ DA) de parrainage$/, "أجرى $1 أول عملية سحب له: +$2 مكافأة إحالة"],
+  [/^Prime de parrainage de ([\d\s]+ DA) versée à (.+) \(premier retrait de (.+)\)\.$/, "صُرفت مكافأة إحالة بقيمة $1 إلى $2 (أول سحب لـ $3)."],
+  [/^Prime de parrainage non versée : (.+), parrain de (.+), est suspendu\.$/, "لم تُصرف مكافأة الإحالة: $1، صاحب دعوة $2، موقوف."],
+  [/^Prime de parrainage non versée : (.+) retire vers le même compte que son parrain (.+)\.$/, "لم تُصرف مكافأة الإحالة: يسحب $1 إلى الحساب نفسه الذي يستعمله صاحب دعوته $2."],
+);

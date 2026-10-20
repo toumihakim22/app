@@ -13,6 +13,7 @@ import { ApiError, badRequest, clear, forbidden, load, logActivity, save } from 
 import * as svc from "./services";
 import { reviewAppeal, submitAppeal } from "./appeals";
 import { markThreadRead, sendMessage } from "./messages";
+import { lookupReferral } from "./referrals";
 import { resumeOnlineTopUp, simulatePayment, startOnlineTopUp } from "./payments";
 import { publicState, stateFor } from "./state";
 import { runDueJobs, trackViews } from "./tracking";
@@ -64,6 +65,10 @@ const routes: Record<string, Record<string, Handler>> = {
       await svc.verifySignup(req, email, code);
       return ok();
     },
+  },
+  // Lien de parrainage : prénom du parrain pour « Invité par … » (public).
+  "/api/referral/:code": {
+    GET: (req) => ({ data: lookupReferral(req.db, req.params.code) }),
   },
   "/api/auth/login": {
     POST: async (req) => {
