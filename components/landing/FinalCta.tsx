@@ -1,25 +1,30 @@
+// CTA final (§7.11) : panneau toujours sombre avec les 2 halos autorisés (§8), titre et boutons.
+// cta-panel / cta-line : nuit en clair ; en sombre, un panneau relevé et un filet lisible (app/dark.css),
+// sinon night #11141b se confond avec surface #12151c. Anneau de focus blanc : l'anneau violet ne se voit pas sur nuit.
+const FOCUS = "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-on-brand";
+const BTN = `inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap font-medium transition-colors duration-150 ease-standard ${FOCUS}`;
+const LG = "h-12 rounded-control px-5 text-[15px] [&_svg]:size-5";
+const PRIMARY = "bg-brand text-on-brand shadow-control hover:bg-brand-hover active:bg-brand-active";
+const ON_COLOR_GHOST = "bg-on-brand/10 text-on-brand ring-1 ring-inset ring-on-brand/25 hover:bg-on-brand/15";
+
 export default function FinalCta() {
   return (
-    <section id="inscription" className="scroll-mt-20 py-20 lg:py-28">
+    <section id="inscription" className="scroll-mt-20 bg-surface py-20 lg:py-28">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <div className="relative overflow-hidden rounded-[2.5rem] bg-ink px-6 py-16 text-center sm:px-12 lg:py-20">
-          <div className="pointer-events-none absolute -left-24 -top-24 h-72 w-72 rounded-full bg-brand-600/40 blur-3xl" aria-hidden="true" />
-          <div className="pointer-events-none absolute -bottom-24 -right-24 h-72 w-72 rounded-full bg-income/40 blur-3xl" aria-hidden="true" />
-          <div className="relative">
-            <h2 className="mx-auto max-w-2xl text-3xl font-extrabold tracking-tight text-white sm:text-5xl">
-              Prêt à faire décoller vos clips ?
-            </h2>
-            <p className="mx-auto mt-5 max-w-xl text-lg text-white/70">
-              Rejoignez la liste d&apos;attente et soyez parmi les premiers clippers et marques sur ClipBoost.
-            </p>
-            <div className="mt-10 flex flex-col justify-center gap-3 sm:flex-row">
-              <a href="/espace#/inscription" className="rounded-2xl bg-brand-600 px-8 py-4 font-semibold text-white shadow-lg shadow-brand-600/40 transition hover:bg-brand-500">
-                + Devenir Clipper
-              </a>
-              <a href="/espace#/inscription-agence" className="rounded-2xl bg-white/10 px-8 py-4 font-semibold text-white ring-1 ring-white/20 transition hover:bg-white/15">
-                Je suis une marque
-              </a>
-            </div>
+        <div className="relative overflow-hidden rounded-panel border border-cta-line bg-cta-panel px-6 py-16 text-center sm:px-12 lg:py-20">
+          <div className="pointer-events-none absolute -left-20 -top-24 size-80 rounded-full bg-brand/30 blur-3xl" aria-hidden="true" />
+          <div className="pointer-events-none absolute -bottom-28 -right-10 size-80 rounded-full bg-night-income/15 blur-3xl" aria-hidden="true" />
+          <h2 className="relative mx-auto max-w-2xl text-h2 text-on-brand lg:text-h1">Prêt à faire décoller vos clips&nbsp;?</h2>
+          <p className="relative mx-auto mt-4 max-w-xl text-lg leading-8 text-on-brand/80">
+            Inscription gratuite, premiers gains dès le premier clip validé.
+          </p>
+          <div className="relative mt-8 flex flex-col justify-center gap-3 sm:flex-row">
+            <a href="/espace#/inscription" className={`${BTN} ${LG} ${PRIMARY}`}>
+              Devenir clipper
+            </a>
+            <a href="/espace#/inscription-agence" className={`${BTN} ${LG} ${ON_COLOR_GHOST}`}>
+              Lancer une campagne
+            </a>
           </div>
         </div>
       </div>

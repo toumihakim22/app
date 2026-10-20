@@ -17,6 +17,10 @@ export const DEFAULT_SETTINGS = {
   /** Frais du retrait instantané : pourcentage et minimum en DA. */
   instantFeePercent: 2,
   instantMinFee: 100,
+  /** Primes du classement hebdomadaire, en DA : du 1er au 10e (ClipBoost les paie, aucune campagne n'est débitée). */
+  weeklyPrizes: [10000, 7000, 5000, 4000, 3000, 2500, 2000, 1500, 1000, 1000] as number[],
+  /** Prime de parrainage, en DA : versée au parrain quand son filleul fait son premier retrait (payée par ClipBoost). */
+  referralBonus: 1000,
 };
 
 export type Settings = typeof DEFAULT_SETTINGS;

@@ -6,5 +6,19 @@ export const GRADIENTS = [
   "from-lime-300 via-green-400 to-emerald-600",
   "from-rose-400 via-pink-500 to-purple-600",
 ];
-export const CATEGORIES = ["Sport", "Food", "Tech", "Mode", "Musique", "Humour"];
-export const PLATFORMS = ["TikTok", "Instagram", "YouTube"];
+/**
+ * Catégories proposées à la création d'une campagne. « Autre » n'est jamais enregistrée telle quelle :
+ * l'agence précise alors sa propre catégorie (texte libre, voir campaignSchema), affichée et filtrée comme les autres.
+ */
+export const CATEGORIES = [
+  "Sport", "Food", "Tech", "Mode", "Beauté", "Musique", "Humour", "Gaming", "Cinéma", "Voyage",
+  "Automobile", "Éducation", "Santé", "Finance", "Immobilier", "Lifestyle", "Événementiel", "Autre",
+];
+export const PLATFORMS = ["TikTok", "Instagram", "YouTube", "Facebook"];
+/** Le lien d'un clip doit pointer vers la plateforme déclarée (https uniquement). Partagé par l'API, la version autonome et l'app. */
+export const PLATFORM_HOSTS: Record<string, RegExp> = {
+  TikTok: /(^|\.)tiktok\.com$/,
+  Instagram: /(^|\.)instagram\.com$/,
+  YouTube: /(^|\.)(youtube\.com|youtu\.be)$/,
+  Facebook: /(^|\.)(facebook\.com|fb\.watch|fb\.com)$/,
+};

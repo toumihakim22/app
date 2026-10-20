@@ -8,6 +8,83 @@
       "when": 1791802398074,
       "tag": "0000_init",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1791887818527,
+      "tag": "0001_notification_link",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1791946565168,
+      "tag": "0002_badges_media_oauth",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1792420628153,
+      "tag": "0003_social_accounts",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1792422787239,
+      "tag": "0004_view_tracking",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1792425259681,
+      "tag": "0005_appeals",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1792440038615,
+      "tag": "0006_online_payment",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1792441777669,
+      "tag": "0007_documents",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1792442762183,
+      "tag": "0008_messages",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1792458183376,
+      "tag": "0009_weekly_leaderboard",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1792460128092,
+      "tag": "0010_referrals",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1792461556047,
+      "tag": "0011_academy",
+      "breakpoints": true
     }
   ]
 }
