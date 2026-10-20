@@ -14,6 +14,7 @@ import { dailyGains, isTeamCampaign, messageThreads, RISK_WINDOW_DAYS, utcDay } 
 import { simulatedPlatforms, TRACK_EVERY_HOURS, VIEWS_JOB } from "./tracking";
 import { leaderboardState } from "./leaderboard";
 import { referralState } from "./referrals";
+import { academyState } from "./academy";
 
 const day = (d: Date) => d.toISOString().slice(0, 10);
 const time = (d: Date) => d.toISOString().slice(11, 16);
@@ -187,6 +188,8 @@ export async function stateFor(user: User) {
     ...(isClipper || isAdmin ? { leaderboard: await leaderboardState(user, settings.weeklyPrizes) } : {}),
     // Parrainage (clipper) : son code, ses filleuls (nom, inscription, premier retrait) et les primes reçues.
     ...(isClipper ? { referral: await referralState(user) } : {}),
+    // Académie : leçons publiées pour un clipper ; toutes (brouillons et corps brut pour l'éditeur) pour l'admin.
+    ...(isClipper || isAdmin ? { lessons: await academyState(user) } : {}),
     ...(isAdmin ? { tracking: { everyHours: TRACK_EVERY_HOURS, lastRunAt: viewsRun?.lastRunAt.toISOString() ?? null, summary: viewsRun?.summary ?? null, simulated: simulatedPlatforms() } } : {}),
   };
 }

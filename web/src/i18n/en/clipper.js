@@ -542,3 +542,18 @@ Object.assign(I18N.en, {
   "Invitez d'autres clippers sur ClipBoost et recevez une prime à leur premier retrait.": "Invite other clippers to ClipBoost and receive a bonus on their first withdrawal.",
   "Lien de parrainage copié": "Referral link copied",
 });
+
+// Académie (cAcademie, clLessonPage).
+Object.assign(I18N.en, {
+  "Lire la leçon": "Read the lesson",
+  "Des tutoriels courts pour monter vos clips, accrocher dès les premières secondes et choisir les formats qui marchent.": "Short tutorials to edit your clips, hook viewers from the first seconds and choose the formats that work.",
+  "Aucune leçon pour le moment": "No lessons yet",
+  "L'équipe ClipBoost publiera bientôt de nouveaux tutoriels.": "The ClipBoost team will publish new tutorials soon.",
+  "Toutes les leçons": "All lessons",
+  "Cette leçon n'existe plus ou n'est plus publiée.": "This lesson no longer exists or is no longer published.",
+  "Voir l'Académie": "Go to the Academy",
+  "Voir la vidéo": "Watch the video",
+  "La démonstration en vidéo, sur le site de la plateforme.": "The video walkthrough, on the platform's website.",
+  "Leçon suivante": "Next lesson",
+  "Autres leçons": "Other lessons",
+});

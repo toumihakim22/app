@@ -542,3 +542,18 @@ Object.assign(I18N.ar, {
   "Invitez d'autres clippers sur ClipBoost et recevez une prime à leur premier retrait.": "ادعُ صنّاع مقاطع آخرين إلى ClipBoost واحصل على مكافأة عند أول سحب لهم.",
   "Lien de parrainage copié": "تم نسخ رابط الإحالة",
 });
+
+// Académie (cAcademie, clLessonPage).
+Object.assign(I18N.ar, {
+  "Lire la leçon": "اقرأ الدرس",
+  "Des tutoriels courts pour monter vos clips, accrocher dès les premières secondes et choisir les formats qui marchent.": "دروس قصيرة لمونتاج مقاطعك، وجذب الانتباه من الثواني الأولى، واختيار الأشكال الناجحة.",
+  "Aucune leçon pour le moment": "لا توجد دروس حاليًا",
+  "L'équipe ClipBoost publiera bientôt de nouveaux tutoriels.": "سينشر فريق ClipBoost دروسًا جديدة قريبًا.",
+  "Toutes les leçons": "كل الدروس",
+  "Cette leçon n'existe plus ou n'est plus publiée.": "هذا الدرس لم يعد موجودًا أو لم يعد منشورًا.",
+  "Voir l'Académie": "الذهاب إلى الأكاديمية",
+  "Voir la vidéo": "شاهد الفيديو",
+  "La démonstration en vidéo, sur le site de la plateforme.": "الشرح بالفيديو على موقع المنصة.",
+  "Leçon suivante": "الدرس التالي",
+  "Autres leçons": "دروس أخرى",
+});

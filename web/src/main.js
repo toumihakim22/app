@@ -21,6 +21,8 @@ const state = {
   // Clipper : Découvrir (q, category, sort, layout ; scope = « Toutes » | « Rejointes » | « Favoris ») et Agences (aq).
   camp: { aq: "", q: "", category: "Toutes", sort: "recent", scope: "Toutes", layout: "grid" },
   pub: { status: "Toutes" },
+  // Académie du clipper : catégorie choisie (« Toutes » ou la catégorie d'une leçon).
+  acad: { category: "Toutes" },
   tx: { type: "tous" },
   period: 30,
   // Accueil du clipper : graphique par jour ou cumulé, tableau des clips récents ou les plus vus.
@@ -62,7 +64,7 @@ function parseRoute() {
 
 // Pages dont le 3e segment est l'objet de la page (gardé dans l'adresse, rechargement possible) : la valeur est l'entrée
 // de navigation affichée comme courante. Messages : la conversation ouverte.
-const ITEM_PAGES = { "clipper/agence": "agences", "admin/utilisateur": "utilisateurs", "agence/paiement": "budget", "clipper/messages": "messages", "agence/messages": "messages", "admin/messages": "messages" };
+const ITEM_PAGES = { "clipper/agence": "agences", "admin/utilisateur": "utilisateurs", "agence/paiement": "budget", "clipper/messages": "messages", "clipper/academie": "academie", "agence/messages": "messages", "admin/messages": "messages" };
 const navView = (area, view) => ITEM_PAGES[`${area}/${view}`] || view;
 
 function navigate(hash) {

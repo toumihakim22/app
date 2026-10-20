@@ -202,3 +202,27 @@ export const settingsSchema = z.object({
   // Prime de parrainage versée au premier retrait d'un filleul, en DA.
   referralBonus: z.number({ error: "Prime de parrainage invalide" }).int("Prime de parrainage invalide").min(0, "Prime de parrainage invalide").max(1_000_000, "Prime de parrainage trop élevée (1 000 000 DA maximum)"),
 }).partial();
+
+// Académie : leçon écrite par l'équipe. Titre, résumé et contenu en français obligatoires, en anglais et en arabe
+// facultatifs (un champ vide n'est pas enregistré : l'interface affiche alors le français).
+const lessonField = (label: string, max: number) => z.object({
+  fr: z.string({ error: `${label} en français manquant` }).trim().min(1, `${label} en français obligatoire`).max(max, `${label} en français trop long (${max} caractères maximum)`),
+  en: z.string().trim().max(max, `${label} en anglais trop long (${max} caractères maximum)`).optional().transform((v) => v || undefined),
+  ar: z.string().trim().max(max, `${label} en arabe trop long (${max} caractères maximum)`).optional().transform((v) => v || undefined),
+}, { error: `${label} manquant` });
+/** Lien de la vidéo : vide (aucune vidéo) ou une adresse https. */
+const lessonVideo = z.string({ error: "Lien de la vidéo invalide" }).trim().max(500, "Lien de la vidéo trop long").nullable().optional()
+  .transform((v) => v || null)
+  .refine((v) => { if (v === null) return true; try { return new URL(v).protocol === "https:"; } catch { return false; } }, "Le lien de la vidéo doit être une adresse https://");
+export const lessonSchema = z.object({
+  category: z.string({ error: "Catégorie manquante" }).trim().min(1, "Catégorie obligatoire").max(40, "Catégorie trop longue (40 caractères maximum)"),
+  emoji: z.string({ error: "Emoji manquant" }).trim().min(1, "Emoji obligatoire").max(16, "Emoji trop long"),
+  minutes: z.number({ error: "Durée invalide" }).int("Durée invalide").min(1, "Durée invalide").max(120, "Durée trop longue (120 minutes maximum)"),
+  videoUrl: lessonVideo,
+  title: lessonField("Titre", 120),
+  summary: lessonField("Résumé", 300),
+  body: lessonField("Contenu", 8000),
+  published: z.boolean({ error: "Publication invalide" }),
+});
+export type LessonInput = z.infer<typeof lessonSchema>;
+export const lessonMoveSchema = z.object({ direction: z.enum(["up", "down"], { error: "Sens de déplacement invalide" }) });

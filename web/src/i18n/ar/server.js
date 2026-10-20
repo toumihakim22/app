@@ -381,3 +381,47 @@ I18N_RX.ar.push(
   [/^Prime de parrainage non versée : (.+), parrain de (.+), est suspendu\.$/, "لم تُصرف مكافأة الإحالة: $1، صاحب دعوة $2، موقوف."],
   [/^Prime de parrainage non versée : (.+) retire vers le même compte que son parrain (.+)\.$/, "لم تُصرف مكافأة الإحالة: يسحب $1 إلى الحساب نفسه الذي يستعمله صاحب دعوته $2."],
 );
+
+// Académie (lib/server/validation.ts : lessonSchema, lessonMoveSchema ; academy.ts : journal d'activité). « Leçon
+// introuvable » est dans le dictionnaire « shell ». Le titre ($1) et le nom ($2) restent tels quels.
+Object.assign(I18N.ar, {
+  "Titre manquant": "العنوان مفقود",
+  "Titre en français manquant": "العنوان بالفرنسية مفقود",
+  "Titre en français obligatoire": "العنوان بالفرنسية مطلوب",
+  "Titre en français trop long (120 caractères maximum)": "العنوان بالفرنسية طويل جدًا (الحد الأقصى 120 حرفًا)",
+  "Titre en anglais trop long (120 caractères maximum)": "العنوان بالإنجليزية طويل جدًا (الحد الأقصى 120 حرفًا)",
+  "Titre en arabe trop long (120 caractères maximum)": "العنوان بالعربية طويل جدًا (الحد الأقصى 120 حرفًا)",
+  "Résumé manquant": "الملخص مفقود",
+  "Résumé en français manquant": "الملخص بالفرنسية مفقود",
+  "Résumé en français obligatoire": "الملخص بالفرنسية مطلوب",
+  "Résumé en français trop long (300 caractères maximum)": "الملخص بالفرنسية طويل جدًا (الحد الأقصى 300 حرف)",
+  "Résumé en anglais trop long (300 caractères maximum)": "الملخص بالإنجليزية طويل جدًا (الحد الأقصى 300 حرف)",
+  "Résumé en arabe trop long (300 caractères maximum)": "الملخص بالعربية طويل جدًا (الحد الأقصى 300 حرف)",
+  "Contenu manquant": "المحتوى مفقود",
+  "Contenu en français manquant": "المحتوى بالفرنسية مفقود",
+  "Contenu en français obligatoire": "المحتوى بالفرنسية مطلوب",
+  "Contenu en français trop long (8000 caractères maximum)": "المحتوى بالفرنسية طويل جدًا (الحد الأقصى 8000 حرف)",
+  "Contenu en anglais trop long (8000 caractères maximum)": "المحتوى بالإنجليزية طويل جدًا (الحد الأقصى 8000 حرف)",
+  "Contenu en arabe trop long (8000 caractères maximum)": "المحتوى بالعربية طويل جدًا (الحد الأقصى 8000 حرف)",
+  "Lien de la vidéo invalide": "رابط الفيديو غير صالح",
+  "Lien de la vidéo trop long": "رابط الفيديو طويل جدًا",
+  "Le lien de la vidéo doit être une adresse https://": "يجب أن يكون رابط الفيديو عنوانًا يبدأ بـ https://",
+  "Catégorie manquante": "الفئة مفقودة",
+  "Catégorie obligatoire": "الفئة مطلوبة",
+  "Catégorie trop longue (40 caractères maximum)": "الفئة طويلة جدًا (الحد الأقصى 40 حرفًا)",
+  "Emoji manquant": "الرمز التعبيري مفقود",
+  "Emoji obligatoire": "الرمز التعبيري مطلوب",
+  "Emoji trop long": "الرمز التعبيري طويل جدًا",
+  "Durée invalide": "المدة غير صالحة",
+  "Durée trop longue (120 minutes maximum)": "المدة طويلة جدًا (الحد الأقصى 120 دقيقة)",
+  "Publication invalide": "حالة النشر غير صالحة",
+  "Sens de déplacement invalide": "اتجاه التحريك غير صالح",
+});
+I18N_RX.ar.push(
+  [/^Leçon « (.+) » ajoutée à l'Académie par (.+)\.$/, "أضاف $2 الدرس «$1» إلى الأكاديمية."],
+  [/^Leçon « (.+) » ajoutée en brouillon par (.+)\.$/, "أضاف $2 الدرس «$1» كمسودة."],
+  [/^Leçon « (.+) » modifiée par (.+)\.$/, "عدّل $2 الدرس «$1»."],
+  [/^Leçon « (.+) » publiée dans l'Académie par (.+)\.$/, "نشر $2 الدرس «$1» في الأكاديمية."],
+  [/^Leçon « (.+) » retirée de l'Académie \(brouillon\) par (.+)\.$/, "سحب $2 الدرس «$1» من الأكاديمية (مسودة)."],
+  [/^Leçon « (.+) » supprimée par (.+)\.$/, "حذف $2 الدرس «$1»."],
+);

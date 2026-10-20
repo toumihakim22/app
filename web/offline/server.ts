@@ -5,7 +5,7 @@ import { z, ZodError, type ZodType } from "zod";
 import {
   amountSchema, appealSchema, approveSchema, campaignSchema, campaignStatusSchema, changePasswordSchema, checkoutSchema, clipSchema, creditSchema, forgotSchema,
   loginSchema, membershipSchema, oauthDemoSchema, profileSchema, resetSchema, reviewAppealSchema, reviewClipSchema, settingsSchema, signupSchema, simulatePaymentSchema,
-  socialAccountSchema, userStatusSchema, verificationRequestSchema, verificationReviewSchema, verifySchema, viewsSchema, withdrawSchema, exportSchema, messageSchema, readThreadSchema,
+  socialAccountSchema, userStatusSchema, verificationRequestSchema, verificationReviewSchema, verifySchema, viewsSchema, withdrawSchema, exportSchema, messageSchema, readThreadSchema, lessonSchema, lessonMoveSchema,
 } from "../../lib/server/validation";
 import { csvFilename } from "../../lib/server/documents";
 import { exportTransactions, transactionDocument } from "./documents";
@@ -14,6 +14,7 @@ import * as svc from "./services";
 import { reviewAppeal, submitAppeal } from "./appeals";
 import { markThreadRead, sendMessage } from "./messages";
 import { lookupReferral } from "./referrals";
+import { createLesson, deleteLesson, moveLesson, updateLesson } from "./academy";
 import { resumeOnlineTopUp, simulatePayment, startOnlineTopUp } from "./payments";
 import { publicState, stateFor } from "./state";
 import { runDueJobs, trackViews } from "./tracking";
@@ -346,6 +347,32 @@ const routes: Record<string, Record<string, Handler>> = {
     POST: (req) => {
       const admin = svc.requireUser(req.db, "admin");
       svc.reviewVerification(req, admin, req.params.id, body(req, verificationReviewSchema));
+      return ok();
+    },
+  },
+  // Académie : leçons écrites, modifiées, rangées et supprimées par l'équipe.
+  "/api/lessons": {
+    POST: (req) => {
+      const admin = svc.requireUser(req.db, "admin");
+      return ok({ id: createLesson(req.db, admin, body(req, lessonSchema)) }, 201);
+    },
+  },
+  "/api/lessons/:id": {
+    PUT: (req) => {
+      const admin = svc.requireUser(req.db, "admin");
+      updateLesson(req.db, admin, req.params.id, body(req, lessonSchema));
+      return ok();
+    },
+    DELETE: (req) => {
+      const admin = svc.requireUser(req.db, "admin");
+      deleteLesson(req.db, admin, req.params.id);
+      return ok();
+    },
+  },
+  "/api/lessons/:id/move": {
+    POST: (req) => {
+      svc.requireUser(req.db, "admin");
+      moveLesson(req.db, req.params.id, body(req, lessonMoveSchema).direction);
       return ok();
     },
   },

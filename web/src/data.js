@@ -23,6 +23,8 @@ const emptyDb = () => ({
   leaderboard: null,
   // Parrainage (clippers) : { code, referees: [{ name, joined, firstWithdrawal, bonus }], stats: { referees, firstWithdrawals, bonus } }.
   referral: null,
+  // Académie (clippers : leçons publiées ; admin : toutes, avec le corps brut) : [{ id, category, emoji, minutes, videoUrl, title, summary, html, position, published, … }].
+  lessons: [],
 });
 let db = emptyDb();
 

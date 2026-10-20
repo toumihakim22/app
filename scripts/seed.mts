@@ -1,7 +1,9 @@
 // Crée le compte administrateur (ADMIN_EMAIL / ADMIN_PASSWORD) et, avec --demo, des données d'exemple.
 import { randomBytes } from "node:crypto";
-import { eq } from "drizzle-orm";
+import { eq, max } from "drizzle-orm";
 import * as schema from "../lib/server/db/schema";
+import { DEMO_DRAFT_LESSON } from "../lib/server/demo-academy";
+import { lessonCreatedText } from "../lib/server/academy";
 import { DEMO_APPEAL_MESSAGE, DEMO_PROOF_JPEG_BASE64 } from "../lib/server/demo-appeal";
 import { DEMO_CONTENDERS, demoLastWeek } from "../lib/server/demo-leaderboard";
 import { DEMO_REFEREE_PAYOUT, DEMO_REFEREES, DEMO_REFERRAL_CODE } from "../lib/server/demo-referrals";
@@ -249,6 +251,10 @@ if (process.argv.includes("--demo")) {
     await db.insert(schema.messages).values(threads.messages.map((m) => ({ id: newId(), campaignId: m.campaignId, clipperId: m.clipperId, senderId: m.senderId, body: m.body, readAt: m.read ? daysAgo(m.days - 0.05) : null, createdAt: daysAgo(m.days) })));
     await db.insert(schema.notifications).values(threads.notes.flatMap((n) => (n.to === "admins" ? admins.map((a) => a.id) : [n.to])
       .map((userId) => ({ id: newId(), userId, icon: "💬", text: n.text, link: n.link, read: n.read, createdAt: daysAgo(n.days) }))));
+    // Académie : les cinq leçons publiées viennent de la migration 0011 ; une leçon de plus en brouillon (français seul), rangée en dernier.
+    const [{ last }] = await db.select({ last: max(schema.lessons.position) }).from(schema.lessons);
+    await db.insert(schema.lessons).values({ ...DEMO_DRAFT_LESSON, position: (last ?? 0) + 1, createdAt: daysAgo(0.5), updatedAt: daysAgo(0.5) }).onConflictDoNothing();
+    acts.push([0.5, "🎓", lessonCreatedText(DEMO_DRAFT_LESSON.title.fr, "Équipe ClipBoost", false)]);
     // Les événements de plus de 2 jours sont déjà lus ; les plus récents restent à lire.
     await db.insert(schema.activity).values(acts.map(([days, icon, text]) => ({ id: newId(), icon, text, createdAt: daysAgo(days) })));
     await db.insert(schema.notifications).values(notes.map(([u, days, icon, text, href]) => ({ id: newId(), userId: u.id, icon, text, link: href, read: days > 2, createdAt: daysAgo(days) })));

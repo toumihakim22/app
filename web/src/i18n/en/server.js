@@ -367,3 +367,47 @@ I18N_RX.en.push(
   [/^Prime de parrainage non versée : (.+), parrain de (.+), est suspendu\.$/, "Referral bonus not paid: $1, who referred $2, is suspended."],
   [/^Prime de parrainage non versée : (.+) retire vers le même compte que son parrain (.+)\.$/, "Referral bonus not paid: $1 withdraws to the same account as their referrer $2."],
 );
+
+// Académie (lib/server/validation.ts : lessonSchema, lessonMoveSchema ; academy.ts : journal d'activité). « Leçon
+// introuvable » est dans le dictionnaire « shell ». Le titre ($1) et le nom ($2) restent tels quels.
+Object.assign(I18N.en, {
+  "Titre manquant": "Title missing",
+  "Titre en français manquant": "French title missing",
+  "Titre en français obligatoire": "French title required",
+  "Titre en français trop long (120 caractères maximum)": "French title too long (120 characters maximum)",
+  "Titre en anglais trop long (120 caractères maximum)": "English title too long (120 characters maximum)",
+  "Titre en arabe trop long (120 caractères maximum)": "Arabic title too long (120 characters maximum)",
+  "Résumé manquant": "Summary missing",
+  "Résumé en français manquant": "French summary missing",
+  "Résumé en français obligatoire": "French summary required",
+  "Résumé en français trop long (300 caractères maximum)": "French summary too long (300 characters maximum)",
+  "Résumé en anglais trop long (300 caractères maximum)": "English summary too long (300 characters maximum)",
+  "Résumé en arabe trop long (300 caractères maximum)": "Arabic summary too long (300 characters maximum)",
+  "Contenu manquant": "Content missing",
+  "Contenu en français manquant": "French content missing",
+  "Contenu en français obligatoire": "French content required",
+  "Contenu en français trop long (8000 caractères maximum)": "French content too long (8,000 characters maximum)",
+  "Contenu en anglais trop long (8000 caractères maximum)": "English content too long (8,000 characters maximum)",
+  "Contenu en arabe trop long (8000 caractères maximum)": "Arabic content too long (8,000 characters maximum)",
+  "Lien de la vidéo invalide": "Invalid video link",
+  "Lien de la vidéo trop long": "Video link too long",
+  "Le lien de la vidéo doit être une adresse https://": "The video link must be an https:// address",
+  "Catégorie manquante": "Category missing",
+  "Catégorie obligatoire": "Category required",
+  "Catégorie trop longue (40 caractères maximum)": "Category too long (40 characters maximum)",
+  "Emoji manquant": "Emoji missing",
+  "Emoji obligatoire": "Emoji required",
+  "Emoji trop long": "Emoji too long",
+  "Durée invalide": "Invalid length",
+  "Durée trop longue (120 minutes maximum)": "Length too long (120 minutes maximum)",
+  "Publication invalide": "Invalid publication status",
+  "Sens de déplacement invalide": "Invalid move direction",
+});
+I18N_RX.en.push(
+  [/^Leçon « (.+) » ajoutée à l'Académie par (.+)\.$/, "Lesson “$1” added to the Academy by $2."],
+  [/^Leçon « (.+) » ajoutée en brouillon par (.+)\.$/, "Lesson “$1” added as a draft by $2."],
+  [/^Leçon « (.+) » modifiée par (.+)\.$/, "Lesson “$1” edited by $2."],
+  [/^Leçon « (.+) » publiée dans l'Académie par (.+)\.$/, "Lesson “$1” published in the Academy by $2."],
+  [/^Leçon « (.+) » retirée de l'Académie \(brouillon\) par (.+)\.$/, "Lesson “$1” removed from the Academy (draft) by $2."],
+  [/^Leçon « (.+) » supprimée par (.+)\.$/, "Lesson “$1” deleted by $2."],
+);

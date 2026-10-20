@@ -187,6 +187,7 @@ const icons = {
   layers: '<path d="M12 3l9 5-9 5-9-5z"/><path d="M3 13l9 5 9-5"/>',
   checkCircle: '<circle cx="12" cy="12" r="9"/><path d="M8 12l3 3 5-6"/>',
   xCircle: '<circle cx="12" cy="12" r="9"/><path d="M9 9l6 6M15 9l-6 6"/>',
+  academy: '<path d="M2 9.5L12 5l10 4.5-10 4.5z"/><path d="M6 11.3V16c0 1.4 2.7 3 6 3s6-1.6 6-3v-4.7M22 9.5V15"/>',
 };
 const icon = (name, cls = "size-5", fill = false) =>
   `<svg viewBox="0 0 24 24" class="${cls}" ${fill ? 'fill="currentColor"' : 'fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"'} aria-hidden="true" focusable="false">${icons[name] || ""}</svg>`;
@@ -197,7 +198,7 @@ const EVENT_ICON = { "✅": ["check", "bg-success-bg text-success-fg"], "🚫": 
   "🏁": ["flag", "bg-muted text-fg-muted"], "🏢": ["building", "bg-muted text-fg-muted"], "🏦": ["bank", "bg-muted text-fg-muted"], "💰": ["wallet", "bg-muted text-fg-muted"], "💸": ["wallet", "bg-muted text-fg-muted"],
   "🛡": ["shield", "bg-info-bg text-info-fg"], "✏": ["pencil", "bg-muted text-fg-muted"], "🗑": ["trash", "bg-muted text-fg-muted"],
   "📈": ["trend", "bg-brand-soft text-brand-fg"], "⚖": ["flag", "bg-info-bg text-info-fg"], "💬": ["message", "bg-brand-soft text-brand-fg"],
-  "🏆": ["trophy", "bg-warning-bg text-warning-fg"] };
+  "🏆": ["trophy", "bg-warning-bg text-warning-fg"], "🎓": ["academy", "bg-brand-soft text-brand-fg"] };
 const eventIcon = (emoji) => {
   const [ic, tone] = EVENT_ICON[String(emoji || "").replace(/️/g, "")] || ["bell", "bg-muted text-fg-muted"];
   return `<span class="grid size-8 shrink-0 place-items-center rounded-full ${tone}" aria-hidden="true">${icon(ic, "size-4")}</span>`;
@@ -938,3 +939,20 @@ function lbRows(rows, { meId = "", name = (r) => esc(r.name), amountKey = "prize
 }
 // Rangs primés sans clipper classé cette semaine (prime non nulle).
 const lbOpenRanks = (lb) => lb.prizes.map((prize, i) => ({ rank: i + 1, prize })).filter((x) => x.rank > lb.top.length && x.prize > 0);
+
+// ---------- Académie (leçons des clippers, gérées par l'admin) ----------
+// Textes d'une leçon : { fr, en?, ar? } écrits par l'équipe (données, pas des clés de traduction) ; la langue de
+// l'interface s'il est traduit, sinon le français. Corps : HTML déjà échappé par le serveur (lessonBodyHtml,
+// lib/server/academy.ts), dans les mêmes langues (l.html).
+const lsLang = (v) => (v && LANG !== "fr" && v[LANG] && String(v[LANG]).trim() ? LANG : "fr");
+const lsText = (v) => (v ? v[lsLang(v)] || v.fr || "" : "");
+const lsHtml = (l) => (l.html && l.html[LANG]) || (l.html && l.html.fr) || "";
+// Catégories de départ traduites ; une catégorie libre écrite par l'équipe s'affiche telle quelle.
+const LS_CATS = { Montage: () => t("Montage"), Accroche: () => t("Accroche"), Formats: () => t("Formats"), Campagnes: () => t("Campagnes") };
+const lsCat = (c) => (LS_CATS[c] ? LS_CATS[c]() : esc(c));
+const lsMinutes = (n) => t("{n} min", { n: fmt(n) });
+// Tuile emoji d'une leçon (cartes, listes, en-tête de la leçon).
+const lsTile = (l, size = "md") => `<span class="grid ${THUMB[size]} shrink-0 place-items-center bg-brand-soft" aria-hidden="true">${esc(l.emoji || "🎓")}</span>`;
+// Mise en forme du corps (balises p, br, ul, ol, li seulement) : classes posées sur le conteneur.
+const LS_BODY = "text-sm leading-6 text-fg-muted [&>*+*]:mt-4 [&_ol]:list-decimal [&_ol]:ps-5 [&_ul]:list-disc [&_ul]:ps-5 [&_li]:ps-1 [&_li+li]:mt-1.5 [&_li]:marker:text-brand-fg [&_li]:marker:font-semibold";
+

@@ -7,6 +7,7 @@ import { PLATFORMS } from "../../lib/server/gradients";
 import { dailyGains, isTeamCampaign, messageThreads, RISK_WINDOW_DAYS, utcDay } from "../../lib/server/rules";
 import { leaderboardState } from "./leaderboard";
 import { referralState } from "./referrals";
+import { academyState } from "./academy";
 import { lastJobRun, simulatedPlatforms, TRACK_EVERY_HOURS, VIEWS_JOB } from "./tracking";
 
 const day = (ms: number) => new Date(ms).toISOString().slice(0, 10);
@@ -158,6 +159,8 @@ export function stateFor(db: Store, user: UserRow) {
     ...(isClipper || isAdmin ? { leaderboard: leaderboardState(db, user, settings.weeklyPrizes) } : {}),
     // Parrainage (clipper) : son code, ses filleuls (nom, inscription, premier retrait) et les primes reçues.
     ...(isClipper ? { referral: referralState(db, user) } : {}),
+    // Académie : leçons publiées pour un clipper ; toutes (brouillons et corps brut pour l'éditeur) pour l'admin.
+    ...(isClipper || isAdmin ? { lessons: academyState(db, user) } : {}),
     // Relevé des vues (admin) : dernière exécution, son bilan, plateformes en mode simulé (toutes, hors ligne).
     ...(isAdmin ? { tracking: { everyHours: TRACK_EVERY_HOURS, lastRunAt: viewsRun ? new Date(viewsRun.lastRunAt).toISOString() : null, summary: viewsRun?.summary ?? null, simulated: simulatedPlatforms() } } : {}),
   };

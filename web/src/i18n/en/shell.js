@@ -377,3 +377,14 @@ Object.assign(I18N.en, {
   "Invité par {name}": "Invited by {name}",
   "Créez votre compte Clipper : {name} recevra une prime à votre premier retrait.": "Create your Clipper account: {name} will receive a bonus on your first withdrawal.",
 });
+
+// Académie : textes communs à l'espace Clipper et à l'administration (navigation, catégories de départ, durée).
+Object.assign(I18N.en, {
+  "Académie": "Academy",
+  "Vidéo": "Video",
+  "Leçon introuvable": "Lesson not found",
+  "Montage": "Editing",
+  "Accroche": "Hook",
+  "Formats": "Formats",
+  "{n} min": "{n} min",
+});

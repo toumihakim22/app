@@ -1,6 +1,8 @@
 // Données de démarrage de la version autonome : le compte administrateur et les mêmes
 // données d'exemple que `scripts/seed.mts --demo`, datées par rapport au premier lancement.
 import type { CampaignStatus, PublicationStatus } from "../../lib/server/db/schema";
+import { DEMO_DRAFT_LESSON } from "../../lib/server/demo-academy";
+import { lessonCreatedText } from "../../lib/server/academy";
 import { DEMO_APPEAL_MESSAGE, DEMO_PROOF_DATA_URL } from "../../lib/server/demo-appeal";
 import { DEMO_CONTENDERS, demoLastWeek } from "../../lib/server/demo-leaderboard";
 import { DEMO_REFEREE_PAYOUT, DEMO_REFEREES, DEMO_REFERRAL_CODE } from "../../lib/server/demo-referrals";
@@ -9,7 +11,7 @@ import { numberDocuments } from "../../lib/server/documents";
 import { clipRisk, payoutFor, prizeLabel, prizeNotice, referralLabel, referralNotice, referralPaidText, sentence, simulatedHistory, weekClosedText } from "../../lib/server/rules";
 import { link } from "../../lib/server/links";
 import { DEFAULT_SETTINGS } from "../../lib/server/settings";
-import { emptyStore, insertCampaign, insertPublication, insertTransaction, insertUser, newId, newRef, newSocialCode, type CampaignRow, type Store, type UserRow } from "./db";
+import { emptyStore, starterLessons, insertCampaign, insertPublication, insertTransaction, insertUser, newId, newRef, newSocialCode, type CampaignRow, type Store, type UserRow } from "./db";
 import { hashPassword } from "./password";
 
 export const ADMIN_EMAIL = "admin@clipboost.dz";
@@ -216,6 +218,10 @@ export async function seed(): Promise<Store> {
     db.notifications.push({ id: newId(), userId: to, icon: "💬", text: n.text, link: n.link, read: n.read, createdAt: daysAgo(n.days) });
   }
   // Les événements de plus de 2 jours sont déjà lus ; les plus récents restent à lire.
+  // Académie : les cinq leçons de départ (comme la migration 0011), et une leçon en brouillon (français seul) rangée en dernier.
+  db.lessons = starterLessons(daysAgo(30));
+  db.lessons.push({ ...structuredClone(DEMO_DRAFT_LESSON), position: db.lessons.length + 1, createdAt: daysAgo(0.5), updatedAt: daysAgo(0.5) });
+  acts.push([0.5, "🎓", lessonCreatedText(DEMO_DRAFT_LESSON.title.fr, "Équipe ClipBoost", false)]);
   for (const [days, icon, text] of acts) db.activity.push({ id: newId(), icon, text, createdAt: daysAgo(days) });
   for (const [u, days, icon, text, href] of notes) db.notifications.push({ id: newId(), userId: u.id, icon, text, link: href, read: days > 2, createdAt: daysAgo(days) });
   return db;

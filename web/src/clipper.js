@@ -1,5 +1,5 @@
 // Espace Clipper : accueil (activité et statistiques), découvrir (toutes les campagnes), agences et page d'une agence,
-// publications, classement de la semaine, parrainage, portefeuille, profil (et comptes sociaux), paramètres. Modales : fiche d'une
+// publications, classement de la semaine, académie (tutoriels courts, #/clipper/academie/<leçon>), parrainage, portefeuille, profil (et comptes sociaux), paramètres. Modales : fiche d'une
 // campagne, soumission d'un clip, retrait, retrait d'un compte social vérifié. Messages : questions posées aux
 // organisateurs des campagnes.
 // Recettes et helpers : docs/design-system.md §4 et §6.2 (web/src/ui.js). Helpers locaux préfixés « cl ».
@@ -31,6 +31,7 @@ const CLIPPER_NAV = [
   { id: "publications", get label() { return t("Mes publications"); }, get short() { return t("Clips"); }, icon: "film" },
   { id: "messages", get label() { return t("Messages"); }, icon: "message" },
   { id: "classement", get label() { return t("Classement"); }, icon: "trophy" },
+  { id: "academie", get label() { return t("Académie"); }, icon: "academy" },
   { id: "parrainage", get label() { return t("Parrainage"); }, icon: "gift" },
   { id: "portefeuille", get label() { return t("Portefeuille"); }, icon: "wallet" },
   { id: "profil", get label() { return t("Profil"); }, icon: "user" },
@@ -778,6 +779,59 @@ function cClassement() {
 // Lien d'inscription avec le code : l'adresse de l'app (/espace en ligne, le fichier HTML hors ligne), sans paramètres.
 const clReferralLink = (refCode) => `${location.href.split(/[?#]/)[0]}?ref=${encodeURIComponent(refCode)}#/inscription`;
 
+// ---------- Académie ----------
+// Tutoriels courts écrits par l'équipe (db.lessons : leçons publiées, dans l'ordre choisi par l'admin). Liste avec puces
+// de catégorie ; leçon ouverte à l'adresse #/clipper/academie/<id> (ITEM_PAGES dans main.js : rechargement possible).
+// Textes de la leçon dans la langue de l'interface, sinon en français (lsText, ui.js) ; dir="auto" : un texte resté en
+// français se lit de gauche à droite dans l'interface arabe.
+const clLessonHref = (l) => `#/clipper/academie/${encodeURIComponent(l.id)}`;
+const clLessonMeta = (l) => `<span class="font-medium text-brand-fg">${lsCat(l.category)}</span><span aria-hidden="true">·</span><span class="inline-flex items-center gap-1">${icon("clock", "size-3.5")}${lsMinutes(l.minutes)}</span>${l.videoUrl ? `<span aria-hidden="true">·</span><span class="inline-flex items-center gap-1">${icon("play", "size-3.5")}${t("Vidéo")}</span>` : ""}`;
+function clLessonCard(l) {
+  return `<a href="${clLessonHref(l)}" data-row="${esc(l.id)}" class="${CARD} ${CARD_HOVER} flex flex-col p-5">
+      <div class="flex items-start gap-3">${lsTile(l)}
+        <div class="min-w-0 flex-1"><p class="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs text-fg-subtle">${clLessonMeta(l)}</p>
+          <h2 class="mt-1 text-sm font-semibold leading-5 text-fg" dir="auto">${esc(lsText(l.title))}</h2></div>
+      </div>
+      <p class="mt-3 line-clamp-3 text-small text-fg-muted" dir="auto">${esc(lsText(l.summary))}</p>
+      <span class="mt-auto inline-flex items-center gap-1 pt-4 text-small font-medium text-brand-fg">${t("Lire la leçon")}${icon("chevronRight", "size-3.5 rtl:-scale-x-100")}</span>
+    </a>`;
+}
+function cAcademie() {
+  const all = db.lessons || [];
+  if (state.route.item) return clLessonPage(all, state.route.item);
+  const cats = [...new Set(all.map((l) => l.category))];
+  const cat = cats.includes(state.acad.category) ? state.acad.category : "Toutes";
+  const list = cat === "Toutes" ? all : all.filter((l) => l.category === cat);
+  const options = [["Toutes", t("Toutes"), all.length], ...cats.map((c) => [c, LS_CATS[c] ? LS_CATS[c]() : c, all.filter((l) => l.category === c).length])];
+  return `${pageHeader(t("Académie"), t("Des tutoriels courts pour monter vos clips, accrocher dès les premières secondes et choisir les formats qui marchent."))}
+    ${all.length ? `<div class="mt-6">${chips("cl-acad-cat", cat, options, t("Catégorie"))}</div>
+      <div class="mt-4 grid grid-cols-[minmax(0,1fr)] gap-4 sm:grid-cols-2 lg:gap-5 xl:grid-cols-3">${list.map(clLessonCard).join("")}</div>`
+      : `<div class="mt-6">${emptyState("academy", t("Aucune leçon pour le moment"), t("L'équipe ClipBoost publiera bientôt de nouveaux tutoriels."))}</div>`}`;
+}
+// Leçon ouverte : en-tête, corps mis en forme (HTML échappé par le serveur), vidéo éventuelle, leçon suivante et autres leçons.
+function clLessonPage(all, id) {
+  const back = `<a href="#/clipper/academie" class="${btn("link", "", "text-small")}">${icon("arrowLeft", "size-4 rtl:-scale-x-100")}${t("Toutes les leçons")}</a>`;
+  const i = all.findIndex((x) => x.id === id), l = all[i];
+  if (!l) return `${back}<div class="mt-4">${emptyState("academy", t("Leçon introuvable"), t("Cette leçon n'existe plus ou n'est plus publiée."), `<a href="#/clipper/academie" class="${btn("secondary")}">${t("Voir l'Académie")}</a>`)}</div>`;
+  const next = all[i + 1] || null, others = all.filter((x) => x.id !== l.id);
+  const video = l.videoUrl ? `<a href="${esc(l.videoUrl)}" target="_blank" rel="noopener noreferrer" class="${btn("secondary")}">${icon("play")}${t("Voir la vidéo")}${icon("external", "size-3.5 text-fg-subtle")}</a>` : "";
+  const article = card(`<div class="${LS_BODY}" dir="auto">${lsHtml(l)}</div>
+      ${video ? `<div class="mt-6 flex flex-wrap items-center gap-3 border-t border-line pt-5"><p class="min-w-0 flex-1 text-small text-fg-muted">${t("La démonstration en vidéo, sur le site de la plateforme.")}</p>${video}</div>` : ""}`, "p-5 sm:p-6");
+  const nextCard = next ? `<a href="${clLessonHref(next)}" class="${CARD} ${CARD_HOVER} flex items-center gap-3 p-4">${lsTile(next, "sm")}
+      <span class="min-w-0 flex-1"><span class="block text-xs text-fg-subtle">${t("Leçon suivante")}</span><span class="block truncate text-sm font-medium text-fg" dir="auto">${esc(lsText(next.title))}</span></span>${icon("chevronRight", "size-4 shrink-0 text-fg-subtle rtl:-scale-x-100")}</a>` : "";
+  const side = others.length ? card(`${cardHeader(t("Autres leçons"))}<ul class="mt-3 grid gap-1">${others.map((x) => `<li><a href="${clLessonHref(x)}" class="flex items-center gap-3 rounded-tile p-2 transition-colors duration-150 hover:bg-subtle ${FOCUS}">${lsTile(x, "sm")}<span class="min-w-0 flex-1"><span class="block truncate text-small font-medium text-fg" dir="auto">${esc(lsText(x.title))}</span><span class="block text-xs text-fg-subtle">${lsCat(x.category)} · ${lsMinutes(x.minutes)}</span></span></a></li>`).join("")}</ul>`, "p-5") : "";
+  return `${back}
+    <div class="mt-4 flex items-start gap-4">${lsTile(l, "lg")}
+      <div class="min-w-0 flex-1"><p class="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-small text-fg-subtle">${clLessonMeta(l)}</p>
+        <h1 class="mt-1 text-title-sm text-fg sm:text-title" dir="auto">${esc(lsText(l.title))}</h1>
+        <p class="mt-1 max-w-2xl text-sm text-fg-muted" dir="auto">${esc(lsText(l.summary))}</p></div>
+    </div>
+    <div class="mt-6 grid grid-cols-[minmax(0,1fr)] items-start gap-4 lg:grid-cols-[minmax(0,1fr)_320px] lg:gap-5">
+      <div class="grid min-w-0 grid-cols-[minmax(0,1fr)] content-start gap-4 lg:gap-5">${article}${nextCard}</div>
+      <div class="grid content-start gap-4 lg:gap-5">${side}</div>
+    </div>`;
+}
+
 function cParrainage() {
   const r = db.referral, bonus = db.settings.referralBonus || 0, hold = db.settings.holdDays;
   if (!r || !r.code) return `${pageHeader(t("Parrainage"), "")}<div class="mt-6">${emptyState("gift", t("Parrainage indisponible"), t("Rechargez la page pour afficher votre lien de parrainage."))}</div>`;
@@ -977,7 +1031,7 @@ function cParametres() {
 }
 
 // agence : page hors navigation (ITEM_PAGES dans main.js), « Agences » y reste l'entrée courante.
-const CLIPPER_VIEWS = { accueil: cAccueil, decouvrir: cDecouvrir, agences: cAgences, agence: cAgence, publications: cPublications, messages: cMessages, classement: cClassement, parrainage: cParrainage, portefeuille: cPortefeuille, profil: cProfil, parametres: cParametres };
+const CLIPPER_VIEWS = { accueil: cAccueil, decouvrir: cDecouvrir, agences: cAgences, agence: cAgence, publications: cPublications, messages: cMessages, classement: cClassement, academie: cAcademie, parrainage: cParrainage, portefeuille: cPortefeuille, profil: cProfil, parametres: cParametres };
 
 // ---------- Récapitulatifs en direct (main.js appelle LIVE[nom] à chaque saisie) ----------
 LIVE.withdraw = (d) => {
@@ -1257,6 +1311,8 @@ function handleClipperAction(action, el) {
     // Comptes sociaux (Profil) : code copié, vérification (« simulated » : plateforme sans identifiants sur le serveur,
     // bio non lue), retrait (direct pour un compte en attente, après confirmation pour un compte vérifié).
     case "cl-social-copy": return copy(value, t("Code {code} copié", { code: value }));
+    // Académie : puce de catégorie (une puce déjà active revient à « Toutes »).
+    case "cl-acad-cat": state.acad.category = state.acad.category === value ? "Toutes" : value; return render();
     case "cl-ref-copy": return copy(value, t("Lien de parrainage copié"));
     case "cl-social-verify": {
       const a = clSocial().find((x) => x.id === id);

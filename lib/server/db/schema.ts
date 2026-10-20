@@ -288,6 +288,31 @@ export const referralRewards = pgTable("referral_rewards", {
   createdAt: createdAt(),
 }, (t) => [index("referral_rewards_referrer_idx").on(t.referrerId)]);
 
+/** Texte d'une leçon dans chaque langue : le français est obligatoire, l'anglais et l'arabe facultatifs (affichage en français à défaut). */
+export type LessonText = { fr: string; en?: string; ar?: string };
+
+/**
+ * Académie : tutoriels courts pour les clippers (montage, accroche, formats…), écrits et rangés par l'équipe.
+ * category : « Montage », « Accroche », « Formats » ou un texte libre ; minutes : durée de lecture ou de la vidéo ;
+ * video_url : lien https facultatif (YouTube…) ; body : texte simple (ligne vide = paragraphe, « - » = puce,
+ * « 1. » = étape), mis en HTML échappé à l'affichage (lib/server/academy.ts). position : ordre d'affichage (croissant) ;
+ * une leçon non publiée (brouillon) n'est vue que par l'équipe. Leçons de départ insérées par la migration 0011.
+ */
+export const lessons = pgTable("lessons", {
+  id: id(),
+  category: text("category").notNull(),
+  emoji: text("emoji").notNull(),
+  minutes: integer("minutes").notNull(),
+  videoUrl: text("video_url"),
+  title: jsonb("title").$type<LessonText>().notNull(),
+  summary: jsonb("summary").$type<LessonText>().notNull(),
+  body: jsonb("body").$type<LessonText>().notNull(),
+  position: integer("position").notNull(),
+  published: boolean("published").notNull().default(true),
+  createdAt: createdAt(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [index("lessons_position_idx").on(t.position)]);
+
 export type DocumentKind = "facture" | "recu";
 
 /**

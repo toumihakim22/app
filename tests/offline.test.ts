@@ -4,6 +4,7 @@ import { offlineApi } from "../web/offline/server";
 import { load, save, STORAGE_FULL, STORAGE_KEY } from "../web/offline/db";
 import { closeWeek } from "../web/offline/leaderboard";
 import { weekClosedText, weekKey, weekNumber, weekStart } from "../lib/server/rules";
+import { lessonBodyHtml, lessonText, movedOrder } from "../lib/server/academy";
 
 // API simulée de la version autonome (web/offline/), exécutée dans Node avec un localStorage en mémoire.
 // quota : taille maximale d'une valeur enregistrée (simule un stockage plein), sans limite par défaut.
@@ -1032,6 +1033,94 @@ test("parrainage : lien, inscription avec code, prime au premier retrait seuleme
   // Un autre rôle ne reçoit pas de parrainage dans son état.
   await login("agence@clipboost.dz");
   assert.equal((await state()).referral, undefined);
+});
+
+test("académie : leçons publiées pour les clippers, création, modification, ordre et suppression par l'admin", async () => {
+  type Lesson = { id: string; category: string; title: { fr: string; en?: string; ar?: string }; summary: { fr: string }; body?: { fr: string; en?: string }; html: { fr: string; en?: string; ar?: string }; position: number; published: boolean; videoUrl: string | null };
+  const lessons = async () => (await state()).lessons as Lesson[];
+  // Clipper : les cinq leçons de départ publiées, traduites, dans l'ordre ; le brouillon d'exemple est caché.
+  assert.equal((await login("yacine@clipboost.dz")).status, 200);
+  let seen = await lessons();
+  assert.deepEqual(seen.map((l) => l.id), ["capcut-10-minutes", "accroche-3-secondes", "formats-qui-marchent", "sous-titres-texte", "regles-campagne"]);
+  assert.ok(seen.every((l) => l.published && l.title.en && l.title.ar && l.html.en && l.html.ar && l.body === undefined));
+  assert.match(seen[0].html.fr, /^<p>Un bon clip .*<\/p><ol><li>Ouvrez CapCut/);
+  const draft = { category: "Formats", emoji: "🎯", minutes: 2, videoUrl: "", title: { fr: "Brouillon secret", en: "" }, summary: { fr: "Résumé" }, body: { fr: "Texte" }, published: false };
+  assert.equal((await call("POST", "/api/lessons", draft)).status, 403);
+  // Agence : pas d'Académie, pas d'écriture.
+  assert.equal((await login("agence@clipboost.dz")).status, 200);
+  assert.deepEqual((await state()).lessons, undefined);
+  assert.equal((await call("PUT", "/api/lessons/capcut-10-minutes", draft)).status, 403);
+
+  // Admin : toutes les leçons, brouillon d'exemple compris (en dernier, français seul : l'interface affiche le français).
+  assert.equal((await login("admin@clipboost.dz", "AdminClip2026")).status, 200);
+  let all = await lessons();
+  assert.equal(all.length, 6);
+  const demo = all[5];
+  assert.deepEqual([demo.published, demo.title.en, demo.html.en, typeof demo.body?.fr], [false, undefined, undefined, "string"]);
+  // Contrôles : français obligatoire, lien https seulement, durée entière.
+  const bad = async (patch: object) => (await call("POST", "/api/lessons", { ...draft, ...patch })).data.error;
+  assert.equal(await bad({ title: { fr: "  " } }), "Titre en français obligatoire");
+  assert.equal(await bad({ body: { en: "Only English" } }), "Contenu en français manquant");
+  assert.equal(await bad({ videoUrl: "javascript:alert(1)" }), "Le lien de la vidéo doit être une adresse https://");
+  assert.equal(await bad({ minutes: 2.5 }), "Durée invalide");
+
+  // Création : rangée en dernier, brouillon invisible des clippers, traduction vide non enregistrée, corps échappé.
+  const created = await call("POST", "/api/lessons", { ...draft, body: { fr: "<script>alert(1)</script>\n- <b>gras</b> & \"cité\"\n\n1. Étape <img src=x onerror=alert(1)>", en: "Hello <i>there</i>" } });
+  assert.equal(created.status, 201);
+  const id = created.data.id as string;
+  all = await lessons();
+  let mine = all.find((l) => l.id === id)!;
+  assert.deepEqual([all.at(-1)!.id, mine.position, mine.published, mine.title.en, mine.videoUrl], [id, 7, false, undefined, null]);
+  assert.equal(mine.html.fr, "<p>&lt;script&gt;alert(1)&lt;/script&gt;</p><ul><li>&lt;b&gt;gras&lt;/b&gt; &amp; &quot;cité&quot;</li></ul><ol><li>Étape &lt;img src=x onerror=alert(1)&gt;</li></ol>");
+  assert.equal(mine.html.en, "<p>Hello &lt;i&gt;there&lt;/i&gt;</p>");
+  assert.equal(mine.html.ar, undefined);
+  assert.ok(!/<(script|b|img|i)[\s>]/.test(mine.html.fr + mine.html.en));
+  assert.equal((await login("yacine@clipboost.dz")).status, 200);
+  assert.ok(!(await lessons()).some((l) => l.id === id || l.title.fr === "Brouillon secret"));
+
+  // Modification et publication : visible des clippers, avec le français pour la langue non traduite.
+  assert.equal((await login("admin@clipboost.dz", "AdminClip2026")).status, 200);
+  assert.equal((await call("PUT", `/api/lessons/${id}`, { ...draft, title: { fr: "Leçon publiée", ar: "درس منشور" }, body: { fr: "Bonjour" }, videoUrl: "https://www.youtube.com/watch?v=abc", published: true })).status, 200);
+  assert.equal((await call("PUT", "/api/lessons/inconnue", draft)).data.error, "Leçon introuvable");
+  assert.equal((await login("yacine@clipboost.dz")).status, 200);
+  seen = await lessons();
+  mine = seen.find((l) => l.id === id)!;
+  assert.deepEqual([mine.title, mine.html, mine.videoUrl], [{ fr: "Leçon publiée", ar: "درس منشور" }, { fr: "<p>Bonjour</p>" }, "https://www.youtube.com/watch?v=abc"]);
+  assert.equal(lessonText(mine.title, "en"), "Leçon publiée");
+  assert.equal(lessonText(mine.title, "ar"), "درس منشور");
+  assert.equal(lessonText({ fr: "Titre", en: "  " }, "en"), "Titre");
+
+  // Ordre : monter deux fois, descendre une fois ; aux extrémités, rien ne change.
+  assert.equal((await login("admin@clipboost.dz", "AdminClip2026")).status, 200);
+  const order = async () => (await lessons()).map((l) => l.id);
+  const move = (lessonId: string, direction: string) => call("POST", `/api/lessons/${lessonId}/move`, { direction });
+  await move(id, "up");
+  await move(id, "up");
+  assert.deepEqual((await order()).slice(-3), [id, "regles-campagne", "demo-plusieurs-plateformes"]);
+  await move(id, "down");
+  assert.deepEqual((await order()).slice(-3), ["regles-campagne", id, "demo-plusieurs-plateformes"]);
+  assert.equal((await move("capcut-10-minutes", "up")).status, 200);
+  assert.equal((await order())[0], "capcut-10-minutes");
+  assert.deepEqual((await lessons()).map((l) => l.position), [1, 2, 3, 4, 5, 6, 7]);
+  assert.equal((await move(id, "sideways")).data.error, "Sens de déplacement invalide");
+
+  // Suppression : la leçon disparaît pour tous ; journal d'activité en français (traduit par l'interface).
+  assert.equal((await call("DELETE", `/api/lessons/${id}`)).status, 200);
+  assert.equal((await call("DELETE", `/api/lessons/${id}`)).data.error, "Leçon introuvable");
+  const s = await state();
+  assert.ok(!s.lessons.some((l: Lesson) => l.id === id));
+  const log = s.activity.map((a: { text: string }) => a.text);
+  for (const line of ["Leçon « Brouillon secret » ajoutée en brouillon par Équipe ClipBoost.", "Leçon « Leçon publiée » publiée dans l'Académie par Équipe ClipBoost.", "Leçon « Leçon publiée » supprimée par Équipe ClipBoost."]) assert.ok(log.includes(line), line);
+});
+
+test("académie : rendu du corps des leçons (paragraphes, puces, étapes, échappement)", () => {
+  assert.equal(lessonBodyHtml("Ligne 1\nLigne 2\n\n\nAutre paragraphe"), "<p>Ligne 1<br>Ligne 2</p><p>Autre paragraphe</p>");
+  assert.equal(lessonBodyHtml("Intro :\n- un\n- deux\n3. trois\n4) quatre\nFin"), "<p>Intro :</p><ul><li>un</li><li>deux</li></ul><ol start=\"3\"><li>trois</li><li>quatre</li></ol><p>Fin</p>");
+  assert.equal(lessonBodyHtml("<a href=\"javascript:x\">lien</a> 'ok'"), "<p>&lt;a href=&quot;javascript:x&quot;&gt;lien&lt;/a&gt; &#39;ok&#39;</p>");
+  assert.equal(lessonBodyHtml("-sans espace\n1.5 kg"), "<p>-sans espace<br>1.5 kg</p>");
+  assert.equal(lessonBodyHtml(""), "");
+  assert.deepEqual(movedOrder([{ id: "a" }, { id: "b" }], "a", "up"), null);
+  assert.deepEqual(movedOrder([{ id: "a" }, { id: "b" }], "a", "down"), ["b", "a"]);
 });
 
 test("réinitialisation : retour aux données d'exemple", async () => {
