@@ -1,30 +1,55 @@
 @import "tailwindcss" source(none);
 @source "./src/*.js";
 @source "./index.html";
+@import "../app/theme.css";
 @import "../app/dark.css";
 
-@theme {
-  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  --color-brand-50: #f5f3ff;
-  --color-brand-100: #ede9fe;
-  --color-brand-500: #8b5cf6;
-  --color-brand-600: #7c3aed;
-  --color-brand-700: #6d28d9;
-  --color-ink: #1f2430;
-  --color-income: #0f766e;
+/* L'app vit sur canvas, en 14 px par défaut (le landing reste sur surface, en 16 px). */
+@layer base {
+  body { background-color: var(--color-canvas); font-size: var(--text-sm); line-height: var(--text-sm--line-height); }
+  /* Le focus clavier ne passe jamais sous la barre du haut (56 px) ni sous la navigation du bas (64 px, masquée dès lg). */
+  html { scroll-padding-top: 4.5rem; scroll-padding-bottom: calc(5rem + env(safe-area-inset-bottom)); }
+  @media (min-width: 64rem) { html { scroll-padding-bottom: 1rem; } }
+  /* Croix native des champs de recherche masquée : l'app pose son propre bouton « Effacer » (searchInput). */
+  input[type="search"]::-webkit-search-cancel-button { -webkit-appearance: none; appearance: none; }
+  /* Arabe : Geist et Plus Jakarta Sans n'ont pas l'alphabet arabe ; les lettres latines et les chiffres gardent
+     Geist, l'arabe passe à une police arabe du système (Noto Sans Arabic, Segoe UI, Tahoma, Geeza Pro). */
+  html:lang(ar) {
+    --font-sans: "Geist Variable", "Noto Sans Arabic", "Segoe UI", Tahoma, "Geeza Pro", system-ui, sans-serif;
+    --font-display: "Plus Jakarta Sans Variable", "Noto Sans Arabic", "Segoe UI", Tahoma, "Geeza Pro", system-ui, sans-serif;
+  }
+  /* L'arabe est une écriture liée : l'interlettrage des titres (resserré) et des petites capitales (espacé) casserait les
+     liaisons entre les lettres. Il est neutralisé en arabe, sauf dans les îlots de gauche à droite (codes, références,
+     emails, graphiques), qui gardent leur rendu. !important : l'emporte sur les utilitaires tracking-* et text-*. */
+  html:lang(ar) body :not(.font-mono, [dir="ltr"], [dir="ltr"] *) { letter-spacing: normal !important; }
 }
 
-html {
-  scroll-behavior: smooth;
+/* Tiroir mobile en arabe : il est posé à droite (start-0) et entre donc par la droite. */
+@layer utilities {
+  [dir="rtl"] .animate-drawer-in { animation-name: drawer-in-rtl; }
+  @keyframes drawer-in-rtl { from { transform: translateX(100%); } to { transform: none; } }
 }
 
-body {
-  background: #ffffff;
-  color: var(--color-ink);
+/* Élément ouvert depuis une notification (#/<espace>/<page>/<id>, main.js flashRow) : bref éclairage en teinte de marque.
+   L'ombre intérieure se pose sur le fond sans le remplacer, et déborde un peu à gauche et à droite des lignes de liste
+   (sans marge propre). Pour une ligne de tableau, ce sont les cellules qui portent la teinte. */
+@layer components {
+  [data-row] { --row-flash: var(--color-brand-soft); }
+  [data-row]:focus { outline: none; }
+  [data-row]:focus-visible { outline: 2px solid var(--color-focus); outline-offset: -2px; }
+  .row-flash:not(tr) { animation: row-flash-item 2.4s var(--ease-enter) both; }
+  tr.row-flash > td { animation: row-flash-cell 2.4s var(--ease-enter) both; }
+  @keyframes row-flash-item {
+    0%, 40% { box-shadow: inset 0 0 0 100vmax var(--row-flash), -0.5rem 0 0 var(--row-flash), 0.5rem 0 0 var(--row-flash); }
+    100% { box-shadow: inset 0 0 0 100vmax transparent, -0.5rem 0 0 transparent, 0.5rem 0 0 transparent; }
+  }
+  @keyframes row-flash-cell {
+    0%, 40% { box-shadow: inset 0 0 0 100vmax var(--row-flash); }
+    100% { box-shadow: inset 0 0 0 100vmax transparent; }
+  }
+  /* Mouvement réduit : teinte fixe, retirée par le script au bout du même délai. */
+  @media (prefers-reduced-motion: reduce) {
+    .row-flash:not(tr) { animation: none; box-shadow: inset 0 0 0 100vmax var(--row-flash), -0.5rem 0 0 var(--row-flash), 0.5rem 0 0 var(--row-flash); }
+    tr.row-flash > td { animation: none; box-shadow: inset 0 0 0 100vmax var(--row-flash); }
+  }
 }
-
-@keyframes toast-in {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-.toast-in { animation: toast-in 0.2s ease-out; }

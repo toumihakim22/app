@@ -1,4 +1,14 @@
+import type { ReactNode } from "react";
 import SectionTitle from "./SectionTitle";
+
+// Chaînes équivalentes à btn() de web/src/ui.js (§7).
+const FOCUS = "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus";
+const BTN = `inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap font-medium transition-colors duration-150 ease-standard ${FOCUS}`;
+const LG = "h-12 rounded-control px-5 text-[15px] [&_svg]:size-5";
+const SECONDARY = "border border-line-strong bg-surface text-fg shadow-control hover:border-line-control hover:bg-subtle";
+const ON_COLOR = "bg-on-brand text-brand-700 shadow-control hover:bg-brand-50";
+// Sur le panneau violet, l'anneau violet (#7c3aed sur #7c3aed) est invisible : anneau blanc (on-brand).
+const BTN_ON_COLOR = "inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap font-medium transition-colors duration-150 ease-standard focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-on-brand";
 
 const clipper = [
   "Inscription gratuite, sans minimum d'abonnés",
@@ -8,62 +18,81 @@ const clipper = [
 ];
 
 const brand = [
-  "Budget maîtrisé : vous payez uniquement les vues obtenues",
-  "Des centaines de créateurs dans les 48 wilayas",
+  "Budget maîtrisé : vous payez uniquement les vues obtenues",
+  "Des centaines de créateurs prêts à relayer votre marque",
   "Consignes et validation des clips avant diffusion",
   "Statistiques détaillées par clip et par créateur",
 ];
 
-function Check({ dark = false }: { dark?: boolean }) {
+// Icônes au trait (mêmes tracés que icons de web/src/ui.js), trait 1,75.
+function Icon({ className, children }: { className: string; children: ReactNode }) {
   return (
-    <span
-      className={`mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full ${dark ? "bg-white/15 text-white" : "bg-brand-50 text-brand-600"}`}
-      aria-hidden="true"
-    >
-      <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M5 12l5 5L20 7" />
-      </svg>
-    </span>
+    <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      {children}
+    </svg>
+  );
+}
+
+function Bullets({ items, bullet, text }: { items: string[]; bullet: string; text: string }) {
+  return (
+    <ul className="mt-7 grid gap-3.5">
+      {items.map((item) => (
+        <li key={item} className={`flex gap-3 text-[15px] leading-6 text-pretty ${text}`}>
+          <span className={`mt-0.5 grid size-5 shrink-0 place-items-center rounded-full ${bullet}`} aria-hidden="true">
+            <Icon className="size-3.5">
+              <path d="M5 12l5 5L20 7" />
+            </Icon>
+          </span>
+          {item}
+        </li>
+      ))}
+    </ul>
   );
 }
 
 export default function Audiences() {
   return (
-    <section id="marques" className="scroll-mt-20 bg-gray-50 py-20 lg:py-28">
+    <section id="marques" className="scroll-mt-20 bg-canvas py-20 lg:py-28">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <SectionTitle center eyebrow="Pour tout le monde" title="Clippers et marques, gagnant-gagnant" />
-        <div className="mt-14 grid gap-6 lg:grid-cols-2">
-          <div className="rounded-3xl bg-white p-8 shadow-sm ring-1 ring-gray-100 sm:p-10">
-            <span className="text-3xl" aria-hidden="true">🎬</span>
-            <h3 className="mt-4 text-2xl font-extrabold text-ink">Vous êtes Clipper</h3>
-            <p className="mt-2 text-gray-600">Monétisez votre talent de montage avec des campagnes prêtes à l&apos;emploi.</p>
-            <ul className="mt-7 space-y-4">
-              {clipper.map((item) => (
-                <li key={item} className="flex gap-3 text-gray-700">
-                  <Check />
-                  {item}
-                </li>
-              ))}
-            </ul>
-            <a href="/espace#/inscription" className="mt-9 inline-block rounded-2xl bg-ink px-6 py-3.5 font-semibold text-white transition hover:bg-black">
-              + Devenir Clipper
-            </a>
+        <SectionTitle
+          eyebrow="Pour qui"
+          title="Clippers et marques, gagnant-gagnant"
+          text="Les créateurs sont payés à la vue, les marques ne paient que les vues obtenues."
+        />
+        <div className="mt-12 grid gap-4 lg:mt-14 lg:grid-cols-2">
+          {/* Clipper : carte surface */}
+          <div className="flex flex-col rounded-card border border-line bg-surface p-8 shadow-card sm:p-10">
+            <span className="grid size-11 place-items-center rounded-tile bg-brand-soft text-brand-fg">
+              <Icon className="size-[22px]">
+                <rect x="3" y="4" width="18" height="16" rx="2" />
+                <path d="M7 4v16M17 4v16M3 9h4M3 15h4M17 9h4M17 15h4" />
+              </Icon>
+            </span>
+            <h3 className="mt-6 text-heading text-fg">Vous êtes clipper</h3>
+            <p className="mt-2 text-[15px] leading-7 text-fg-muted">Monétisez votre talent de montage avec des campagnes prêtes à l&apos;emploi.</p>
+            <Bullets items={clipper} bullet="bg-brand-soft text-brand-fg" text="text-fg" />
+            <div className="mt-auto pt-9">
+              <a href="/espace#/inscription" className={`${BTN} ${LG} ${SECONDARY} w-full sm:w-auto`}>
+                Devenir clipper
+              </a>
+            </div>
           </div>
-          <div className="rounded-3xl bg-brand-600 p-8 text-white shadow-lg shadow-brand-600/25 sm:p-10">
-            <span className="text-3xl" aria-hidden="true">🏢</span>
-            <h3 className="mt-4 text-2xl font-extrabold">Vous êtes une marque</h3>
-            <p className="mt-2 text-white/80">Faites parler de vous partout en Algérie grâce à des créateurs authentiques.</p>
-            <ul className="mt-7 space-y-4">
-              {brand.map((item) => (
-                <li key={item} className="flex gap-3 text-white/90">
-                  <Check dark />
-                  {item}
-                </li>
-              ))}
-            </ul>
-            <a href="/espace#/inscription-agence" className="mt-9 inline-block rounded-2xl bg-white px-6 py-3.5 font-semibold text-brand-700 transition hover:bg-brand-50">
-              Lancer une campagne <span aria-hidden="true">🚀</span>
-            </a>
+
+          {/* Marque : grande surface brand-panel (violet en clair, violet profond en sombre), bouton blanc fixe */}
+          <div className="flex flex-col rounded-card border border-transparent bg-brand-panel p-8 text-on-brand shadow-card sm:p-10">
+            <span className="grid size-11 place-items-center rounded-tile bg-on-brand/15 text-on-brand">
+              <Icon className="size-[22px]">
+                <path d="M4 21V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v16M16 9h2a2 2 0 0 1 2 2v10M3 21h18M8 7h4M8 11h4M8 15h4" />
+              </Icon>
+            </span>
+            <h3 className="mt-6 text-heading text-on-brand">Vous êtes une marque</h3>
+            <p className="mt-2 text-[15px] leading-7 text-on-brand/90">Faites parler de vous partout grâce à des créateurs authentiques.</p>
+            <Bullets items={brand} bullet="bg-on-brand/15 text-on-brand" text="text-on-brand/90" />
+            <div className="mt-auto pt-9">
+              <a href="/espace#/inscription-agence" className={`${BTN_ON_COLOR} ${LG} ${ON_COLOR} w-full sm:w-auto`}>
+                Lancer une campagne
+              </a>
+            </div>
           </div>
         </div>
       </div>
