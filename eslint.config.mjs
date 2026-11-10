@@ -1,7 +1,7 @@
 // Réglages de l'outil de contrôle du code (`npm run lint`).
 // - Partie Next.js (app/, components/, lib/, data/) : règles recommandées par Next.js, avec TypeScript.
 // - Application /espace (web/src/*.js) : fichiers JavaScript du navigateur que web/build.mjs colle bout à bout
-//   dans une seule fonction. Une fonction écrite dans ui.js est donc utilisée dans admin.js sans import :
+//   dans une seule fonction. Une fonction écrite dans ui.js est donc utilisée dans web/src/admin/ sans import :
 //   les règles « variable inconnue » et « variable inutilisée » ne peuvent pas juger fichier par fichier et sont coupées.
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";

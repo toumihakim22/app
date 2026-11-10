@@ -21,9 +21,9 @@
 | Lot | Propriétaire de | Contenu |
 |---|---|---|
 | **A, socle** | `app/theme.css` (nouveau), `app/globals.css`, `app/dark.css`, `web/styles.css`, `web/build.mjs`, `web/src/ui.js`, `web/src/main.js`, `web/index.html`, `app/layout.tsx`, `package.json`, `package-lock.json` | Tokens, polices, bascule sombre réduite aux variables, helpers et recettes (§4), coquille (§6.1). |
-| **B, clipper** | `web/src/clipper.js` | Accueil (aperçu et statistiques réunis), Découvrir, Agences, Publications, Portefeuille, Profil, Paramètres, modales (§6.2). |
-| **C, agence** | `web/src/agency.js` | Aperçu, Campagnes, Clips, Budget, Profil, formulaire de campagne, modales (§6.3). |
-| **D, admin** | `web/src/admin.js` | Vue d'ensemble, Utilisateurs, Campagnes, Modération, Paiements, Réglages, modales (§6.4). |
+| **B, clipper** | `web/src/clipper/` | Accueil (aperçu et statistiques réunis), Découvrir, Agences, Publications, Portefeuille, Profil, Paramètres, modales (§6.2). |
+| **C, agence** | `web/src/agency/` | Aperçu, Campagnes, Clips, Budget, Profil, formulaire de campagne, modales (§6.3). |
+| **D, admin** | `web/src/admin/` | Vue d'ensemble, Utilisateurs, Campagnes, Modération, Paiements, Réglages, modales (§6.4). |
 | **E, auth** | `web/src/auth.js` | Connexion, inscription, vérification, mot de passe (§6.5). |
 | **F, landing 1** | `components/landing/` : `Header`, `Logo`, `Hero`, `IncomeCard`, `StatsStrip`, `HowItWorks`, `SectionTitle`, `ThemeToggle` | §7.1 à §7.5. |
 | **G, landing 2** | `components/landing/` : `TransactionRow`, `Audiences`, `Testimonials`, `Faq`, `FinalCta`, `Footer` ; `app/page.tsx` ; `data/landing.ts` | §7.6 à §7.11. |
@@ -39,7 +39,7 @@ Tous les fichiers `web/src/*.js` sont concaténés **dans une seule fonction** p
 | Nom | Défini par | Utilisé par | Règle |
 |---|---|---|---|
 | `publicationsTable(list, { showUser, actions, amountLabel = "Gains" })` | B | C, D | B ajoute l'option `amountLabel` (C passe `"Coût"`). B rend aussi la colonne Décision de modération (`actions: true`) selon §6.4. |
-| `me()`, `myTx()`, `myNotifs()`, `balance(u)`, `totalEarned(u)`, `maskAccount(a)` | B | A, C, D, E | `maskAccount` reste dans `clipper.js` ; B le corrige : chiffres seuls, `••••${NB}7890`. |
+| `me()`, `myTx()`, `myNotifs()`, `balance(u)`, `totalEarned(u)`, `maskAccount(a)` | B | A, C, D, E | `maskAccount` reste dans `web/src/clipper/` ; B le corrige : chiffres seuls, `••••${NB}7890`. |
 | `campaignForm(formName, submitLabel, note, c = null)`, `campaignPayload(data)` | C | D | `c` : campagne à modifier ou à relancer (champs préremplis) ; rendu selon §6.3. |
 | `adminBadge(id)` | D | A | Inchangé. |
 | `logout()`, `resetAuth()` | E | A | Inchangés. |
@@ -56,9 +56,9 @@ Tous les fichiers `web/src/*.js` sont concaténés **dans une seule fonction** p
 `NB`, `MINUS`, `fmt`, `da`, `daSigned`, `money`, `BIG`, `bigMoney`, `compact`, `pct`, `plural`, `rate`, `rateShort`, `code`, `groupAccount`, `icons`, `icon`, `EVENT_ICON`, `eventIcon`, `flagDz`, `logo`, `cx`, `FOCUS`, `BTN`, `btn`, `ICON_BTN`, `iconBtn`, `inputCls`, `inputLg`, `textareaCls`, `selectCls`, `CHEVRON`, `select`, `countrySelect`, `unitInput`, `searchInput`, `field`, `OPTIONAL`, `CHOICE`, `CHOICE_DANGER`, `SEG_CHOICE`, `RADIO`, `CHECKBOX`, `switchBtn`, `CARD`, `CARD_HOVER`, `TILE`, `card`, `cardHeader`, `kpiValue`, `DELTA`, `kpi`, `BADGE`, `TONE`, `DOT`, `STATUS_TONE`, `badge`, `statusBadge`, `PLATFORM_ICON`, `platformTag`, `roleBadge`, `COUNT`, `countBadge`, `opt`, `segmented`, `pills`, `chips`, `TABLIST`, `TAB`, `pageHeader`, `sectionHeader`, `emptyState`, `progress`, `coverAttr`, `THUMB`, `coverThumb`, `AVATARS`, `AVATAR_SIZE`, `avatar`, `TBL`, `TOAST`, `toast`, `MODAL_W`, `modalShell`, `summary`, `ALERT_ICON`, `alertBox`, `accountCard`, `siteBanner`, `themeToggle`, `LIVE`, `niceMax`, `seriesDates`, `dayLabel`, `barChart`, `cumulativeChart`, `barList`, `areaChart`, plus ceux déjà présents (`esc`, `MONTHS`, `date`, `ago`, `initials`, `campaignById`, `userById`, `rawEarnings`, `belowMin`, `isCapped`, `payoutOf`, `earningsOf`, `viewsFor`, `isEmail`, `copy`, `handlePasswordSubmit`, `homeOf`).
 **Réservés à `main.js` :** `NAV_ITEM`, `NAV_ICON`, `MINI_HIDDEN`, `focusReturn`, `placeOverlayFocus`, `focusTrap`, `runLive`, `applyRouteItem`, `flashRow`, `NOTIF_DEST`, `notifDest`, `ITEM_PAGES`, `navView`, `ROUTE_ALIASES`, `accountMenu`, `MENU_ROW`, `MENU_ITEM`, `MENU_ICON`, `POPOVERS`, `topDialog`, `actionKey`, `fieldKey`, `visibleAll`, `FIRST_FIELD`, `focusModal`, `draftOwner`, `restoringDraft`, `draftControls`, `modalForms`, `modalFormOf`, `modalHasDraft`, `captureDraft`, `restoreDraft`, `openStacked`, `closeStacked`, `dismissModal`, `pointerDownTarget`, `shellAction`, `areaInput`, `pageTitle`, `fillForm`, `pageDrafts`, `pageDraftRoute`, `pageFormOf`, `capturePageDraft`, `dropPageDraft`, `restorePageDrafts`, `captureAny`.
 **Ajoutés à `ui.js` (réservés) :** `FOCUS_INSET`, `coverArt`, `verifiedBadge`, `nameWithBadge`, `THEME_MODES`, `themeModeSwitch`, `langSwitch`, `IMAGE_SHAPES`, `IMAGE_MAX_CHARS`, `imageField`, `readImage`, `setImageField`, `PROVIDER_NAMES`, `listAnd`.
-**Réservés à `clipper.js` (agences) :** `clNorm`, `clOrgKey`, `clOrgHref`, `clAgencyOf`, `clOrgName`, `clOrgType`, `clOrgAbout`, `clOrgMark`, `clOrgLink`, `clOrganisers`, `clCampHeader`, `clAgencyCard`, `clAgencies`, `cAgence`.
+**Réservés à `web/src/clipper/` (agences) :** `clNorm`, `clOrgKey`, `clOrgHref`, `clAgencyOf`, `clOrgName`, `clOrgType`, `clOrgAbout`, `clOrgMark`, `clOrgLink`, `clOrganisers`, `clCampHeader`, `clAgencyCard`, `clAgencies`, `cAgence`.
 **Récapitulatifs en direct :** un fichier de zone **n'ajoute qu'une propriété** à l'objet partagé (`LIVE.withdraw = …`, `LIVE.budget = …`, `LIVE.campaign = …`), il ne redéclare jamais `LIVE`.
-**Attention aux collisions connues :** `roleTag` existe déjà dans `admin.js` (d'où `roleBadge` dans `ui.js`) ; `campaignCard`, `campaignRow`, `incomeCard`, `txRow` existent dans `clipper.js`. Un fichier de zone qui a besoin d'un helper local le préfixe (`cl…`, `ag…`, `adm…`, `auth…`).
+**Attention aux collisions connues :** `roleTag` existe déjà dans `web/src/admin/` (d'où `roleBadge` dans `ui.js`) ; `campaignCard`, `campaignRow`, `incomeCard`, `txRow` existent dans `web/src/clipper/`. Un fichier de zone qui a besoin d'un helper local le préfixe (`cl…`, `ag…`, `adm…`, `auth…`).
 
 ### 0.3 Compatibilité avec le site hors ligne (`web/offline/landing.js`)
 
@@ -1619,7 +1619,7 @@ Règles :
 - **montant répété sur le bouton de confirmation**.
 
 ```js
-// clipper.js (lot B) : enregistrement du récapitulatif en direct, au niveau supérieur du fichier.
+// web/src/clipper/ (lot B) : enregistrement du récapitulatif en direct, au niveau supérieur du fichier.
 LIVE.withdraw = (d) => {
   const a = Math.max(0, Math.round(+String(d.amount || "").replace(/\D/g, "")) || 0), s = db.settings;
   const fee = d.speed === "instant" ? Math.max(s.instantMinFee, Math.round((a * s.instantFeePercent) / 100)) : 0;
@@ -1830,7 +1830,7 @@ Résultats de `validate_palette.js` :
   - Échap ferme la couche du dessus (modale empilée, modale, panneau, tiroir).
 - **Bandeaux du site** (`siteBanner()`) : maintenance en `warning` avec icône `alert`, annonce en `brand-soft` avec icône `megaphone`. Plus de bandeau rose plein ni d'emoji.
 
-### 6.2 Espace Clipper (lot B, `web/src/clipper.js`)
+### 6.2 Espace Clipper (lot B, `web/src/clipper/`)
 
 **Navigation (`CLIPPER_NAV`)** : Accueil (`home`) · Découvrir (`compass`) · Agences (`building`) · Mes publications, court « Clips » (`film`) · Portefeuille (`wallet`) · Profil (`user`) · Paramètres (`gear`). Onglets mobiles : Accueil, Découvrir, Clips, Portefeuille (+ « Plus »). La page Statistiques n'existe plus : son contenu est une section de l'Accueil, et `#/clipper/statistiques` (comme `#/clipper/campagnes[/<id>]`, devenu Découvrir) est redirigé par `ROUTE_ALIASES` (§4.8). La barre latérale du clipper n'a plus ni solde ni « Soumettre un clip » : l'action vit dans l'en-tête de l'Accueil et de Mes publications, et sur chaque campagne rejointe.
 
@@ -1950,9 +1950,9 @@ Résultats de `validate_palette.js` :
 - **Demander un retrait :** §4.7.
 - **Toasts du lot :** sans emoji. Par exemple « Ajoutée aux favoris », « Vous avez rejoint « Derby Algérois » », « Demande de retrait de 7 078 DA envoyée ».
 
-### 6.3 Espace Agence (lot C, `web/src/agency.js`)
+### 6.3 Espace Agence (lot C, `web/src/agency/`)
 
-**Ajouts du lot « 16 demandes » (contrats, le code de `agency.js` fait foi pour le détail)**
+**Ajouts du lot « 16 demandes » (contrats, le code de `web/src/agency/` fait foi pour le détail)**
 - Navigation : `apercu` s'affiche « Accueil » (identifiant inchangé, pas de fusion avec une autre page) ; nouvelle page `parametres` « Paramètres » (`gear`) : langue, thème, compte et mot de passe (`accountCard`).
 - Profil de l'agence : logo (`imageField({ name: "avatar", shape: "avatar" })`) et photo de couverture (`shape: "cover"`, bandeau 3:1) ; demande du badge de vérification (`ag-verify`, message facultatif) et son état (en cours d'examen, refusée avec le motif, vérifiée avec `verifiedBadge`).
 - Formulaire de campagne `campaignForm(formName, submitLabel, note, c)` : 18 catégories + « Autre » qui révèle « Précisez la catégorie » ; photo de la campagne (`shape: "campaign"`) ; plateformes en tuiles à case visible (TikTok, Instagram, YouTube, Facebook) sous une case « Toutes les plateformes » ; « Recharger le crédit » ouvre la recharge **empilée** (`openStacked`), le formulaire revient avec sa saisie.
@@ -2018,9 +2018,9 @@ Résultats de `validate_palette.js` :
 4. **Diffusion :** plateformes (`SEG_CHOICE` multiples, en cases à cocher) et règles (`textareaCls`).
 - `LIVE.campaign` est enregistré par C ; `campaignPayload(data)` est inchangé.
 
-### 6.4 Administration (lot D, `web/src/admin.js`)
+### 6.4 Administration (lot D, `web/src/admin/`)
 
-**Ajouts du lot « 16 demandes » (contrats, le code de `admin.js` fait foi pour le détail)**
+**Ajouts du lot « 16 demandes » (contrats, le code de `web/src/admin/` fait foi pour le détail)**
 - Pages hors navigation : `utilisateur` (`#/admin/utilisateur/<id>`, `ITEM_PAGES` : « Utilisateurs » reste courant) et `compte` « Mon compte » (photo, nom, langue, thème, mot de passe), ouverte par le menu du compte.
 - `admUserLink(u, cls)` : tout nom d'agence ou de clipper affiché dans l'administration est un lien vers sa fiche (`nameWithBadge`). Réservé à l'administration : ailleurs, les noms restent du texte.
 - Fiches d'examen : `adm-camp` (campagne complète : photo, catégorie, tarif, budget, seuils, plateformes, règles, agence ; « Approuver », « Refuser » → `adm-refuse` avec motif obligatoire) et `adm-clip` (clip, liens, campagne, clipper, décision). Ouvertes aussi par `#/admin/campagnes/<id>` et `#/admin/moderation/<id>` (`applyRouteItem`).
@@ -2105,7 +2105,7 @@ Résultats de `validate_palette.js` :
 - **Enregistrement :** pied collant `sticky bottom-0 -mx-5 -mb-5 mt-4 flex justify-end border-t border-line bg-surface/95 px-5 py-3 backdrop-blur-md` avec `btn("primary")` « Enregistrer ».
 - **Réinitialiser la démo :** carte séparée en bas, `btn("dangerSoft")`, confirmation avec `btn("danger")`.
 
-**`roleTag`** (local à `admin.js`) : le réécrire en appel de `roleBadge(u.role)` (garder le nom `roleTag` dans `admin.js`).
+**`roleTag`** (local à `web/src/admin/`) : le réécrire en appel de `roleBadge(u.role)` (garder le nom `roleTag` dans `web/src/admin/`).
 
 ### 6.5 Connexion et inscription (lot E, `web/src/auth.js`)
 
