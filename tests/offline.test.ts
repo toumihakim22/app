@@ -904,7 +904,7 @@ test("classement hebdomadaire : semaine écoulée clôturée une seule fois, pri
   const paid = winners.filter((w) => w.amount! > 0);
   const total = paid.reduce((t, w) => t + w.amount!, 0);
   assert.equal(admin.activity[0].text, weekClosedText(lastWeek, paid.length, total));
-  let saved = JSON.parse(storage.get(STORAGE_KEY)!);
+  const saved = JSON.parse(storage.get(STORAGE_KEY)!);
   const prizeTx = () => (JSON.parse(storage.get(STORAGE_KEY)!).transactions as Tx[]).filter((t) => t.type === "gain" && t.label.startsWith("Prime classement"));
   assert.equal(prizeTx().length, paid.length, "une prime de 0 DA ne crée aucun gain");
   assert.deepEqual(saved.jobRuns.find((j: { name: string }) => j.name === "weekly").summary, { week: lastWeek, winners: paid.length, paid: total });

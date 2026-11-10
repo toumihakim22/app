@@ -49,7 +49,7 @@ const earningsOf = (p) => (p.status === "Validée" ? p.paid : 0);
 const viewsFor = (c, amount) => Math.ceil((amount / c.rate) * 1000);
 const isEmail = (s) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(s);
 function copy(text, msg) {
-  try { navigator.clipboard && navigator.clipboard.writeText(text).catch(() => {}); } catch (e) {}
+  try { if (navigator.clipboard) navigator.clipboard.writeText(text).catch(() => {}); } catch (e) {}
   toast(msg);
 }
 

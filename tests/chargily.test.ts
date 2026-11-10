@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { after, afterEach, before, test } from "node:test";
 import { eq } from "drizzle-orm";
 import { NextRequest } from "next/server";
-import { chargilyApi, createCheckout, parseEvent, signPayload, verifySignature } from "../lib/server/chargily";
+import { chargilyApi, parseEvent, signPayload, verifySignature } from "../lib/server/chargily";
 import { getDb, schema } from "../lib/server/db";
 import { resumeOnlineTopUp, startOnlineTopUp } from "../lib/server/services/payments";
 import { POST as webhook } from "../app/api/payments/chargily/webhook/route";
