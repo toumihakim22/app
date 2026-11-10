@@ -1,5 +1,6 @@
 // Règles métier pures (sans base de données), partagées par l'API et les tests.
 import { PLATFORM_HOSTS } from "./gradients";
+import { BRAND_NAME } from "../brand";
 
 export type PayoutCampaign = { rate: number; minPayout: number; maxPayout: number };
 
@@ -339,7 +340,7 @@ export const clipperMessageText = (clipper: string, campaign: string, body: stri
 
 /** Notification du clipper à chaque réponse : de l'agence (son nom), ou de l'équipe pour une campagne de ClipBoost. */
 export const replyText = (agency: string | null, campaign: string, body: string) =>
-  agency ? `Réponse de ${agency} sur « ${campaign} » : « ${messageExcerpt(body)} »` : `L'équipe ClipBoost a répondu sur « ${campaign} » : « ${messageExcerpt(body)} »`;
+  agency ? `Réponse de ${agency} sur « ${campaign} » : « ${messageExcerpt(body)} »` : `L'équipe ${BRAND_NAME} a répondu sur « ${campaign} » : « ${messageExcerpt(body)} »`;
 
 /** Message tel que stocké (dates en millisecondes), pour messageThreads. */
 export type MessageRow = { id: string; campaignId: string; clipperId: string; senderId: string; body: string; createdAt: number; readAt: number | null };

@@ -12,6 +12,7 @@ import { simulatedStats } from "../rules";
 import { getSettings } from "../settings";
 import { recordViews } from "./clips";
 import { closeDueWeeks } from "./leaderboard";
+import { BRAND_NAME } from "../../brand";
 
 /** Nom de la tâche du relevé des vues dans job_runs, et intervalle entre deux relevés (heures). */
 export const VIEWS_JOB = "views";
@@ -79,7 +80,7 @@ export async function trackViews(by: TrackTrigger): Promise<TrackSummary & { at:
   for (let i = 0; i < clips.length; i += 4) {
     const batch = clips.slice(i, i + 4);
     const readings = await Promise.all(batch.map((p) => readClip(p, now.getTime()).catch((err: unknown) => {
-      console.error(`[ClipBoost] Relevé des vues du clip ${p.id} (${p.platform}) : ${err instanceof Error ? err.message : String(err)}`);
+      console.error(`[${BRAND_NAME}] Relevé des vues du clip ${p.id} (${p.platform}) : ${err instanceof Error ? err.message : String(err)}`);
       return null;
     })));
     for (const [j, reading] of readings.entries()) {
@@ -94,7 +95,7 @@ export async function trackViews(by: TrackTrigger): Promise<TrackSummary & { at:
       } catch (err) {
         // Clip supprimé entre-temps (campagne supprimée) : passé.
         summary.failed++;
-        console.error(`[ClipBoost] Relevé des vues du clip ${batch[j].id} non enregistré : ${err instanceof Error ? err.message : String(err)}`);
+        console.error(`[${BRAND_NAME}] Relevé des vues du clip ${batch[j].id} non enregistré : ${err instanceof Error ? err.message : String(err)}`);
       }
     }
   }
@@ -105,7 +106,7 @@ export async function trackViews(by: TrackTrigger): Promise<TrackSummary & { at:
   try {
     closedWeeks = await closeDueWeeks(now.getTime());
   } catch (err) {
-    console.error(`[ClipBoost] Clôture du classement hebdomadaire : ${err instanceof Error ? err.message : String(err)}`);
+    console.error(`[${BRAND_NAME}] Clôture du classement hebdomadaire : ${err instanceof Error ? err.message : String(err)}`);
   }
   return { ...summary, at: now.toISOString(), closedWeeks };
 }

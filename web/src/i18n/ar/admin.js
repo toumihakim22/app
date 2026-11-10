@@ -30,7 +30,7 @@ Object.assign(I18N.ar, {
   "Clipper Or": "صانع مقاطع ذهبي",
 
   // Vue d'ensemble
-  "Pilotez l'activité de ClipBoost en temps réel.": "تابع نشاط ClipBoost لحظة بلحظة.",
+  "Pilotez l'activité de {brand} en temps réel.": "تابع نشاط {brand} لحظة بلحظة.",
   "Mode maintenance activé.": "وضع الصيانة مفعّل.",
   "Les clippers et les agences ne peuvent pas se connecter.": "لا يمكن لصنّاع المقاطع والوكالات تسجيل الدخول.",
   "Modifier dans les réglages": "التعديل في الإعدادات",
@@ -50,7 +50,7 @@ Object.assign(I18N.ar, {
   "Clippers inscrits": "صنّاع المقاطع المسجّلون",
   "sur {count}": "من أصل {count}",
   "{n} vues": "{n} مشاهدة",
-  "Commissions ClipBoost": "عمولات ClipBoost",
+  "Commissions {brand}": "عمولات {brand}",
   "sur le budget consommé": "على الميزانية المستهلكة",
   "Nouvelles inscriptions": "التسجيلات الجديدة",
   "sur {days}": "خلال {days}",
@@ -81,7 +81,7 @@ Object.assign(I18N.ar, {
   "Badge demandé": "طلب شارة",
   "Suspendre": "إيقاف",
   "Réactiver": "إعادة التفعيل",
-  "Ces agences demandent le badge bleu. Vérifiez leur identité avant de l'accorder : il s'affiche à côté de leur nom, partout sur ClipBoost.": "تطلب هذه الوكالات الشارة الزرقاء. تحقّق من هويتها قبل منحها: تظهر الشارة بجانب اسمها في كل مكان على ClipBoost.",
+  "Ces agences demandent le badge bleu. Vérifiez leur identité avant de l'accorder : il s'affiche à côté de leur nom, partout sur {brand}.": "تطلب هذه الوكالات الشارة الزرقاء. تحقّق من هويتها قبل منحها: تظهر الشارة بجانب اسمها في كل مكان على {brand}.",
   "Aucun message joint à la demande.": "لا توجد رسالة مرفقة بالطلب.",
   "Accorder le badge": "منح الشارة",
 
@@ -363,7 +363,7 @@ Object.assign(I18N.ar, {
   "Règles trop vagues": "قواعد مبهمة",
   "Les règles de la campagne sont trop vagues : précisez ce que les clips doivent montrer.": "قواعد الحملة مبهمة جدًا: يُرجى تحديد ما يجب أن تُظهره المقاطع.",
   "Marque non autorisée": "علامة تجارية غير مسموح بها",
-  "Cette marque ou ce produit ne peut pas être promu sur ClipBoost.": "لا يمكن الترويج لهذه العلامة التجارية أو هذا المنتج على ClipBoost.",
+  "Cette marque ou ce produit ne peut pas être promu sur {brand}.": "لا يمكن الترويج لهذه العلامة التجارية أو هذا المنتج على {brand}.",
   "Photo inappropriée": "صورة غير لائقة",
   "La photo de la campagne n'est pas appropriée : remplacez-la.": "صورة الحملة غير لائقة: يُرجى استبدالها.",
   "Marque à préciser": "علامة تجارية غير واضحة",
@@ -397,9 +397,9 @@ Object.assign(I18N.ar, {
   "Réinitialiser la démo ?": "إعادة ضبط النسخة التجريبية؟",
   "Les comptes créés, campagnes, clips et paiements enregistrés dans ce navigateur seront effacés, puis les données d'exemple recréées. Vous serez déconnecté.": "ستُمحى الحسابات والحملات والمقاطع والمدفوعات المحفوظة في هذا المتصفح، ثم يُعاد إنشاء البيانات النموذجية، وسيُسجَّل خروجك.",
   "Effacer et recommencer": "المسح والبدء من جديد",
-  "Créée par ClipBoost, elle est immédiatement visible par les clippers.": "ينشئها ClipBoost وتظهر فورًا لصنّاع المقاطع.",
+  "Créée par {brand}, elle est immédiatement visible par les clippers.": "ينشئها {brand} وتظهر فورًا لصنّاع المقاطع.",
   "Publier la campagne": "نشر الحملة",
-  "Campagne gérée directement par ClipBoost : aucun crédit d'agence n'est prélevé.": "حملة يديرها ClipBoost مباشرة: لا يُقتطع أي رصيد من الوكالات.",
+  "Campagne gérée directement par {brand} : aucun crédit d'agence n'est prélevé.": "حملة يديرها {brand} مباشرة: لا يُقتطع أي رصيد من الوكالات.",
 
   // Confirmations et erreurs de saisie
   "{name} : compte suspendu": "{name}: تم إيقاف الحساب",
@@ -497,7 +497,7 @@ Object.assign(I18N.ar, {
   "Montant": "المبلغ",
   "Recharges": "عمليات الشحن",
   "Retrait minimum": "الحد الأدنى للسحب",
-  "Commission ClipBoost": "عمولة ClipBoost",
+  "Commission {brand}": "عمولة {brand}",
   "Fenêtre de gains": "مدة احتساب الأرباح",
   "Enregistrer": "حفظ",
   "Photo de profil": "صورة الملف الشخصي",
@@ -508,8 +508,8 @@ Object.assign(I18N.ar, {
   "Clair, sombre, ou selon le réglage de votre appareil.": "فاتح أو داكن أو حسب إعداد جهازك.",
   "Aucune règle particulière.": "لا توجد قواعد خاصة.",
   "Campagne introuvable": "الحملة غير موجودة",
-  "Commission ClipBoost ({rate} %)": "عمولة ClipBoost ({rate}%)",
-  "Campagne gérée par ClipBoost": "حملة يديرها ClipBoost",
+  "Commission {brand} ({rate} %)": "عمولة {brand} ({rate}%)",
+  "Campagne gérée par {brand}": "حملة يديرها {brand}",
   "Marque": "العلامة التجارية",
   "Catégorie": "الفئة",
   "Rémunération des clippers": "أجر صنّاع المقاطع",
@@ -604,8 +604,8 @@ Object.assign(I18N.ar, {
   "La date de fin doit suivre la date de début.": "يجب أن يكون تاريخ النهاية بعد تاريخ البداية.",
   "Export CSV téléchargé": "تم تنزيل ملف CSV",
   // Messagerie par campagne (Messages)
-  "Les questions des clippers sur les campagnes de ClipBoost. Les agences répondent elles-mêmes sur leurs campagnes.": "أسئلة صانعي المقاطع حول حملات ClipBoost. تجيب الوكالات بنفسها على حملاتها.",
-  "Les clippers peuvent poser une question depuis la fiche de chaque campagne de ClipBoost active ou en pause.": "يمكن لصانعي المقاطع طرح سؤال من بطاقة كل حملة ClipBoost نشطة أو متوقفة مؤقتًا.",
+  "Les questions des clippers sur les campagnes de {brand}. Les agences répondent elles-mêmes sur leurs campagnes.": "أسئلة صانعي المقاطع حول حملات {brand}. تجيب الوكالات بنفسها على حملاتها.",
+  "Les clippers peuvent poser une question depuis la fiche de chaque campagne de {brand} active ou en pause.": "يمكن لصانعي المقاطع طرح سؤال من بطاقة كل حملة {brand} نشطة أو متوقفة مؤقتًا.",
 });
 
 // Classement hebdomadaire (page Classement, primes dans les réglages)
@@ -626,7 +626,7 @@ Object.assign(I18N.ar, {
   "Aucune semaine clôturée": "لا توجد أسابيع مغلقة",
   "La semaine écoulée est clôturée au premier relevé des vues du lundi.": "يُغلق الأسبوع المنقضي مع أول قراءة للمشاهدات يوم الاثنين.",
   "Primes du classement hebdomadaire": "مكافآت الترتيب الأسبوعي",
-  "Versées chaque lundi aux 10 clippers qui ont le plus de vues validées la semaine écoulée. ClipBoost les paie : aucune campagne n'est débitée. 0 DA : pas de prime pour ce rang.": "تُصرف كل يوم اثنين لصانعي المقاطع العشرة أصحاب أكبر عدد من المشاهدات المقبولة في الأسبوع المنقضي. تدفعها ClipBoost: لا تُخصم من أي حملة. 0 دج: لا مكافأة لهذا المركز.",
+  "Versées chaque lundi aux 10 clippers qui ont le plus de vues validées la semaine écoulée. {brand} les paie : aucune campagne n'est débitée. 0 DA : pas de prime pour ce rang.": "تُصرف كل يوم اثنين لصانعي المقاطع العشرة أصحاب أكبر عدد من المشاهدات المقبولة في الأسبوع المنقضي. تدفعها {brand}: لا تُخصم من أي حملة. 0 دج: لا مكافأة لهذا المركز.",
   "Annonce, montants, délais et primes s'appliquent à tout le site dès l'enregistrement.": "يُطبَّق الإعلان والمبالغ والمهل والمكافآت على الموقع كله فور الحفظ.",
   "Prime du {rank} : indiquez un nombre entier entre 0 et 1 000 000.": "مكافأة المركز {rank}: أدخل عددًا صحيحًا بين 0 و1000000.",
 });
@@ -636,7 +636,7 @@ Object.assign(I18N.ar, {
   "Parrainé par": "مدعوّ من",
   "Personne": "لا أحد",
   "Prime de parrainage": "مكافأة الإحالة",
-  "Versée au parrain quand son filleul fait son premier retrait. ClipBoost la paie ; 0 DA : pas de prime.": "تُصرف لصاحب الدعوة عندما يُجري المدعوّ أول عملية سحب. يدفعها ClipBoost؛ 0 دج: بلا مكافأة.",
+  "Versée au parrain quand son filleul fait son premier retrait. {brand} la paie ; 0 DA : pas de prime.": "تُصرف لصاحب الدعوة عندما يُجري المدعوّ أول عملية سحب. يدفعها {brand}؛ 0 دج: بلا مكافأة.",
 });
 
 // Académie (aAcademie, admLessonModal, suppression, publication, ordre).

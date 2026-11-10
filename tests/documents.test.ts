@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { PdfPage, pdfDocument, textWidth, winAnsi } from "../lib/server/pdf";
 import { companyFrom, csvFilename, documentLocale, documentNumber, documentSeq, invoicePdf, numberDocuments, receiptPdf, transactionsCsv } from "../lib/server/documents";
+import { BRAND_NAME, BRAND_SLUG } from "../lib/brand";
 
 const latin1 = (bytes: Uint8Array) => Array.from(bytes, (b) => String.fromCharCode(b)).join("");
 
@@ -62,7 +63,7 @@ test("factures et reçus : contenu, langue du compte (l'arabe en français), men
     return out;
   };
   const fr = text(invoicePdf(data));
-  for (const s of ["ClipBoost", "FACTURE", "N° FAC-2026-00001", "Tassili Sport", "Contact : Nassim Ait Ali", "agence@clipboost.dz", "T-7K3F9Q", "300 000 DA", "PAYÉE", "NIF : 000216001234567", "16000 Alger", "8 octobre 2026"]) {
+  for (const s of [BRAND_NAME, "FACTURE", "N° FAC-2026-00001", "Tassili Sport", "Contact : Nassim Ait Ali", "agence@clipboost.dz", "T-7K3F9Q", "300 000 DA", "PAYÉE", "NIF : 000216001234567", "16000 Alger", "8 octobre 2026"]) {
     assert.ok(fr.includes(s), s);
   }
   assert.ok(text(invoicePdf({ ...data, locale: "ar" })).includes("FACTURE"));
@@ -93,5 +94,5 @@ test("export CSV : BOM, « ; », guillemets, formules neutralisées", () => {
   assert.equal(lines[1], "T-AAAAAA;19/10/2026;08:05;Retrait;\"Yacine; \"\"Y\"\"\";y@x.dz;Clipper;'=HYPERLINK(1);-2000;100;Validé;CCP;REC-2026-00001");
   assert.equal(lines[2], "T-BBBBBB;19/10/2026;23:59;Gain;Lina;l@x.dz;Clipper;Derby;750;0;Validé;;");
   assert.equal(lines[3], "");
-  assert.equal(csvFilename(new Date("2026-10-19T12:00:00Z")), "clipboost-transactions-2026-10-19.csv");
+  assert.equal(csvFilename(new Date("2026-10-19T12:00:00Z")), `${BRAND_SLUG}-transactions-2026-10-19.csv`);
 });

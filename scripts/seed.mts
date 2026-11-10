@@ -15,6 +15,7 @@ import { hashPassword } from "../lib/server/password";
 import { clipRisk, payoutFor, prizeLabel, prizeNotice, referralCode, referralLabel, referralNotice, referralPaidText, sentence, simulatedHistory, socialCode, weekClosedText, type WeekReading } from "../lib/server/rules";
 import { DEFAULT_SETTINGS } from "../lib/server/settings";
 import { openDb } from "./db";
+import { BRAND_NAME } from "../lib/brand";
 
 const { db, migrate, close } = await openDb();
 await migrate();
@@ -27,7 +28,7 @@ if (!adminEmail || adminPassword.length < 10) {
 }
 const [existing] = await db.select().from(schema.users).where(eq(schema.users.email, adminEmail));
 if (!existing) {
-  await db.insert(schema.users).values({ id: newId(), role: "admin", email: adminEmail, name: "Équipe ClipBoost", passwordHash: await hashPassword(adminPassword) });
+  await db.insert(schema.users).values({ id: newId(), role: "admin", email: adminEmail, name: `Équipe ${BRAND_NAME}`, passwordHash: await hashPassword(adminPassword) });
   console.log(`Administrateur créé : ${adminEmail}`);
 } else console.log(`Administrateur déjà présent : ${adminEmail}`);
 
@@ -169,7 +170,7 @@ if (process.argv.includes("--demo")) {
         acts.push([p.days, "✅", `Clip « ${p.title} » validé (${fmt(paid)}).`]);
         notes.push([p.u, p.days, "💸", `+${fmt(paid)} pour « ${p.title} ». Retirable dans ${DEFAULT_SETTINGS.holdDays} jours.`, link.clipperTx(txId)]);
       } else if (p.status === "Refusée") {
-        acts.push([p.days, "🚫", `Clip « ${p.title} » refusé par Équipe ClipBoost.`]);
+        acts.push([p.days, "🚫", `Clip « ${p.title} » refusé par Équipe ${BRAND_NAME}.`]);
         notes.push([p.u, p.days, "⚠️", `Clip « ${p.title} » refusé : ${sentence(p.reason!)}`, link.clip(id)]);
         if (p.title === "Sketch du marché") sketchId = id;
       }
@@ -224,7 +225,7 @@ if (process.argv.includes("--demo")) {
     await db.insert(schema.referralRewards).values({ refereeId: karim.id, referrerId: yacine.id, amount: DEFAULT_SETTINGS.referralBonus, transactionId: bonusId, createdAt: daysAgo(kp.paidDaysAgo) });
     notes.push([karim, kp.paidDaysAgo, "✅", `Votre retrait de ${fmt(kp.amount)} a été validé.`, link.clipperTx(karimPayoutId)],
       [yacine, kp.paidDaysAgo, "🎁", referralNotice(karim.name, DEFAULT_SETTINGS.referralBonus), link.clipperTx(bonusId)]);
-    acts.push([kp.requestedDaysAgo, "💸", `${karim.name} a demandé un retrait de ${fmt(kp.amount)}.`], [kp.paidDaysAgo, "✅", `Retrait de ${fmt(kp.amount)} validé par Équipe ClipBoost.`],
+    acts.push([kp.requestedDaysAgo, "💸", `${karim.name} a demandé un retrait de ${fmt(kp.amount)}.`], [kp.paidDaysAgo, "✅", `Retrait de ${fmt(kp.amount)} validé par Équipe ${BRAND_NAME}.`],
       [kp.paidDaysAgo, "🎁", referralPaidText(yacine.name, karim.name, DEFAULT_SETTINGS.referralBonus)]);
     const docs = [
       { kind: "facture" as const, transactionId: onlineId, userId: tassili.id, amount: 300000, createdAt: daysAgo(11) },
@@ -235,8 +236,8 @@ if (process.argv.includes("--demo")) {
     const numbers = numberDocuments(docs.map((d) => ({ kind: d.kind, at: d.createdAt.getTime() })));
     await db.insert(schema.documents).values(docs.map((d, k) => ({ id: newId(), number: numbers[k], ...d })));
     notes.push([djurdjura, 8, "✅", `Votre recharge de ${fmt(500000)} a été validée.`, link.agencyBudget(transferId)], [yacine, 4, "✅", `Votre retrait de ${fmt(4000)} a été validé.`, link.clipperTx(payoutId)]);
-    acts.push([8, "✅", `Recharge de ${fmt(500000)} validée par Équipe ClipBoost.`],
-      [4.2, "💸", `${yacine.name} a demandé un retrait de ${fmt(4000)}.`], [4, "✅", `Retrait de ${fmt(4000)} validé par Équipe ClipBoost.`]);
+    acts.push([8, "✅", `Recharge de ${fmt(500000)} validée par Équipe ${BRAND_NAME}.`],
+      [4.2, "💸", `${yacine.name} a demandé un retrait de ${fmt(4000)}.`], [4, "✅", `Retrait de ${fmt(4000)} validé par Équipe ${BRAND_NAME}.`]);
     acts.push([1, "💸", `${amira.name} a demandé un retrait de ${fmt(2000)}.`]);
     for (const admin of await db.select({ id: schema.users.id }).from(schema.users).where(eq(schema.users.role, "admin"))) {
       notes.push([admin, 11, "💳", `${tassili.name} a payé en ligne une recharge de ${fmt(300000)} par carte Edahabia (réf. ${onlineRef}).`, link.adminPayment(onlineId)]);
@@ -254,7 +255,7 @@ if (process.argv.includes("--demo")) {
     // Académie : les cinq leçons publiées viennent de la migration 0011 ; une leçon de plus en brouillon (français seul), rangée en dernier.
     const [{ last }] = await db.select({ last: max(schema.lessons.position) }).from(schema.lessons);
     await db.insert(schema.lessons).values({ ...DEMO_DRAFT_LESSON, position: (last ?? 0) + 1, createdAt: daysAgo(0.5), updatedAt: daysAgo(0.5) }).onConflictDoNothing();
-    acts.push([0.5, "🎓", lessonCreatedText(DEMO_DRAFT_LESSON.title.fr, "Équipe ClipBoost", false)]);
+    acts.push([0.5, "🎓", lessonCreatedText(DEMO_DRAFT_LESSON.title.fr, `Équipe ${BRAND_NAME}`, false)]);
     // Les événements de plus de 2 jours sont déjà lus ; les plus récents restent à lire.
     await db.insert(schema.activity).values(acts.map(([days, icon, text]) => ({ id: newId(), icon, text, createdAt: daysAgo(days) })));
     await db.insert(schema.notifications).values(notes.map(([u, days, icon, text, href]) => ({ id: newId(), userId: u.id, icon, text, link: href, read: days > 2, createdAt: daysAgo(days) })));

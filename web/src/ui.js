@@ -49,7 +49,7 @@ const earningsOf = (p) => (p.status === "Validée" ? p.paid : 0);
 const viewsFor = (c, amount) => Math.ceil((amount / c.rate) * 1000);
 const isEmail = (s) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(s);
 function copy(text, msg) {
-  try { navigator.clipboard && navigator.clipboard.writeText(text).catch(() => {}); } catch (e) {}
+  try { if (navigator.clipboard) navigator.clipboard.writeText(text).catch(() => {}); } catch (e) {}
   toast(msg);
 }
 
@@ -215,9 +215,9 @@ function logo(opts = {}) {
   const o = typeof opts === "boolean" ? { tone: opts ? "text-on-brand" : "text-fg" } : opts;
   const { wordmark = true, tone = "text-fg", size = "md", href = "/" } = o;
   const S = { md: ["size-9 rounded-tile", "text-[1.375rem]"], sm: ["size-8 rounded-[10px]", "text-[1.125rem]"] }[size];
-  return `<a href="${href}" class="inline-flex items-center gap-2.5 rounded-control" aria-label="${esc(t("ClipBoost, retour au site"))}">
+  return `<a href="${href}" class="inline-flex items-center gap-2.5 rounded-control" aria-label="${esc(t("{brand}, retour au site"))}">
     <span class="grid ${S[0]} shrink-0 place-items-center bg-brand text-on-brand">${icon("play", "size-[18px] translate-x-px", true)}</span>
-    ${wordmark ? `<span class="inline-block -skew-x-6 font-display ${S[1]} font-extrabold leading-none tracking-[-0.03em] ${tone}" aria-hidden="true">ClipBoost</span>` : ""}</a>`;
+    ${wordmark ? `<span class="inline-block -skew-x-6 font-display ${S[1]} font-extrabold leading-none tracking-[-0.03em] ${tone}" aria-hidden="true">${esc(BRAND)}</span>` : ""}</a>`;
 }
 
 // ---------- Classes de base ----------
@@ -880,7 +880,7 @@ function msgTeamPage({ area, form, campaignAction, filter, filterAction, title, 
       const c = campaignById(x.campaignId), u = who(x), view = msgMine(x, false);
       msgAutoRead(x, { campaignId: x.campaignId, clipperId: x.clipperId });
       // Équipe : plusieurs admins répondent, le nom de l'auteur est rappelé au-dessus de ses messages.
-      const messages = area === "admin" ? view.messages.map((m) => (m.mine && m.senderId !== state.session ? { ...m, label: esc((userById(m.senderId) || { name: t("Équipe ClipBoost") }).name) } : m)) : view.messages;
+      const messages = area === "admin" ? view.messages.map((m) => (m.mine && m.senderId !== state.session ? { ...m, label: esc((userById(m.senderId) || { name: t("Équipe {brand}") }).name) } : m)) : view.messages;
       conversation = msgConversation({
         back: `#/${area}/messages`,
         head: `${avatar(u, "md")}<div class="min-w-0"><p class="truncate text-sm font-semibold text-fg">${esc(u.name)}${u.handle ? ` <span class="font-normal text-fg-subtle" dir="ltr">${esc(u.handle)}</span>` : ""}</p><p class="truncate text-xs text-fg-subtle">${esc(c.title)}</p></div>`,

@@ -3,6 +3,7 @@
 // « mode simulé » : l'appel n'a pas lieu et le service fait comme s'il avait réussi (démonstration, développement).
 // Utilisé par la vérification des comptes sociaux (services/social.ts : fetchProfileBio) et par le relevé automatique des
 // vues (services/tracking.ts : fetchClipStats) ; les clients (jeton TikTok, Graph API de Meta, requête avec délai) sont communs.
+import { BRAND_NAME } from "../brand";
 
 const TIMEOUT_MS = 10_000;
 const GRAPH = "https://graph.facebook.com/v21.0";
@@ -24,7 +25,7 @@ const warned = new Set<string>();
 export function warnSimulated(platform: string) {
   if (process.env.NODE_ENV !== "production" || warned.has(platform)) return;
   warned.add(platform);
-  console.warn(`[ClipBoost] ${platform} : ${PLATFORM_ENV[platform]?.join(", ")} absent(s), appels à l'API simulés.`);
+  console.warn(`[${BRAND_NAME}] ${platform} : ${PLATFORM_ENV[platform]?.join(", ")} absent(s), appels à l'API simulés.`);
 }
 
 /** Échec d'un appel à une plateforme (réseau, délai, quota, identifiants refusés…) ; le détail va dans les journaux. */

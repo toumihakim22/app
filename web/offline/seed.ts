@@ -13,6 +13,7 @@ import { link } from "../../lib/server/links";
 import { DEFAULT_SETTINGS } from "../../lib/server/settings";
 import { emptyStore, starterLessons, insertCampaign, insertPublication, insertTransaction, insertUser, newId, newRef, newSocialCode, type CampaignRow, type Store, type UserRow } from "./db";
 import { hashPassword } from "./password";
+import { BRAND_NAME } from "../../lib/brand";
 
 export const ADMIN_EMAIL = "admin@clipboost.dz";
 export const ADMIN_PASSWORD = "AdminClip2026";
@@ -20,7 +21,7 @@ export const DEMO_PASSWORD = "Clipboost2026";
 
 export async function seed(): Promise<Store> {
   const db = emptyStore();
-  insertUser(db, { id: newId(), role: "admin", email: ADMIN_EMAIL, name: "Équipe ClipBoost", passwordHash: await hashPassword(ADMIN_PASSWORD) });
+  insertUser(db, { id: newId(), role: "admin", email: ADMIN_EMAIL, name: `Équipe ${BRAND_NAME}`, passwordHash: await hashPassword(ADMIN_PASSWORD) });
 
   const daysAgo = (n: number) => Date.now() - n * 86_400_000;
   const U = async (role: "clipper" | "agence", name: string, email: string, extra: Partial<UserRow> = {}) =>
@@ -142,7 +143,7 @@ export async function seed(): Promise<Store> {
       acts.push([p.days, "✅", `Clip « ${p.title} » validé (${fmt(paid)}).`]);
       notes.push([p.u, p.days, "💸", `+${fmt(paid)} pour « ${p.title} ». Retirable dans ${DEFAULT_SETTINGS.holdDays} jours.`, link.clipperTx(txId)]);
     } else if (p.status === "Refusée") {
-      acts.push([p.days, "🚫", `Clip « ${p.title} » refusé par Équipe ClipBoost.`]);
+      acts.push([p.days, "🚫", `Clip « ${p.title} » refusé par Équipe ${BRAND_NAME}.`]);
       notes.push([p.u, p.days, "⚠️", `Clip « ${p.title} » refusé : ${sentence(p.reason!)}`, link.clip(id)]);
       if (p.title === "Sketch du marché") sketchId = id;
     }
@@ -195,7 +196,7 @@ export async function seed(): Promise<Store> {
   insertTransaction(db, { id: bonusId, ref: newRef(), userId: yacine.id, type: "gain", label: referralLabel(karim.name), amount: bonus, status: "Validé", availableAt: daysAgo(kp.paidDaysAgo - DEFAULT_SETTINGS.holdDays), createdAt: daysAgo(kp.paidDaysAgo) });
   db.referralRewards.push({ refereeId: karim.id, referrerId: yacine.id, amount: bonus, transactionId: bonusId, createdAt: daysAgo(kp.paidDaysAgo) });
   notes.push([karim, kp.paidDaysAgo, "✅", `Votre retrait de ${fmt(kp.amount)} a été validé.`, link.clipperTx(karimPayoutId)], [yacine, kp.paidDaysAgo, "🎁", referralNotice(karim.name, bonus), link.clipperTx(bonusId)]);
-  acts.push([kp.requestedDaysAgo, "💸", `${karim.name} a demandé un retrait de ${fmt(kp.amount)}.`], [kp.paidDaysAgo, "✅", `Retrait de ${fmt(kp.amount)} validé par Équipe ClipBoost.`], [kp.paidDaysAgo, "🎁", referralPaidText(yacine.name, karim.name, bonus)]);
+  acts.push([kp.requestedDaysAgo, "💸", `${karim.name} a demandé un retrait de ${fmt(kp.amount)}.`], [kp.paidDaysAgo, "✅", `Retrait de ${fmt(kp.amount)} validé par Équipe ${BRAND_NAME}.`], [kp.paidDaysAgo, "🎁", referralPaidText(yacine.name, karim.name, bonus)]);
   const docs = [
     { kind: "facture" as const, transactionId: onlineId, userId: tassili.id, amount: 300000, createdAt: daysAgo(11) },
     { kind: "facture" as const, transactionId: transferId, userId: djurdjura.id, amount: 500000, createdAt: daysAgo(8) },
@@ -205,7 +206,7 @@ export async function seed(): Promise<Store> {
   const numbers = numberDocuments(docs.map((d) => ({ kind: d.kind, at: d.createdAt })));
   for (const [k, d] of docs.entries()) db.documents.push({ id: newId(), number: numbers[k], ...d });
   notes.push([djurdjura, 8, "✅", `Votre recharge de ${fmt(500000)} a été validée.`, link.agencyBudget(transferId)], [yacine, 4, "✅", `Votre retrait de ${fmt(4000)} a été validé.`, link.clipperTx(payoutId)]);
-  acts.push([8, "✅", `Recharge de ${fmt(500000)} validée par Équipe ClipBoost.`], [4.2, "💸", `${yacine.name} a demandé un retrait de ${fmt(4000)}.`], [4, "✅", `Retrait de ${fmt(4000)} validé par Équipe ClipBoost.`]);
+  acts.push([8, "✅", `Recharge de ${fmt(500000)} validée par Équipe ${BRAND_NAME}.`], [4.2, "💸", `${yacine.name} a demandé un retrait de ${fmt(4000)}.`], [4, "✅", `Retrait de ${fmt(4000)} validé par Équipe ${BRAND_NAME}.`]);
   acts.push([1, "💸", `${amira.name} a demandé un retrait de ${fmt(2000)}.`]);
   notes.push([admin, 2, "🏢", `${hoggar.name} a soumis la campagne « ${soirees.title} ».`, link.adminCampaign(soirees.id)], [admin, 1, "💸", `${amira.name} demande un retrait de ${fmt(2000)}.`, link.adminPayment(withdrawalId)],
     [admin, 0.9, "🏦", `${hoggar.name} annonce une recharge de ${fmt(600000)} par virement bancaire (réf. ${rechargeRef}).`, link.adminPayment(rechargeId)],
@@ -221,7 +222,7 @@ export async function seed(): Promise<Store> {
   // Académie : les cinq leçons de départ (comme la migration 0011), et une leçon en brouillon (français seul) rangée en dernier.
   db.lessons = starterLessons(daysAgo(30));
   db.lessons.push({ ...structuredClone(DEMO_DRAFT_LESSON), position: db.lessons.length + 1, createdAt: daysAgo(0.5), updatedAt: daysAgo(0.5) });
-  acts.push([0.5, "🎓", lessonCreatedText(DEMO_DRAFT_LESSON.title.fr, "Équipe ClipBoost", false)]);
+  acts.push([0.5, "🎓", lessonCreatedText(DEMO_DRAFT_LESSON.title.fr, `Équipe ${BRAND_NAME}`, false)]);
   for (const [days, icon, text] of acts) db.activity.push({ id: newId(), icon, text, createdAt: daysAgo(days) });
   for (const [u, days, icon, text, href] of notes) db.notifications.push({ id: newId(), userId: u.id, icon, text, link: href, read: days > 2, createdAt: daysAgo(days) });
   return db;

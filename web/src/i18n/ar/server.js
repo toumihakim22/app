@@ -31,13 +31,13 @@ Object.assign(I18N.ar, {
   "Le mot de passe doit contenir au moins 8 caractères, dont une lettre et un chiffre": "يجب أن تتكوّن كلمة المرور من 8 أحرف على الأقل، منها حرف ورقم",
   "Le nouveau mot de passe doit contenir au moins 8 caractères, dont une lettre et un chiffre": "يجب أن تتكوّن كلمة المرور الجديدة من 8 أحرف على الأقل، منها حرف ورقم",
   "Email ou mot de passe incorrect": "البريد الإلكتروني أو كلمة المرور غير صحيحة",
-  "ClipBoost est en maintenance, réessayez plus tard": "ClipBoost قيد الصيانة، أعد المحاولة لاحقًا",
-  "ClipBoost est en maintenance, réessayez plus tard.": "ClipBoost قيد الصيانة، أعد المحاولة لاحقًا.",
+  "{brand} est en maintenance, réessayez plus tard": "{brand} قيد الصيانة، أعد المحاولة لاحقًا",
+  "{brand} est en maintenance, réessayez plus tard.": "{brand} قيد الصيانة، أعد المحاولة لاحقًا.",
   "Mot de passe actuel incorrect": "كلمة المرور الحالية غير صحيحة",
   // Connexion Google, Apple ou Discord simulée (version autonome, POST /api/auth/oauth/demo).
   "Les comptes administrateurs se connectent avec leur mot de passe.": "يسجّل المشرفون الدخول بكلمة المرور الخاصة بهم.",
   "Ce compte est suspendu.": "هذا الحساب موقوف.",
-  "Aucun compte ClipBoost n'est associé à cette adresse. Inscrivez-vous d'abord.": "لا يوجد حساب ClipBoost مرتبط بهذا العنوان. أنشئ حسابًا أولًا.",
+  "Aucun compte {brand} n'est associé à cette adresse. Inscrivez-vous d'abord.": "لا يوجد حساب {brand} مرتبط بهذا العنوان. أنشئ حسابًا أولًا.",
   "Les inscriptions sont fermées pour le moment.": "التسجيل مغلق حاليًا.",
 
   // ---------- Validation des formulaires (lib/server/validation.ts) ----------
@@ -194,7 +194,7 @@ Object.assign(I18N.ar, {
   "En pause": "متوقفة مؤقتًا",
   "Terminée": "منتهية",
   "Refusée": "مرفوضة",
-  "Équipe ClipBoost": "فريق ClipBoost",
+  "Équipe {brand}": "فريق {brand}",
   // ---------- Messagerie par campagne (lib/server/services/messages.ts, validation.ts) ----------
   "Écrivez votre message": "اكتب رسالتك",
   "Campagne manquante": "الحملة غير محددة",
@@ -343,7 +343,7 @@ I18N_RX.ar.push(
   [/^Nouvelle question de (.+) sur « (.+) » : « ([\s\S]*) »$/, "سؤال جديد من $1 حول « $2 »: « $3 »"],
   [/^Nouveau message de (.+) sur « (.+) » : « ([\s\S]*) »$/, "رسالة جديدة من $1 حول « $2 »: « $3 »"],
   [/^Réponse de (.+) sur « (.+) » : « ([\s\S]*) »$/, "رد من $1 حول « $2 »: « $3 »"],
-  [/^L'équipe ClipBoost a répondu sur « (.+) » : « ([\s\S]*) »$/, "ردّ فريق ClipBoost حول « $1 »: « $2 »"],
+  [/^L'équipe \{brand\} a répondu sur « (.+) » : « ([\s\S]*) »$/, "ردّ فريق {brand} حول « $1 »: « $2 »"],
 );
 
 // Classement hebdomadaire (lib/server/services/leaderboard.ts, rules.ts : prizeLabel, prizeNotice, weekClosedText ;

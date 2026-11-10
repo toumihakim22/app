@@ -196,7 +196,7 @@ function aApercu() {
     kpi({ label: t("Clippers inscrits"), value: kpiValue(fmt(users.length)), sub: plural(suspended, "suspendu", "suspendus") }),
     kpi({ label: t("Campagnes actives"), value: kpiValue(fmt(active)), sub: t("sur {count}", { count: plural(db.campaigns.length, "campagne", "campagnes") }) }),
     kpi({ label: t("Budget consommé"), value: bigMoney(spent), sub: `${plural(validated.length, "clip validé", "clips validés")} · ${t("{n} vues", { n: compact(views) })}` }),
-    kpi({ label: t("Commissions ClipBoost"), value: admIncome(commission), sub: t("sur le budget consommé") }),
+    kpi({ label: t("Commissions {brand}"), value: admIncome(commission), sub: t("sur le budget consommé") }),
   ];
 
   // 3. Inscriptions (un comptage : barres entières ; barChart se lit de gauche à droite, y compris en arabe, alors que
@@ -219,7 +219,7 @@ function aApercu() {
           <div class="min-w-0 flex-1"><p class="break-words text-small text-fg">${esc(tServer(a.text))}</p><p class="mt-0.5 text-xs text-fg-subtle">${ago(a.at)}</p></div></li>`).join("")}</ul>`
       : `<div class="grid flex-1 place-items-center">${emptyState("clock", t("Aucune activité sur les 7 derniers jours"), t("Inscriptions, validations et paiements s'afficheront ici."), "", { inCard: true })}</div>`}`;
 
-  return `${pageHeader(t("Vue d'ensemble"), t("Pilotez l'activité de ClipBoost en temps réel."))}
+  return `${pageHeader(t("Vue d'ensemble"), t("Pilotez l'activité de {brand} en temps réel."))}
     ${s.maintenance ? `<div class="mt-6">${alertBox("warning", `<strong class="font-semibold">${t("Mode maintenance activé.")}</strong> ${t("Les clippers et les agences ne peuvent pas se connecter.")} <a href="#/admin/parametres" class="${btn("link")}">${t("Modifier dans les réglages")}</a>`)}</div>` : ""}
     <section class="mt-6" aria-label="${esc(t("À traiter"))}">
       ${admSectionTitle(t("À traiter"), queue ? countBadge(queue, "queue") : "")}
@@ -279,7 +279,7 @@ function admBadgeRequests(list) {
   }).join("");
   return `<section class="mt-6" aria-labelledby="adm-badges-title">
       <div class="flex items-center gap-2"><h2 id="adm-badges-title" class="text-heading text-fg">${t("Badges à vérifier")}</h2>${countBadge(list.length, "queue")}</div>
-      <p class="mt-1 max-w-2xl text-small text-fg-muted">${t("Ces agences demandent le badge bleu. Vérifiez leur identité avant de l'accorder : il s'affiche à côté de leur nom, partout sur ClipBoost.")}</p>
+      <p class="mt-1 max-w-2xl text-small text-fg-muted">${t("Ces agences demandent le badge bleu. Vérifiez leur identité avant de l'accorder : il s'affiche à côté de leur nom, partout sur {brand}.")}</p>
       <ul class="mt-3 divide-y divide-line overflow-hidden ${CARD}">${items}</ul>
     </section>`;
 }
@@ -517,7 +517,7 @@ function admCampSub(c, withOwner = true) {
   const sep = `<span class="shrink-0" aria-hidden="true">·</span>`;
   const who = !withOwner ? ""
     : o ? `${admUserLink(o, "font-medium text-fg-muted hover:text-fg")}${sep}`
-    : `<span class="shrink-0">${c.ownerId ? t("Agence supprimée") : "ClipBoost"}</span>${sep}`;
+    : `<span class="shrink-0">${c.ownerId ? t("Agence supprimée") : esc(BRAND)}</span>${sep}`;
   const brand = !o || c.brand !== o.name ? `${esc(c.brand)} · ` : "";
   return `${who}<span class="min-w-0 truncate">${brand}${esc(t(c.category))}</span>`;
 }
@@ -877,7 +877,7 @@ const admSwitchRow = (s, key, title, desc) =>
 // Champs numériques des réglages : bornes vérifiées avant l'envoi (mêmes règles que le serveur). Libellé : texte source
 // français, traduit à l'affichage (message d'erreur) ; 4e valeur : nombre décimal accepté.
 const ADM_LIMITS = {
-  minWithdraw: ["Retrait minimum", 0, Infinity], minBudget: ["Budget minimum d'une campagne", 0, Infinity], commissionRate: ["Commission ClipBoost", 0, 50],
+  minWithdraw: ["Retrait minimum", 0, Infinity], minBudget: ["Budget minimum d'une campagne", 0, Infinity], commissionRate: ["Commission {brand}", 0, 50],
   instantFeePercent: ["Frais du retrait instantané", 0, 20, true], instantMinFee: ["Frais minimum du retrait instantané", 0, Infinity],
   holdDays: ["Rétention des gains", 0, 60], earningDays: ["Fenêtre de gains", 1, 60], referralBonus: ["Prime de parrainage", 0, 1000000],
 };
@@ -908,14 +908,14 @@ function aParametres() {
         ${group(t("Argent"), t("Montants et commissions appliqués aux retraits et aux campagnes."),
           admSettingRow(t("Retrait minimum"), t("Montant minimum qu'un clipper peut retirer."), admNumber(s, "minWithdraw", "DA"), "set-minWithdraw")
           + admSettingRow(t("Budget minimum d'une campagne"), t("Budget exigé pour créer une campagne."), admNumber(s, "minBudget", "DA"), "set-minBudget")
-          + admSettingRow(t("Commission ClipBoost"), t("Ajoutée au budget des nouvelles campagnes."), admNumber(s, "commissionRate", "%"), "set-commissionRate")
+          + admSettingRow(t("Commission {brand}"), t("Ajoutée au budget des nouvelles campagnes."), admNumber(s, "commissionRate", "%"), "set-commissionRate")
           + admSettingRow(t("Frais du retrait instantané"), t("Pourcentage prélevé sur un retrait instantané."), admNumber(s, "instantFeePercent", "%"), "set-instantFeePercent")
           + admSettingRow(t("Frais minimum du retrait instantané"), t("Montant prélevé au minimum sur un retrait instantané."), admNumber(s, "instantMinFee", "DA"), "set-instantMinFee")
-          + admSettingRow(t("Prime de parrainage"), t("Versée au parrain quand son filleul fait son premier retrait. ClipBoost la paie ; 0 DA : pas de prime."), admNumber(s, "referralBonus", "DA"), "set-referralBonus"))}
+          + admSettingRow(t("Prime de parrainage"), t("Versée au parrain quand son filleul fait son premier retrait. {brand} la paie ; 0 DA : pas de prime."), admNumber(s, "referralBonus", "DA"), "set-referralBonus"))}
         ${group(t("Délais"), t("Contrôle et rémunération des clips validés."),
           admSettingRow(t("Rétention des gains"), t("Délai de contrôle avant qu'un gain validé devienne retirable."), admNumber(s, "holdDays", "jours"), "set-holdDays")
           + admSettingRow(t("Fenêtre de gains"), t("Après la validation, chaque nouveau relevé paie les vues supplémentaires pendant ce délai."), admNumber(s, "earningDays", "jours"), "set-earningDays"))}
-        ${card(`${cardHeader(t("Primes du classement hebdomadaire"), t("Versées chaque lundi aux 10 clippers qui ont le plus de vues validées la semaine écoulée. ClipBoost les paie : aucune campagne n'est débitée. 0 DA : pas de prime pour ce rang."))}
+        ${card(`${cardHeader(t("Primes du classement hebdomadaire"), t("Versées chaque lundi aux 10 clippers qui ont le plus de vues validées la semaine écoulée. {brand} les paie : aucune campagne n'est débitée. 0 DA : pas de prime pour ce rang."))}
           <div class="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-5">${(s.weeklyPrizes || []).map((v, i) => `<div data-field class="grid min-w-0 gap-1.5"><label for="set-prize-${i}" class="text-small font-medium text-fg">${lbOrdinal(i + 1)}</label>
             ${unitInput(`id="set-prize-${i}" name="prize-${i}" type="text" value="${fmt(v)}" autocomplete="off"`, t("DA"))}</div>`).join("")}</div>`)}
         <div data-sticky-save class="sticky bottom-[calc(4.75rem+env(safe-area-inset-bottom))] z-20 flex items-center justify-between gap-4 rounded-card border border-line bg-surface/95 px-4 py-3 shadow-popover backdrop-blur-md sm:px-5 lg:bottom-4">
@@ -991,8 +991,8 @@ function aCompte() {
 // Messages : questions des clippers sur les campagnes de ClipBoost, auxquelles l'équipe répond (#/admin/messages/<campagne>~<clipper>).
 const aMessages = () => msgTeamPage({
   area: "admin", form: "adm-msg", campaignAction: "adm-camp", filter: state.adm.msgFilter || "all", filterAction: "adm-msg-filter",
-  title: t("Messages"), text: t("Les questions des clippers sur les campagnes de ClipBoost. Les agences répondent elles-mêmes sur leurs campagnes."),
-  emptyText: t("Les clippers peuvent poser une question depuis la fiche de chaque campagne de ClipBoost active ou en pause."),
+  title: t("Messages"), text: t("Les questions des clippers sur les campagnes de {brand}. Les agences répondent elles-mêmes sur leurs campagnes."),
+  emptyText: t("Les clippers peuvent poser une question depuis la fiche de chaque campagne de {brand} active ou en pause."),
 });
 
 // ---------- Académie ----------
@@ -1125,7 +1125,7 @@ function admCampSheet(m) {
   const short = pending && o ? Math.max(0, cost - credit) : 0;
   const clips = db.publications.filter((p) => p.campaign === c.id);
   const edit = pending ? admCampEdit(c, o) : null;
-  const commissionLabel = t("Commission ClipBoost ({rate} %)", { rate: c.commissionRate });
+  const commissionLabel = t("Commission {brand} ({rate} %)", { rate: c.commissionRate });
 
   const cover = `<div class="cover relative aspect-[16/9] overflow-hidden rounded-tile sm:aspect-[5/2]" ${coverAttr(c)}>${coverArt(c, "text-6xl")}
       <span class="absolute start-3 top-3 rounded-badge bg-night/80 px-2 py-1 text-small font-semibold tabular-nums text-on-brand backdrop-blur-sm"><span class="inline-flex items-baseline gap-1">${da(c.rate)}<span class="text-[11px] font-medium text-on-brand/80">${t("/ 1k vues")}</span></span></span>
@@ -1142,7 +1142,7 @@ function admCampSheet(m) {
           <p class="truncate text-xs text-fg-subtle"><span dir="ltr">${esc(o.email || "")}</span>${o.contact ? ` · <span dir="auto">${esc(o.contact)}</span>` : ""}</p></div>
         <div class="shrink-0 text-end"><p class="text-xs text-fg-subtle">${t("Crédit")}</p><p class="text-sm font-semibold">${money(credit)}</p></div></div>`
     : `<div class="mt-4 flex items-center gap-3 rounded-tile border border-line p-3"><span class="grid size-9 shrink-0 place-items-center rounded-full bg-brand text-on-brand">${icon("play", "size-4 translate-x-px", true)}</span>
-        <div class="min-w-0"><p class="text-xs text-fg-subtle">${t("Organisateur")}</p><p class="text-sm font-medium text-fg">${c.ownerId ? t("Agence supprimée") : t("Campagne gérée par ClipBoost")}</p></div></div>`;
+        <div class="min-w-0"><p class="text-xs text-fg-subtle">${t("Organisateur")}</p><p class="text-sm font-medium text-fg">${c.ownerId ? t("Agence supprimée") : t("Campagne gérée par {brand}")}</p></div></div>`;
 
   // Catégorie hors liste : précisée par l'agence (« Autre »), affichée telle quelle.
   const custom = !CATEGORIES.includes(c.category);
@@ -1173,13 +1173,13 @@ function admCampSheet(m) {
           ? `<div class="mt-3" id="adm-credit-short">${shortAlert()}</div>`
           : `<p class="mt-3 text-xs tabular-nums text-fg-subtle">${t("Crédit actuel de l'agence : {credit}. Il restera {left} après l'approbation.", { credit: da(credit), left: da(credit - cost) })}</p>`)
           : `<p class="mt-3 text-xs text-fg-subtle">${t("Rien n'a été débité du crédit de l'agence.")}</p>`}`
-      : summary([[t("Budget de la campagne"), money(c.budget)], [t("Commission ClipBoost"), t("Aucune")]]);
+      : summary([[t("Budget de la campagne"), money(c.budget)], [t("Commission {brand}"), t("Aucune")]]);
   } else {
     const remaining = Math.max(0, c.budget - c.spent);
     money_ = `<div class="mt-2">${progress(c.spent, c.budget, { aria: t("Budget consommé de {title}", { title: c.title }) })}</div>
       ${summary([[t("Budget"), money(c.budget)], [t("Consommé (gains des clippers)"), money(c.spent)],
         [c.status === "Terminée" ? (o ? t("Rendu à l'agence") : t("Non consommé")) : t("Restant"), money(remaining)],
-        o ? [commissionLabel, money(Math.round((c.spent * c.commissionRate) / 100))] : [t("Commission ClipBoost"), t("Aucune")]])}`;
+        o ? [commissionLabel, money(Math.round((c.spent * c.commissionRate) / 100))] : [t("Commission {brand}"), t("Aucune")]])}`;
   }
   const budget = `${admH3(t("Budget et financement"))}${money_}`;
 
@@ -1336,8 +1336,8 @@ function admAppealSheet(m) {
       <button type="button" data-action="adm-clip" data-id="${p.id}" class="${btn("link", "", "ms-auto text-small")}">${t("Fiche d'examen du clip")}</button></div>`;
   const decision = pending ? ""
     : `<div class="mt-4">${alertBox(a.status === "Acceptée" ? "success" : "danger", `<p class="font-medium">${a.status === "Acceptée"
-        ? t("Recours accepté le {date} par {name} : le clip est validé.", { date: date(a.decidedAt), name: esc(decider ? decider.name : "ClipBoost") })
-        : t("Recours refusé le {date} par {name} : le clip reste refusé.", { date: date(a.decidedAt), name: esc(decider ? decider.name : "ClipBoost") })}</p>${a.decisionNote ? `<p class="mt-0.5 break-words" dir="auto">${t("Motif : {reason}", { reason: esc(a.decisionNote) })}</p>` : ""}`)}</div>`;
+        ? t("Recours accepté le {date} par {name} : le clip est validé.", { date: date(a.decidedAt), name: esc(decider ? decider.name : BRAND) })
+        : t("Recours refusé le {date} par {name} : le clip reste refusé.", { date: date(a.decidedAt), name: esc(decider ? decider.name : BRAND) })}</p>${a.decisionNote ? `<p class="mt-0.5 break-words" dir="auto">${t("Motif : {reason}", { reason: esc(a.decisionNote) })}</p>` : ""}`)}</div>`;
   const tiles = `${admH3(t("Le clip"))}
     <dl class="mt-2 grid grid-cols-3 gap-2">
       ${admTile(t("Vues relevées"), fmt(p.views), t("seuil {views}", { views: fmt(viewsFor(c, c.minPayout)) }))}
@@ -1390,7 +1390,7 @@ LIVE.admReason = (d) => ({ count: `${fmt(String(d.reason || "").length)}${NB}/${
 const ADM_CAMP_REASONS = [
   ["Budget incohérent", "Le budget, le tarif et le plafond par clip ne sont pas cohérents entre eux."],
   ["Règles trop vagues", "Les règles de la campagne sont trop vagues : précisez ce que les clips doivent montrer."],
-  ["Marque non autorisée", "Cette marque ou ce produit ne peut pas être promu sur ClipBoost."],
+  ["Marque non autorisée", "Cette marque ou ce produit ne peut pas être promu sur {brand}."],
   ["Photo inappropriée", "La photo de la campagne n'est pas appropriée : remplacez-la."],
   ["Marque à préciser", "Les informations sur la marque sont insuffisantes : précisez qui finance la campagne."],
 ];
@@ -1538,8 +1538,8 @@ function adminModal() {
   // dont Facebook), avec la marque en plus ; publiée aussitôt, sans crédit d'agence. campaignForm attend des textes traduits.
   if (m.type === "new-campaign") {
     return modalShell({
-      title: t("Nouvelle campagne"), description: t("Créée par ClipBoost, elle est immédiatement visible par les clippers."), size: "xl", form: "adm-campaign", live: "campaign",
-      body: campaignForm("adm-campaign", t("Publier la campagne"), t("Campagne gérée directement par ClipBoost : aucun crédit d'agence n'est prélevé.")),
+      title: t("Nouvelle campagne"), description: t("Créée par {brand}, elle est immédiatement visible par les clippers."), size: "xl", form: "adm-campaign", live: "campaign",
+      body: campaignForm("adm-campaign", t("Publier la campagne"), t("Campagne gérée directement par {brand} : aucun crédit d'agence n'est prélevé.")),
       footer: `${cancel()}<button type="submit" class="${btn("primary")}">${t("Publier la campagne")}</button>`,
     });
   }

@@ -23,29 +23,35 @@ function t(s, params) {
     if (typeof entry === "string") out = entry;
     else if (entry && typeof entry === "object") out = entry.other || s;
   }
-  return params ? String(out).replace(/\{(\w+)\}/g, (m, k) => (k in params ? String(params[k]) : m)) : out;
+  if (params) out = String(out).replace(/\{(\w+)\}/g, (m, k) => (k in params ? String(params[k]) : m));
+  return withBrand(out);
 }
+
+// Nom de la plateforme : les textes l'écrivent « {brand} », remplacé ici par BRAND (brand.json, injecté par web/build.mjs).
+const withBrand = (s) => (typeof s === "string" ? s.replaceAll("{brand}", BRAND) : s);
 
 // Forme plurielle d'un mot selon n : en français « 0 ou 1 → singulier » ; en anglais et en arabe, Intl.PluralRules.
 // L'entrée de traduction est cherchée sous la forme plurielle française (many), puis singulière (one).
 function tPlural(n, one, many) {
   const a = Math.abs(n);
-  if (LANG === "fr") return a <= 1 ? one : many;
+  if (LANG === "fr") return withBrand(a <= 1 ? one : many);
   const dict = I18N[LANG], entry = dict[many] !== undefined ? dict[many] : dict[one];
   let cat = "other";
   try { cat = new Intl.PluralRules(LOCALES[LANG].intl).select(a); } catch (e) { cat = a === 1 ? "one" : "other"; }
-  if (entry && typeof entry === "object") return entry[cat] || entry.other || many;
+  if (entry && typeof entry === "object") return withBrand(entry[cat] || entry.other || many);
   return t(cat === "one" ? one : many);
 }
 
 // Texte venu du serveur : traduction exacte, sinon premier motif qui correspond, sinon le texte d'origine.
+// Le serveur écrit le nom de la plateforme en toutes lettres : il est remis en « {brand} » pour chercher la traduction.
 function tServer(s) {
   if (LANG === "fr" || !s) return s;
-  const exact = I18N[LANG][s];
-  if (typeof exact === "string") return exact;
+  const key = String(s).replaceAll(BRAND, "{brand}");
+  const exact = I18N[LANG][key];
+  if (typeof exact === "string") return withBrand(exact);
   for (const [rx, out] of I18N_RX[LANG]) {
-    const m = String(s).match(rx);
-    if (m) return out.replace(/\$(\d)/g, (_, i) => (m[+i] !== undefined ? tServer(m[+i]) : ""));
+    const m = key.match(rx);
+    if (m) return withBrand(out.replace(/\$(\d)/g, (_, i) => (m[+i] !== undefined ? tServer(withBrand(m[+i])) : "")));
   }
   return s;
 }

@@ -12,6 +12,7 @@ import { ApiError, badRequest, forbidden, notFound } from "../http";
 import { newId, newRef } from "../ids";
 import { link } from "../links";
 import { validateRecharge } from "./wallet";
+import { BRAND_NAME } from "../../brand";
 
 const T = schema.transactions;
 const fmt = (n: number) => `${n.toLocaleString("fr-FR").replace(/\u202f|\xa0/g, " ")} DA`;
@@ -40,7 +41,7 @@ export async function startOnlineTopUp(user: User, amount: number, method: Onlin
   try {
     const back = `${origin}/espace${link.agencyBudget(id)}`;
     const checkout = await createCheckout({
-      amount, method, transactionId: id, description: `Recharge ClipBoost ${ref}`, locale: user.locale,
+      amount, method, transactionId: id, description: `Recharge ${BRAND_NAME} ${ref}`, locale: user.locale,
       successUrl: back, failureUrl: back, webhookUrl: `${origin}/api/payments/chargily/webhook`,
     });
     await db.update(T).set({ providerRef: checkout.id }).where(eq(T.id, id));

@@ -12,12 +12,13 @@ import type { User } from "../lib/server/auth";
 import { STARTER_LESSONS } from "../lib/server/academy-lessons";
 import { academyState, createLesson, deleteLesson, moveLesson, updateLesson } from "../lib/server/services/academy";
 import { lessonSchema } from "../lib/server/validation";
+import { BRAND_NAME } from "../lib/brand";
 
 const dir = mkdtempSync(join(tmpdir(), "clipboost-academy-"));
 process.env.PGLITE_DIR = join(dir, "db");
 after(() => rmSync(dir, { recursive: true, force: true }));
 
-const as = (role: User["role"]) => ({ id: role, role, name: "Équipe ClipBoost" }) as User;
+const as = (role: User["role"]) => ({ id: role, role, name: `Équipe ${BRAND_NAME}` }) as User;
 
 test("migration 0011 : les leçons de départ, identiques à celles de la version autonome", async () => {
   const db = await getDb();
@@ -45,5 +46,5 @@ test("services de l'Académie : visibilité selon le rôle, création, modificat
   await assert.rejects(moveLesson(id, "down"), /Leçon introuvable/);
   assert.equal((await academyState(admin)).length, 5);
   const log = (await (await getDb()).select().from(schema.activity)).map((a) => a.text);
-  assert.ok(log.includes("Leçon « Brouillon » publiée dans l'Académie par Équipe ClipBoost."));
+  assert.ok(log.includes(`Leçon « Brouillon » publiée dans l'Académie par Équipe ${BRAND_NAME}.`));
 });

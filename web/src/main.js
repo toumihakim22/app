@@ -558,7 +558,7 @@ function dismissModal() {
 function pageTitle(area) {
   const view = navView(area, state.route.view), n = AREAS[area].nav().find((x) => x.id === view), title = t(AREAS[area].title);
   const label = n ? t(n.label) : area === "admin" && view === "compte" ? t("Mon compte") : "";
-  return label ? `${label} · ${title} — ClipBoost` : `${title} — ClipBoost`;
+  return label ? `${label} · ${title} — ${BRAND}` : `${title} — ${BRAND}`;
 }
 
 function render() {
@@ -591,7 +591,7 @@ function render() {
   const toasts = document.getElementById("toasts");
   root.innerHTML = `${html}<div id="toasts" aria-live="polite" class="pointer-events-none fixed inset-x-0 bottom-20 z-[60] flex flex-col items-center gap-2 px-4 lg:bottom-6"></div>`;
   if (toasts) root.querySelector("#toasts").replaceWith(toasts);
-  document.title = area === "auth" ? `${{ connexion: t("Connexion"), inscription: t("Inscription"), "mot-de-passe": t("Mot de passe oublié") }[state.route.view]} — ClipBoost` : pageTitle(area);
+  document.title = area === "auth" ? `${{ connexion: t("Connexion"), inscription: t("Inscription"), "mot-de-passe": t("Mot de passe oublié") }[state.route.view]} — ${BRAND}` : pageTitle(area);
   // Saisie en cours (modale, formulaires de la page) remise en place avant tout placement du focus (le bouton qui avait
   // ouvert une modale empilée peut vivre dans un récapitulatif en direct).
   restoreDraft();

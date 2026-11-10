@@ -1,5 +1,6 @@
 import { testimonials } from "@/data/landing";
 import SectionTitle from "./SectionTitle";
+import { BRAND_NAME } from "../../lib/brand";
 
 // Fonds d'avatars (palette AA, texte blanc ≥ 5:1) : classes complètes, Tailwind ne détecte pas une classe concaténée.
 const avatarColors = ["bg-avatar-1", "bg-avatar-2", "bg-avatar-3"];
@@ -9,7 +10,7 @@ export default function Testimonials() {
   return (
     <section className="bg-surface py-20 lg:py-28">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <SectionTitle eyebrow="Témoignages" title="Ils utilisent déjà ClipBoost" />
+        <SectionTitle eyebrow="Témoignages" title={`Ils utilisent déjà ${BRAND_NAME}`} />
         <div className="mt-12 grid gap-4 md:grid-cols-2 lg:mt-14 lg:grid-cols-3">
           {testimonials.map((t, i) => (
             <figure key={t.name} className="flex flex-col rounded-card border border-line bg-surface p-6 shadow-card md:last:col-span-2 lg:last:col-span-1">

@@ -11,6 +11,7 @@ import { OAuthError, type OAuthIdentity, type OAuthMode, type OAuthRole } from "
 import { hashPassword, strongEnough, verifyPassword } from "../password";
 import { getSettings } from "../settings";
 import { referralFields } from "./referrals";
+import { BRAND_NAME } from "../../brand";
 
 const CODE_MINUTES = 10;
 const MAX_ATTEMPTS = 5;
@@ -24,7 +25,7 @@ async function issueCode(email: string, purpose: "signup" | "reset", payload: Si
   const code = String(randomInt(0, 1_000_000)).padStart(6, "0");
   const values = { email, purpose, codeHash: hashCode(email, code), payload, attempts: 0, expiresAt: new Date(Date.now() + CODE_MINUTES * 60_000) };
   await db.insert(schema.emailCodes).values(values).onConflictDoUpdate({ target: [schema.emailCodes.email, schema.emailCodes.purpose], set: values });
-  const subject = purpose === "signup" ? "Votre code de vérification ClipBoost" : "Réinitialisation de votre mot de passe ClipBoost";
+  const subject = purpose === "signup" ? `Votre code de vérification ${BRAND_NAME}` : `Réinitialisation de votre mot de passe ${BRAND_NAME}`;
   await sendEmail(email, subject, `Votre code : ${code}\n\nIl expire dans ${CODE_MINUTES} minutes. Si vous n'êtes pas à l'origine de cette demande, ignorez cet email.`);
   // En développement uniquement, le code est renvoyé à l'interface pour pouvoir tester sans boîte mail.
   return process.env.NODE_ENV !== "production" && !process.env.RESEND_API_KEY ? code : undefined;
@@ -89,7 +90,7 @@ export async function login(emailInput: string, password: string) {
   if (!user || !user.passwordHash || !ok) throw badRequest("Email ou mot de passe incorrect");
   if (user.status === "Suspendu") throw forbidden("Votre compte est suspendu. Contactez le support.");
   const settings = await getSettings();
-  if (settings.maintenance && user.role !== "admin") throw forbidden("ClipBoost est en maintenance, réessayez plus tard");
+  if (settings.maintenance && user.role !== "admin") throw forbidden(`${BRAND_NAME} est en maintenance, réessayez plus tard`);
   await createSession(user.id);
   return user;
 }
