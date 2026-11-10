@@ -5,6 +5,7 @@ import { load, save, STORAGE_FULL, STORAGE_KEY } from "../web/offline/db";
 import { closeWeek } from "../web/offline/leaderboard";
 import { weekClosedText, weekKey, weekNumber, weekStart } from "../lib/server/rules";
 import { lessonBodyHtml, lessonText, movedOrder } from "../lib/server/academy";
+import { BRAND_NAME, BRAND_SLUG } from "../lib/brand";
 
 // API simulée de la version autonome (web/offline/), exécutée dans Node avec un localStorage en mémoire.
 // quota : taille maximale d'une valeur enregistrée (simule un stockage plein), sans limite par défaut.
@@ -187,7 +188,7 @@ test("anciennes notifications sans lien : lien déduit du texte", async () => {
   const store = JSON.parse(storage.get(STORAGE_KEY)!);
   // Les demandes de badge, les recours, les paiements en ligne, les messages, les primes du classement et du parrainage sont postérieurs
   // aux liens : une ancienne copie n'en contient pas.
-  for (const n of store.notifications) if (!/badge de vérification| conteste le refus du clip | a payé en ligne une recharge |^(Nouvelle question|Nouveau message|Réponse) de |^L'équipe ClipBoost a répondu |^Vous êtes \d+(er|e) du classement | a fait son premier retrait : /.test(n.text)) delete n.link;
+  for (const n of store.notifications) if (!/badge de vérification| conteste le refus du clip | a payé en ligne une recharge |^(Nouvelle question|Nouveau message|Réponse) de |^L'équipe .+ a répondu |^Vous êtes \d+(er|e) du classement | a fait son premier retrait : /.test(n.text)) delete n.link;
   storage.set(STORAGE_KEY, JSON.stringify(store));
   const after = await linksOf();
   let exact = 0, total = 0;
@@ -324,7 +325,7 @@ test("profil : photo, couverture, langue ; recharge par carte Visa / Mastercard"
 test("connexion Google, Apple ou Discord simulée et mot de passe défini ensuite", async () => {
   await call("POST", "/api/auth/logout");
   const google = { provider: "google", name: "Sofiane Haddad", email: "Sofiane@Gmail.com" };
-  assert.deepEqual(await call("POST", "/api/auth/oauth/demo", { ...google, mode: "login" }), { status: 400, data: { error: "Aucun compte ClipBoost n'est associé à cette adresse. Inscrivez-vous d'abord." } });
+  assert.deepEqual(await call("POST", "/api/auth/oauth/demo", { ...google, mode: "login" }), { status: 400, data: { error: `Aucun compte ${BRAND_NAME} n'est associé à cette adresse. Inscrivez-vous d'abord.` } });
   assert.deepEqual(await call("POST", "/api/auth/oauth/demo", { ...google, email: "admin@clipboost.dz" }), { status: 403, data: { error: "Les comptes administrateurs se connectent avec leur mot de passe." } });
   assert.deepEqual(await call("POST", "/api/auth/oauth/demo", { ...google, role: "agence" }), { status: 200, data: { ok: true, role: "agence" } });
   let me = (await state()).me;
@@ -493,7 +494,7 @@ test("relevé des vues : bouton de l'admin, relevé dû toutes les 6 heures, his
   assert.equal(byTitle(pubs1, "Le taxi clandestin").views, byTitle(pubs0, "Le taxi clandestin").views);
   // Clip validé encore dans sa fenêtre de gains : ses vues supplémentaires sont payées.
   assert.ok(byTitle(pubs1, "But de la 89e en slow-motion", "TikTok").paid > byTitle(pubs0, "But de la 89e en slow-motion", "TikTok").paid);
-  assert.match(s1.activity[0].text, /^Vues relevées par Équipe ClipBoost : 11 clips mis à jour\.$/);
+  assert.equal(s1.activity[0].text, `Vues relevées par Équipe ${BRAND_NAME} : 11 clips mis à jour.`);
   assert.equal(s1.tracking.summary.by, "admin");
 
   // Saisie de l'équipe avec les likes : le score est recalculé (le pic reste, les likes ne sont plus suspects).
@@ -572,7 +573,7 @@ test("recours : un clip refusé contesté une seule fois, accepté (clip validé
   assert.deepEqual([validated.status, validated.paid, s.campaigns.find((c: { id: string }) => c.id === rire.id).spent - spent], ["Validée", 512, 512]);
   assert.deepEqual([s.appeals[0].status, s.appeals[0].decisionNote, s.appeals[0].decidedBy], ["Acceptée", reason, adminId]);
   assert.match(s.appeals[0].decidedAt, /^\d{4}-\d{2}-\d{2}T/);
-  assert.equal(s.activity[0].text, "Recours de Lina Mansouri sur « Sketch du marché » accepté par Équipe ClipBoost : clip validé (512 DA).");
+  assert.equal(s.activity[0].text, `Recours de Lina Mansouri sur « Sketch du marché » accepté par Équipe ${BRAND_NAME} : clip validé (512 DA).`);
   assert.deepEqual(await call("POST", `/api/appeals/${seeded.id}/review`, { approve: false, reason: "Changement d'avis" }), { status: 400, data: { error: "Ce recours a déjà été traité" } });
   // Le clipper reçoit la décision et son motif (lien vers le clip) et le gain, retirable après la rétention.
   await login("lina@clipboost.dz");
@@ -621,7 +622,7 @@ test("recours : un clip refusé contesté une seule fois, accepté (clip validé
   assert.deepEqual(await call("POST", `/api/appeals/${created.data.id}/review`, { approve: false, reason: no }), { status: 200, data: { ok: true } });
   s = await state();
   assert.deepEqual([s.publications.find((p: Pub) => p.id === clipId).status, s.appeals[0].status, s.appeals[0].decisionNote], ["Refusée", "Refusée", no]);
-  assert.equal(s.activity[0].text, "Recours de Lina Mansouri sur « Le prof de maths » refusé par Équipe ClipBoost.");
+  assert.equal(s.activity[0].text, `Recours de Lina Mansouri sur « Le prof de maths » refusé par Équipe ${BRAND_NAME}.`);
   await login("lina@clipboost.dz");
   s = await state();
   assert.deepEqual([s.notifications[0].text, s.notifications[0].link], [`Recours refusé pour « Le prof de maths » : ${no}.`, `#/clipper/publications/${clipId}`]);
@@ -755,7 +756,7 @@ test("factures et reçus PDF, export CSV des transactions", async () => {
   // Export CSV : BOM, « ; », gains compris, filtres.
   const csv = await offlineApi.fetch("/api/admin/transactions/export", { method: "GET" });
   assert.equal(csv.headers.get("Content-Type"), "text/csv; charset=utf-8");
-  assert.match(csv.headers.get("Content-Disposition") ?? "", /^attachment; filename="clipboost-transactions-\d{4}-\d{2}-\d{2}\.csv"$/);
+  assert.match(csv.headers.get("Content-Disposition") ?? "", new RegExp(`^attachment; filename="${BRAND_SLUG}-transactions-\\d{4}-\\d{2}-\\d{2}\\.csv"$`));
   const body = new TextDecoder("utf-8", { ignoreBOM: true }).decode(await csv.arrayBuffer());
   assert.ok(body.startsWith("\ufeffRéférence;Date;Heure;Type;Utilisateur;Email;Rôle;Libellé;Montant (DA);Frais (DA);Statut;Moyen;Document\r\n"));
   const rows = body.trim().split("\r\n").slice(1).map((l) => l.split(";"));
@@ -841,7 +842,7 @@ test("messagerie par campagne : question du clipper, réponse de l'agence ou de 
   assert.deepEqual(await call("POST", `/api/campaigns/${festival.id}/messages`, { body: "Bonjour", clipperId: yacine }), { status: 403, data: { error: "Cette campagne appartient à une agence : c'est elle qui répond à ses clippers" } });
   assert.equal((await call("POST", `/api/campaigns/${lina.campaignId}/messages`, { body: "Publiez-le en vidéo classique, c'est accepté.", clipperId: lina.clipperId })).status, 201);
   await login("lina@clipboost.dz");
-  assert.equal((await state()).notifications[0].text, "L'équipe ClipBoost a répondu sur « Les Sketchs du Bled » : « Publiez-le en vidéo classique, c'est accepté. »");
+  assert.equal((await state()).notifications[0].text, `L'équipe ${BRAND_NAME} a répondu sur « Les Sketchs du Bled » : « Publiez-le en vidéo classique, c'est accepté. »`);
 
   // Agence : aucune conversation sur une campagne qui ne lui appartient pas ; non connecté : 401.
   await login("hoggar@clipboost.dz");
@@ -1110,7 +1111,7 @@ test("académie : leçons publiées pour les clippers, création, modification, 
   const s = await state();
   assert.ok(!s.lessons.some((l: Lesson) => l.id === id));
   const log = s.activity.map((a: { text: string }) => a.text);
-  for (const line of ["Leçon « Brouillon secret » ajoutée en brouillon par Équipe ClipBoost.", "Leçon « Leçon publiée » publiée dans l'Académie par Équipe ClipBoost.", "Leçon « Leçon publiée » supprimée par Équipe ClipBoost."]) assert.ok(log.includes(line), line);
+  for (const line of [`Leçon « Brouillon secret » ajoutée en brouillon par Équipe ${BRAND_NAME}.`, `Leçon « Leçon publiée » publiée dans l'Académie par Équipe ${BRAND_NAME}.`, `Leçon « Leçon publiée » supprimée par Équipe ${BRAND_NAME}.`]) assert.ok(log.includes(line), line);
 });
 
 test("académie : rendu du corps des leçons (paragraphes, puces, étapes, échappement)", () => {

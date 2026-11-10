@@ -11,6 +11,8 @@ import { fileURLToPath } from "node:url";
 import postcss from "postcss";
 import tailwind from "@tailwindcss/postcss";
 
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+
 const dir = dirname(fileURLToPath(import.meta.url));
 const args = process.argv.slice(2);
 const offline = args.includes("--offline");
@@ -31,11 +33,14 @@ const dictionaries = existsSync(i18nDir)
   ? readdirSync(i18nDir, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name).sort()
     .flatMap((lang) => readdirSync(join(i18nDir, lang)).filter((f) => f.endsWith(".js")).sort().map((f) => join("i18n", lang, f)))
   : [];
+// Nom de la plateforme (brand.json, voir lib/brand.ts) : constante BRAND de l'application, et titre de la page.
+const brand = JSON.parse(readFileSync(join(dir, "..", "brand.json"), "utf8"));
+if (!brand.name?.trim() || !/^[a-z0-9-]+$/.test(brand.slug ?? "")) throw new Error("brand.json : « name » non vide et « slug » en minuscules (lettres, chiffres, tirets) sont obligatoires.");
 const files = ["i18n.js", ...dictionaries, "data.js", "ui.js", "auth.js", "clipper.js", "admin.js", "agency.js", "main.js"];
 const parts = files.map((f) => `// ---- web/src/${f.replace(/\\/g, "/")} ----\n${readFileSync(join(dir, "src", f), "utf8")}`);
-const js = `${readFileSync(join(dir, "theme.js"), "utf8")}\n(function () {\n"use strict";\n${parts.join("\n")}\n})();`;
+const js = `${readFileSync(join(dir, "theme.js"), "utf8")}\n(function () {\n"use strict";\nconst BRAND = ${JSON.stringify(brand.name)};\n${parts.join("\n")}\n})();`;
 
-const template = readFileSync(join(dir, "index.html"), "utf8");
+const template = readFileSync(join(dir, "index.html"), "utf8").replaceAll("%BRAND%", () => esc(brand.name));
 const html = offline
   ? await (await import("./offline/build.mjs")).buildOffline({ template, css, js })
   : template

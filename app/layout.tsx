@@ -1,11 +1,12 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { themeInitScript } from "./theme-init";
+import { BRAND_NAME } from "../lib/brand";
 
 export const metadata: Metadata = {
-  title: "ClipBoost — Transformez vos clips en revenus",
+  title: `${BRAND_NAME} — Transformez vos clips en revenus`,
   description:
-    "ClipBoost connecte les créateurs de clips et les marques. Choisissez une campagne, publiez vos clips et suivez vos gains.",
+    `${BRAND_NAME} connecte les créateurs de clips et les marques. Choisissez une campagne, publiez vos clips et suivez vos gains.`,
   icons: { icon: "/favicon.svg" },
 };
 

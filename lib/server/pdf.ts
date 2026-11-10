@@ -2,6 +2,7 @@
 // version autonome (web/offline/). Polices standard du lecteur PDF (Helvetica, Helvetica-Bold : rien à embarquer),
 // encodage WinAnsi (cp1252), format A4, en points (1/72 de pouce), origine en bas à gauche. Texte, traits et rectangles
 // pleins : de quoi composer une facture ou un reçu (lib/server/documents.ts).
+import { BRAND_NAME } from "../brand";
 
 export const A4 = { width: 595.28, height: 841.89 };
 
@@ -132,7 +133,7 @@ export function pdfDocument(pages: PdfPage[], info: { title?: string; author?: s
     `<< /Type /Pages /Kids [${pages.map((_, i) => `${pageId(i)} 0 R`).join(" ")}] /Count ${pages.length} >>`,
     "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>",
     "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>",
-    `<< /Producer ${infoString("ClipBoost")}${info.title ? ` /Title ${infoString(info.title)}` : ""}${info.author ? ` /Author ${infoString(info.author)}` : ""} /CreationDate (${pdfDate(info.createdAt ?? new Date())}) >>`,
+    `<< /Producer ${infoString(BRAND_NAME)}${info.title ? ` /Title ${infoString(info.title)}` : ""}${info.author ? ` /Author ${infoString(info.author)}` : ""} /CreationDate (${pdfDate(info.createdAt ?? new Date())}) >>`,
   ];
   for (const [i, p] of pages.entries()) {
     const content = p.ops.join("\n");

@@ -244,6 +244,7 @@ Les routes répondent en JSON (`{ ok: true, … }` ou `{ error: "message" }`), s
 ## Tests
 
 ```bash
+npm run lint                               # contrôle du code (ESLint, réglages dans eslint.config.mjs) : aucun avertissement toléré
 npm test                                   # règles de calcul et score de risque, semaines du classement (heure d'Alger) et rangs, PDF (structure, factures et reçus) et export CSV, numérotation des documents et migration 0007, leçons de départ de la migration 0011 et services de l'Académie (base PGlite temporaire), API simulée hors ligne (relevé des vues, clôture du classement hebdomadaire payée une seule fois, parrainage et prime au seul premier retrait, Académie avec leçons cachées aux clippers tant qu'elles ne sont pas publiées, retour au français et contenu échappé, recours et paiement en ligne compris), lecture des bios et des statistiques (API des plateformes simulées), paiement Chargily (signature et webhook sur une base PGlite temporaire, API de Chargily simulée)
 npm run dev                                # puis, dans un autre terminal :
 BASE_URL=http://localhost:3000 npx tsx tests/api-flow.mts   # parcours API complet
@@ -251,9 +252,20 @@ BASE_URL=http://localhost:3000 npx tsx tests/api-flow.mts   # parcours API compl
 
 Le parcours API crée une agence et un clipper, envoie des images, finance et approuve une campagne, en modifie, refuse, relance et supprime une autre, traite une demande de badge, vérifie les comptes TikTok et Instagram du clipper (mode simulé : lancez-le sans les clés des API), valide un clip publié sur deux plateformes et vérifie les paiements (dont le paiement en ligne simulé : lancez-le sans `CHARGILY_SECRET_KEY`), les rôles et la protection CSRF. Il lit le code de vérification renvoyé en développement : lancez-le contre `npm run dev`, pas contre `npm start`.
 
+## Nom de la plateforme
+
+Le nom affiché partout (accueil, application, PDF, emails, version autonome) vient d'un seul fichier, `brand.json` :
+
+```json
+{ "name": "ClipBoost", "slug": "clipboost" }
+```
+
+`name` est le nom affiché, `slug` sa version en minuscules (noms des fichiers exportés). Après une modification, relancez `npm run dev` ou `npm run build`. Côté serveur et accueil, le nom se lit avec `BRAND_NAME` (`lib/brand.ts`) ; dans l'application `/espace`, les textes écrivent `{brand}` et `t()` le remplace (`web/src/i18n.js`). Ce qui reste volontairement à part (adresses email, cookies, clés du navigateur, leçons de départ de l'Académie) est listé en tête de `lib/brand.ts`.
+
 ## Structure
 
 ```
+brand.json           nom de la plateforme (voir « Nom de la plateforme »)
 app/                 accueil (React) et routes API
 components/landing/  sections de la page d'accueil
 lib/server/          base de données, authentification, règles et services

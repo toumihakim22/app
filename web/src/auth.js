@@ -93,12 +93,12 @@ function authReferralNote(role) {
 const AUTH_OAUTH_ERRORS = {
   denied: "Connexion annulée.",
   state: "La connexion a expiré, réessayez.",
-  no_account: "Aucun compte ClipBoost n'est associé à ce compte. Inscrivez-vous d'abord.",
+  no_account: "Aucun compte {brand} n'est associé à ce compte. Inscrivez-vous d'abord.",
   admin: "Les comptes administrateurs se connectent avec leur mot de passe.",
   suspended: "Ce compte est suspendu.",
   signups_closed: "Les inscriptions sont fermées pour le moment.",
   config: "Ce mode de connexion n'est pas disponible.",
-  maintenance: "ClipBoost est en maintenance, réessayez plus tard.",
+  maintenance: "{brand} est en maintenance, réessayez plus tard.",
 };
 function authOAuthMessage({ code, provider }) {
   if (code === "email") {
@@ -148,7 +148,7 @@ function authOAuthBlock(mode) {
   return `<div class="grid gap-3">
       <div class="grid gap-3" role="group" aria-label="${esc(signup ? t("S'inscrire avec un compte existant") : t("Se connecter avec un compte existant"))}">${list.map((p) =>
         `<button type="button" data-action="auth-oauth" data-value="${p}"${window.__CLIPBOOST_OFFLINE__ ? ' aria-haspopup="dialog"' : ""} class="${btn("secondary", "lg", "w-full aria-busy:pointer-events-none")}">${AUTH_PROVIDERS[p].mark("shrink-0")}<span>${t("Continuer avec {provider}", { provider: AUTH_PROVIDERS[p].name })}</span></button>`).join("")}</div>
-      ${signup ? `<p class="text-center text-xs leading-5 text-fg-subtle">${t("En continuant, vous acceptez les {terms} et la {privacy} de ClipBoost.", authLegalLinks())}</p>` : ""}
+      ${signup ? `<p class="text-center text-xs leading-5 text-fg-subtle">${t("En continuant, vous acceptez les {terms} et la {privacy} de {brand}.", authLegalLinks())}</p>` : ""}
     </div>
     <div class="flex items-center gap-3 text-small text-fg-subtle"><span class="h-px flex-1 bg-line" aria-hidden="true"></span>${t("ou")}<span class="h-px flex-1 bg-line" aria-hidden="true"></span></div>`;
 }
@@ -241,10 +241,10 @@ function authModal() {
       <button type="button" data-action="close-modal" class="${btn("link", "", "text-small")}" aria-label="${esc(t("Changer de type de compte"))}">${t("Changer")}</button>
     </div>` : "";
   const nameHint = signup && agency ? t("Ce nom sera celui de votre agence\u00a0: vous pourrez le modifier dans votre profil.") : "";
-  const emailHint = signup ? t("Si un compte ClipBoost utilise déjà cette adresse, vous y serez connecté.") : t("Un compte ClipBoost doit déjà utiliser cette adresse.");
+  const emailHint = signup ? t("Si un compte {brand} utilise déjà cette adresse, vous y serez connecté.") : t("Un compte {brand} doit déjà utiliser cette adresse.");
   return modalShell({
     title: t("Continuer avec {provider}", { provider: P.name }),
-    description: signup ? t("Inscription à ClipBoost") : t("Connexion à ClipBoost"),
+    description: signup ? t("Inscription à {brand}") : t("Connexion à {brand}"),
     form: "auth-oauth",
     body: `<div class="grid gap-5">
       ${serverError}
@@ -254,7 +254,7 @@ function authModal() {
           ${AUTH_EXCHANGE}
           <span class="grid size-12 place-items-center rounded-full bg-brand text-on-brand">${icon("play", "size-5 translate-x-px", true)}</span>
         </div>
-        <p class="mt-3 text-sm text-fg-muted">${t("{provider} partagera votre nom et votre adresse email avec ClipBoost.", { provider: P.name })}</p>
+        <p class="mt-3 text-sm text-fg-muted">${t("{provider} partagera votre nom et votre adresse email avec {brand}.", { provider: P.name })}</p>
       </div>
       ${alertBox("info", t("Simulation\u00a0: aucune donnée n'est envoyée à {provider}.", { provider: P.name }))}
       ${field(t("Nom"), `<input name="name" value="${esc(cur("name"))}" autocomplete="name" maxlength="80" class="${inputCls}"${inv("name")}/>`, nameHint, bad("name"))}
@@ -320,11 +320,11 @@ function authLayout(content) {
       <div class="relative flex flex-1 flex-col">
         <div>${logo({ tone: "text-on-brand" })}</div>
         <h2 class="mt-auto max-w-md text-h2 text-on-brand text-balance">${t("Vos clips méritent d'être payés.")}</h2>
-        <p class="mt-4 max-w-md text-lg leading-8 text-on-brand/80">${t("Clippers et agences se retrouvent sur ClipBoost\u00a0: les uns monétisent leurs vidéos courtes, les autres lancent des campagnes qui touchent tout le public.")}</p>
+        <p class="mt-4 max-w-md text-lg leading-8 text-on-brand/80">${t("Clippers et agences se retrouvent sur {brand}\u00a0: les uns monétisent leurs vidéos courtes, les autres lancent des campagnes qui touchent tout le public.")}</p>
         <ul class="mt-10 grid gap-4">${authGuarantees().map(([ic, text]) =>
           `<li class="flex items-center gap-3 text-sm text-on-brand/80"><span class="grid size-8 shrink-0 place-items-center rounded-full bg-on-brand/10 text-on-brand" aria-hidden="true">${icon(ic, "size-4")}</span>${text}</li>`).join("")}</ul>
         <div class="mt-10 opacity-90" aria-hidden="true">${cumulativeChart([0, 2, 1, 4, 3, 6, 5, 8, 9, 7, 11, 12], { h: "h-20", onNight: true, label: t("Illustration") })}</div>
-        <p class="mt-10 flex items-center gap-2 text-xs text-on-brand/65">© 2026 ClipBoost · ${t("Fait en Algérie")} ${flagDz()}</p>
+        <p class="mt-10 flex items-center gap-2 text-xs text-on-brand/65">© 2026 ${esc(BRAND)} · ${t("Fait en Algérie")} ${flagDz()}</p>
       </div>
     </aside>
     <div class="flex min-w-0 flex-col px-4 py-6 sm:px-10">
@@ -474,7 +474,7 @@ function viewInscription() {
   const a = state.auth, f = a.form;
   if (!db.settings.signupsOpen) {
     return authLayout(`<h1 class="sr-only">${t("Créer un compte")}</h1>
-      ${emptyState("lock", t("Inscriptions fermées"), t("Les nouvelles inscriptions sont temporairement suspendues par l'équipe ClipBoost. Revenez bientôt\u00a0!"), `<a href="#/connexion" class="${btn("secondary")}">${t("J'ai déjà un compte")}</a>`)}`);
+      ${emptyState("lock", t("Inscriptions fermées"), t("Les nouvelles inscriptions sont temporairement suspendues par l'équipe {brand}. Revenez bientôt\u00a0!"), `<a href="#/connexion" class="${btn("secondary")}">${t("J'ai déjà un compte")}</a>`)}`);
   }
   if (a.step === "code") {
     return authLayout(`
@@ -554,7 +554,7 @@ const devCodeNotice = (devCode) => alertBox("warning", `<p>${window.__CLIPBOOST_
 // traduit à l'affichage. name : nom du compte,
 // repris par la connexion simulée avec Google, Apple ou Discord quand son adresse est saisie.
 const AUTH_DEMO = [
-  { label: "Admin", name: "Équipe ClipBoost", email: "admin@clipboost.dz", password: "AdminClip2026" },
+  { label: "Admin", name: `Équipe ${BRAND}`, email: "admin@clipboost.dz", password: "AdminClip2026" },
   { label: "Clipper", name: "Yacine Benali", email: "yacine@clipboost.dz", password: "Clipboost2026" },
   { label: "Agence", name: "Tassili Sport", email: "agence@clipboost.dz", password: "Clipboost2026" },
   { label: "Agence, badge demandé", name: "Hoggar Boissons", email: "hoggar@clipboost.dz", password: "Clipboost2026" },

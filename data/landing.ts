@@ -1,5 +1,6 @@
 // Données fictives utilisées uniquement pour la démonstration de la landing page.
 // Typographie (§3.3) : espace insécable U+00A0 dans les nombres, les dates et avant « ? », « : » et « % ».
+import { BRAND_NAME } from "../lib/brand";
 
 export type Transaction = {
   date: string;
@@ -68,7 +69,7 @@ export const testimonials = [
 
 export const faqs = [
   {
-    q: "Qui peut devenir clipper sur ClipBoost\u00a0?",
+    q: `Qui peut devenir clipper sur ${BRAND_NAME}\u00a0?`,
     a: "Toute personne majeure qui publie des vidéos courtes sur TikTok, Instagram, YouTube Shorts ou Facebook. Aucun nombre minimum d'abonnés n'est demandé pour commencer.",
   },
   {

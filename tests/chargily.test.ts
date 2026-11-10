@@ -12,6 +12,7 @@ import { chargilyApi, parseEvent, signPayload, verifySignature } from "../lib/se
 import { getDb, schema } from "../lib/server/db";
 import { resumeOnlineTopUp, startOnlineTopUp } from "../lib/server/services/payments";
 import { POST as webhook } from "../app/api/payments/chargily/webhook/route";
+import { BRAND_NAME } from "../lib/brand";
 
 const KEY = "test_sk_clipboost_unit_0123456789";
 const dir = mkdtempSync(join(tmpdir(), "clipboost-chargily-"));
@@ -124,7 +125,7 @@ test("création du paiement chez Chargily, reprise : état relu et réglé", asy
   assert.deepEqual(sent, {
     amount: 75000, currency: "dzd", payment_method: "edahabia", success_url: `https://clipboost.example/espace#/agence/budget/${started.id}`,
     failure_url: `https://clipboost.example/espace#/agence/budget/${started.id}`, webhook_endpoint: "https://clipboost.example/api/payments/chargily/webhook",
-    locale: "fr", description: `Recharge ClipBoost ${started.ref}`, metadata: { transaction_id: started.id },
+    locale: "fr", description: `Recharge ${BRAND_NAME} ${started.ref}`, metadata: { transaction_id: started.id },
   });
   // Webhook perdu : « Reprendre le paiement » relit l'état chez Chargily, payé, la recharge est validée.
   assert.deepEqual(await resumeOnlineTopUp(agency, started.id), { status: "Validé", checkoutUrl: null });

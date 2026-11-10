@@ -29,7 +29,7 @@ Object.assign(I18N.en, {
   "Clipper Or": "Gold clipper",
 
   // Vue d'ensemble
-  "Pilotez l'activité de ClipBoost en temps réel.": "Monitor ClipBoost activity in real time.",
+  "Pilotez l'activité de {brand} en temps réel.": "Monitor {brand} activity in real time.",
   "Mode maintenance activé.": "Maintenance mode is on.",
   "Les clippers et les agences ne peuvent pas se connecter.": "Clippers and agencies can't log in.",
   "Modifier dans les réglages": "Change in settings",
@@ -49,7 +49,7 @@ Object.assign(I18N.en, {
   "Clippers inscrits": "Registered clippers",
   "sur {count}": "out of {count}",
   "{n} vues": "{n} views",
-  "Commissions ClipBoost": "ClipBoost commissions",
+  "Commissions {brand}": "{brand} commissions",
   "sur le budget consommé": "on the budget spent",
   "Nouvelles inscriptions": "New sign-ups",
   "sur {days}": "over {days}",
@@ -80,7 +80,7 @@ Object.assign(I18N.en, {
   "Badge demandé": "Badge requested",
   "Suspendre": "Suspend",
   "Réactiver": "Reactivate",
-  "Ces agences demandent le badge bleu. Vérifiez leur identité avant de l'accorder : il s'affiche à côté de leur nom, partout sur ClipBoost.": "These agencies are requesting the blue badge. Verify their identity before granting it: it appears next to their name everywhere on ClipBoost.",
+  "Ces agences demandent le badge bleu. Vérifiez leur identité avant de l'accorder : il s'affiche à côté de leur nom, partout sur {brand}.": "These agencies are requesting the blue badge. Verify their identity before granting it: it appears next to their name everywhere on {brand}.",
   "Aucun message joint à la demande.": "No message attached to the request.",
   "Accorder le badge": "Grant badge",
 
@@ -362,7 +362,7 @@ Object.assign(I18N.en, {
   "Règles trop vagues": "Rules too vague",
   "Les règles de la campagne sont trop vagues : précisez ce que les clips doivent montrer.": "The campaign rules are too vague: specify what the clips must show.",
   "Marque non autorisée": "Brand not allowed",
-  "Cette marque ou ce produit ne peut pas être promu sur ClipBoost.": "This brand or product can't be promoted on ClipBoost.",
+  "Cette marque ou ce produit ne peut pas être promu sur {brand}.": "This brand or product can't be promoted on {brand}.",
   "Photo inappropriée": "Inappropriate photo",
   "La photo de la campagne n'est pas appropriée : remplacez-la.": "The campaign photo isn't appropriate: please replace it.",
   "Marque à préciser": "Brand unclear",
@@ -396,9 +396,9 @@ Object.assign(I18N.en, {
   "Réinitialiser la démo ?": "Reset the demo?",
   "Les comptes créés, campagnes, clips et paiements enregistrés dans ce navigateur seront effacés, puis les données d'exemple recréées. Vous serez déconnecté.": "Accounts, campaigns, clips and payments saved in this browser will be erased, then the sample data will be recreated. You'll be logged out.",
   "Effacer et recommencer": "Erase and start over",
-  "Créée par ClipBoost, elle est immédiatement visible par les clippers.": "Created by ClipBoost, it's immediately visible to clippers.",
+  "Créée par {brand}, elle est immédiatement visible par les clippers.": "Created by {brand}, it's immediately visible to clippers.",
   "Publier la campagne": "Publish campaign",
-  "Campagne gérée directement par ClipBoost : aucun crédit d'agence n'est prélevé.": "Campaign managed directly by ClipBoost: no agency credit is charged.",
+  "Campagne gérée directement par {brand} : aucun crédit d'agence n'est prélevé.": "Campaign managed directly by {brand}: no agency credit is charged.",
 
   // Confirmations et erreurs de saisie
   "{name} : compte suspendu": "{name}: account suspended",
@@ -496,7 +496,7 @@ Object.assign(I18N.en, {
   "Montant": "Amount",
   "Recharges": "Top-ups",
   "Retrait minimum": "Minimum withdrawal",
-  "Commission ClipBoost": "ClipBoost commission",
+  "Commission {brand}": "{brand} commission",
   "Fenêtre de gains": "Earning window",
   "Enregistrer": "Save",
   "Photo de profil": "Profile photo",
@@ -507,8 +507,8 @@ Object.assign(I18N.en, {
   "Clair, sombre, ou selon le réglage de votre appareil.": "Light, dark, or matching your device setting.",
   "Aucune règle particulière.": "No specific rules.",
   "Campagne introuvable": "Campaign not found",
-  "Commission ClipBoost ({rate} %)": "ClipBoost commission ({rate}%)",
-  "Campagne gérée par ClipBoost": "Campaign managed by ClipBoost",
+  "Commission {brand} ({rate} %)": "{brand} commission ({rate}%)",
+  "Campagne gérée par {brand}": "Campaign managed by {brand}",
   "Marque": "Brand",
   "Catégorie": "Category",
   "Rémunération des clippers": "Clipper pay",
@@ -603,8 +603,8 @@ Object.assign(I18N.en, {
   "La date de fin doit suivre la date de début.": "The end date must come after the start date.",
   "Export CSV téléchargé": "CSV export downloaded",
   // Messagerie par campagne (Messages)
-  "Les questions des clippers sur les campagnes de ClipBoost. Les agences répondent elles-mêmes sur leurs campagnes.": "Clippers' questions about ClipBoost campaigns. Agencies answer on their own campaigns.",
-  "Les clippers peuvent poser une question depuis la fiche de chaque campagne de ClipBoost active ou en pause.": "Clippers can ask a question from the page of each active or paused ClipBoost campaign.",
+  "Les questions des clippers sur les campagnes de {brand}. Les agences répondent elles-mêmes sur leurs campagnes.": "Clippers' questions about {brand} campaigns. Agencies answer on their own campaigns.",
+  "Les clippers peuvent poser une question depuis la fiche de chaque campagne de {brand} active ou en pause.": "Clippers can ask a question from the page of each active or paused {brand} campaign.",
 });
 
 // Classement hebdomadaire (page Classement, primes dans les réglages)
@@ -625,7 +625,7 @@ Object.assign(I18N.en, {
   "Aucune semaine clôturée": "No closed weeks",
   "La semaine écoulée est clôturée au premier relevé des vues du lundi.": "The past week is closed by Monday's first view reading.",
   "Primes du classement hebdomadaire": "Weekly leaderboard prizes",
-  "Versées chaque lundi aux 10 clippers qui ont le plus de vues validées la semaine écoulée. ClipBoost les paie : aucune campagne n'est débitée. 0 DA : pas de prime pour ce rang.": "Paid every Monday to the 10 clippers with the most approved views in the past week. ClipBoost pays them: no campaign is charged. 0 DA: no prize for that rank.",
+  "Versées chaque lundi aux 10 clippers qui ont le plus de vues validées la semaine écoulée. {brand} les paie : aucune campagne n'est débitée. 0 DA : pas de prime pour ce rang.": "Paid every Monday to the 10 clippers with the most approved views in the past week. {brand} pays them: no campaign is charged. 0 DA: no prize for that rank.",
   "Annonce, montants, délais et primes s'appliquent à tout le site dès l'enregistrement.": "Announcement, amounts, delays and prizes apply to the whole site as soon as they are saved.",
   "Prime du {rank} : indiquez un nombre entier entre 0 et 1 000 000.": "{rank} prize: enter a whole number between 0 and 1,000,000.",
 });
@@ -635,7 +635,7 @@ Object.assign(I18N.en, {
   "Parrainé par": "Referred by",
   "Personne": "No one",
   "Prime de parrainage": "Referral bonus",
-  "Versée au parrain quand son filleul fait son premier retrait. ClipBoost la paie ; 0 DA : pas de prime.": "Paid to the referrer when their referral makes a first withdrawal. ClipBoost pays it; 0 DA: no bonus.",
+  "Versée au parrain quand son filleul fait son premier retrait. {brand} la paie ; 0 DA : pas de prime.": "Paid to the referrer when their referral makes a first withdrawal. {brand} pays it; 0 DA: no bonus.",
 });
 
 // Académie (aAcademie, admLessonModal, suppression, publication, ordre).

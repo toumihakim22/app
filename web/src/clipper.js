@@ -136,8 +136,8 @@ const clOrgOf = (c) => { const a = clAgencyOf(c); return { key: clOrgKey(c), nam
 const clOrgType = (o) => (o.agency ? `${t("Agence")} · ${esc(t(o.country || "Algérie"))}` : t("Marque partenaire"));
 // Présentation : la bio de l'agence, sinon une phrase factuelle (marque gérée par ClipBoost, ancienneté de l'agence).
 const clOrgAbout = (o) => (o.bio ? esc(o.bio) : o.agency
-  ? t("Agence membre de ClipBoost depuis le {date}.", { date: date(o.since) })
-  : t("Campagnes de la marque {name}, publiées et vérifiées par l'équipe ClipBoost.", { name: esc(o.name) }));
+  ? t("Agence membre de {brand} depuis le {date}.", { date: date(o.since) })
+  : t("Campagnes de la marque {name}, publiées et vérifiées par l'équipe {brand}.", { name: esc(o.name) }));
 // Pastille de l'organisateur (carré arrondi : une structure, pas une personne) : sa photo, sinon ses initiales sur la
 // même teinte que l'avatar de l'agence. size : taille et extras (anneau, marge négative sur une couverture) ;
 // radius : arrondi (plus serré pour la petite pastille des cartes).
@@ -562,7 +562,7 @@ function cDecouvrir() {
       ? emptyState("target", t("Aucune campagne rejointe"), t("Rejoignez une campagne pour soumettre vos clips et suivre vos gains."), showAll)
       : scope === "Favoris"
         ? emptyState("heart", t("Aucun favori"), t("Touchez le cœur d'une campagne pour la retrouver ici."), showAll)
-        : emptyState("compass", t("Aucune campagne active pour le moment"), t("Les nouvelles campagnes apparaissent ici dès leur validation par l'équipe ClipBoost."))
+        : emptyState("compass", t("Aucune campagne active pour le moment"), t("Les nouvelles campagnes apparaissent ici dès leur validation par l'équipe {brand}."))
     : !list.length
       ? emptyState("search", t("Aucune campagne ne correspond"), t("Essayez une autre catégorie ou effacez la recherche."), `<button type="button" data-action="reset-filters" class="${btn("secondary")}">${t("Effacer les filtres")}</button>`)
       : layout === "list"
@@ -641,8 +641,8 @@ function cAgence() {
         <h1 class="mt-3 break-words text-title-sm text-fg sm:text-title">${esc(o.name)}${o.verified ? `${NB}${verifiedBadge("size-5 sm:size-6", t("Agence vérifiée"))}` : ""}</h1>
         <p class="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-small text-fg-muted">${o.agency
           ? `${badge(t("Agence"), "info")}<span class="inline-flex items-center gap-1.5">${esc(t(country))}${country === "Algérie" ? flagDz() : ""}</span>`
-          : `${badge(t("Marque partenaire"), "brand")}<span>${t("Campagne gérée par ClipBoost")}</span>`}</p>
-        <p class="mt-1 text-xs text-fg-subtle">${o.agency ? t("Membre depuis le {date}", { date: date(o.since) }) : t("Sur ClipBoost depuis le {date}", { date: date(o.since) })}</p>
+          : `${badge(t("Marque partenaire"), "brand")}<span>${t("Campagne gérée par {brand}")}</span>`}</p>
+        <p class="mt-1 text-xs text-fg-subtle">${o.agency ? t("Membre depuis le {date}", { date: date(o.since) }) : t("Sur {brand} depuis le {date}", { date: date(o.since) })}</p>
         ${o.bio || !o.agency ? `<p class="mt-4 max-w-2xl text-sm leading-6 text-fg-muted">${clOrgAbout(o)}</p>` : ""}
       </div>
     </section>
@@ -673,7 +673,7 @@ function cPublications() {
 // pour une campagne de ClipBoost, répond. Une campagne active ou en pause accepte de nouveaux messages.
 const clThreadOf = (campaignId) => msgThreads().find((x) => x.campaignId === campaignId) || null;
 const clAskable = (c) => c.status === "Active" || c.status === "En pause";
-const clAnswerer = (c) => (c.ownerId ? clOrgName(c) : t("l'équipe ClipBoost"));
+const clAnswerer = (c) => (c.ownerId ? clOrgName(c) : t("l'équipe {brand}"));
 
 function cMessages() {
   const id = state.route.item || "", threads = msgThreads().filter((x) => campaignById(x.campaignId));
@@ -689,7 +689,7 @@ function cMessages() {
       const o = clOrgOf(c), who = clAnswerer(c);
       conversation = msgConversation({
         back: "#/clipper/messages",
-        head: `${coverThumb(c)}<div class="min-w-0"><p class="truncate text-sm font-semibold text-fg">${esc(c.title)}</p><p class="truncate text-xs text-fg-subtle">${c.ownerId ? `${esc(o.name)}${o.verified ? `${NB}${verifiedBadge("size-3.5")}` : ""}` : t("Réponses de l'équipe ClipBoost")}</p></div>`,
+        head: `${coverThumb(c)}<div class="min-w-0"><p class="truncate text-sm font-semibold text-fg">${esc(c.title)}</p><p class="truncate text-xs text-fg-subtle">${c.ownerId ? `${esc(o.name)}${o.verified ? `${NB}${verifiedBadge("size-3.5")}` : ""}` : t("Réponses de l'équipe {brand}")}</p></div>`,
         actions: `<button type="button" data-action="open-campaign" data-id="${c.id}" class="${btn("secondary", "sm", "shrink-0")}">${icon("info", "size-4")}<span class="max-sm:hidden">${t("Voir la campagne")}</span></button>`,
         messages: x ? msgMine(x, true).messages : [],
         empty: `<div class="grid h-full place-items-center">${emptyState("message", t("Posez votre question"), t("{name} vous répondra ici. Vous serez prévenu par une notification.", { name: esc(who) }), "", { inCard: true })}</div>`,
@@ -806,7 +806,7 @@ function cAcademie() {
   return `${pageHeader(t("Académie"), t("Des tutoriels courts pour monter vos clips, accrocher dès les premières secondes et choisir les formats qui marchent."))}
     ${all.length ? `<div class="mt-6">${chips("cl-acad-cat", cat, options, t("Catégorie"))}</div>
       <div class="mt-4 grid grid-cols-[minmax(0,1fr)] gap-4 sm:grid-cols-2 lg:gap-5 xl:grid-cols-3">${list.map(clLessonCard).join("")}</div>`
-      : `<div class="mt-6">${emptyState("academy", t("Aucune leçon pour le moment"), t("L'équipe ClipBoost publiera bientôt de nouveaux tutoriels."))}</div>`}`;
+      : `<div class="mt-6">${emptyState("academy", t("Aucune leçon pour le moment"), t("L'équipe {brand} publiera bientôt de nouveaux tutoriels."))}</div>`}`;
 }
 // Leçon ouverte : en-tête, corps mis en forme (HTML échappé par le serveur), vidéo éventuelle, leçon suivante et autres leçons.
 function clLessonPage(all, id) {
@@ -836,10 +836,10 @@ function cParrainage() {
   const r = db.referral, bonus = db.settings.referralBonus || 0, hold = db.settings.holdDays;
   if (!r || !r.code) return `${pageHeader(t("Parrainage"), "")}<div class="mt-6">${emptyState("gift", t("Parrainage indisponible"), t("Rechargez la page pour afficher votre lien de parrainage."))}</div>`;
   const url = clReferralLink(r.code);
-  const share = `https://wa.me/?text=${encodeURIComponent(t("Rejoins-moi sur ClipBoost : publie des clips et sois payé à la vue. Inscris-toi avec mon lien : {link}", { link: url }))}`;
+  const share = `https://wa.me/?text=${encodeURIComponent(t("Rejoins-moi sur {brand} : publie des clips et sois payé à la vue. Inscris-toi avec mon lien : {link}", { link: url }))}`;
   const rule = bonus > 0 ? t("Recevez {montant} quand votre filleul fait son premier retrait", { montant: `<strong class="font-semibold">${da(bonus)}</strong>` }) : t("Aucune prime de parrainage pour le moment : invitez quand même vos amis, la prime pourra revenir.");
 
-  const linkCard = card(`${cardHeader(t("Votre lien de parrainage"), t("Partagez-le avec d'autres clippers : ils s'inscrivent sur ClipBoost avec votre code."))}
+  const linkCard = card(`${cardHeader(t("Votre lien de parrainage"), t("Partagez-le avec d'autres clippers : ils s'inscrivent sur {brand} avec votre code."))}
     <div class="mt-4 flex flex-col gap-2 sm:flex-row">
       <label class="min-w-0 flex-1"><span class="sr-only">${t("Lien de parrainage")}</span><input readonly value="${esc(url)}" dir="ltr" class="${inputCls} truncate font-mono text-small"/></label>
       <div class="grid grid-cols-2 gap-2 sm:flex sm:shrink-0">
@@ -875,7 +875,7 @@ function cParrainage() {
   ];
   const rulesCard = card(`${cardHeader(t("Comment ça marche"))}<ul class="mt-3 grid gap-2.5">${rules.map((x) => `<li class="flex gap-2.5 text-small text-fg-muted">${icon("check", "mt-0.5 size-4 shrink-0 text-income")}<span>${x}</span></li>`).join("")}</ul>`, "p-5");
 
-  return `${pageHeader(t("Parrainage"), t("Invitez d'autres clippers sur ClipBoost et recevez une prime à leur premier retrait."))}
+  return `${pageHeader(t("Parrainage"), t("Invitez d'autres clippers sur {brand} et recevez une prime à leur premier retrait."))}
     <div class="mt-6 grid grid-cols-[minmax(0,1fr)] items-start gap-4 lg:grid-cols-[minmax(0,1fr)_340px] lg:gap-5">
       <div class="grid min-w-0 grid-cols-[minmax(0,1fr)] content-start gap-4 lg:gap-5">${linkCard}
         <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4">${kpis[0]}${kpis[1]}<div class="col-span-2 sm:col-span-1">${kpis[2]}</div></div>
@@ -1012,7 +1012,7 @@ function cParametres() {
   const methodLabel = (m) => (m === "RIB bancaire"
     ? `<span class="sm:hidden">${t("RIB")}</span><span class="hidden sm:inline">${t("RIB bancaire")}</span>`
     : esc(t(m)));
-  const payout = card(`${cardHeader(t("Moyen de retrait"), t("Vos gains sont versés sur ce compte, après validation de chaque demande par l'équipe ClipBoost."))}
+  const payout = card(`${cardHeader(t("Moyen de retrait"), t("Vos gains sont versés sur ce compte, après validation de chaque demande par l'équipe {brand}."))}
         <form data-form="payout" class="mt-5 grid gap-5">
           <fieldset><legend class="mb-1.5 text-small font-medium text-fg">${t("Type de compte")}</legend>
             <div class="grid grid-cols-3 gap-2">${PAYOUT_METHODS.map((m) => `<label class="block min-w-0"><input type="radio" name="payoutMethod" value="${m}" ${current === m ? "checked" : ""} class="peer sr-only"/><span class="${SEG_CHOICE}"><span class="hidden sm:contents">${icon(CL_PAYOUT_ICON[m] || "bank")}</span><span class="truncate">${methodLabel(m)}</span></span></label>`).join("")}</div></fieldset>
@@ -1161,7 +1161,7 @@ function clSubmitModal(m) {
     : `<div class="flex items-center gap-2.5 rounded-tile border border-dashed border-line-strong px-3.5 py-3 text-small text-fg-subtle">${icon("link", "size-4 shrink-0")}<span>${mode === "one" ? t("Choisissez la plateforme pour coller le lien de votre clip.") : t("Les champs de lien s'affichent selon votre choix.")}</span></div>`;
 
   return modalShell({
-    title: t("Soumettre un clip"), description: t("Le clip sera vérifié par l'équipe ClipBoost avant validation."), form: "submit", live: "clip", size: "lg",
+    title: t("Soumettre un clip"), description: t("Le clip sera vérifié par l'équipe {brand} avant validation."), form: "submit", live: "clip", size: "lg",
     body: `<div class="grid gap-5">
       ${field(t("Campagne"), `<span class="relative block"><select name="campaign" data-rerender class="${selectCls}"${campaignErr ? ' aria-invalid="true"' : ""}>${joined.map((x) => `<option value="${x.id}" ${x.id === c.id ? "selected" : ""}>${esc(x.title)} · ${rateShort(x.rate)}</option>`).join("")}</select>${CHEVRON}</span>`, "", campaignErr ? esc(campaignErr) : "")}
       <div class="grid gap-1.5" data-field><label class="contents"><span class="text-small font-medium text-fg">${t("Titre du clip")}</span><input name="title" required maxlength="100" value="${esc(d.title || "")}" placeholder="${t("Ex. Le but de l'année")}" autocomplete="off" autofocus class="${inputCls}"${titleErr ? ' aria-invalid="true"' : ""}/></label>${titleErr ? clErr(esc(titleErr)) : ""}</div>
@@ -1190,7 +1190,7 @@ function clAppealModal(m) {
   if (a) {
     const decided = a.status !== "En attente", day = date(a.decidedAt || a.createdAt);
     const decision = !decided
-      ? alertBox("info", t("L'équipe ClipBoost examine votre recours. Vous serez prévenu de sa décision par une notification."))
+      ? alertBox("info", t("L'équipe {brand} examine votre recours. Vous serez prévenu de sa décision par une notification."))
       : alertBox(a.status === "Acceptée" ? "success" : "danger", `${a.status === "Acceptée" ? t("Recours accepté le {date} : votre clip est validé.", { date: day }) : t("Recours refusé le {date} : le clip reste refusé.", { date: day })}${a.decisionNote ? `<span class="mt-1 block">${t("Motif de l'équipe : {note}", { note: esc(a.decisionNote) })}</span>` : ""}`);
     return modalShell({
       title: t("Votre recours"), description, size: "lg",
@@ -1209,7 +1209,7 @@ function clAppealModal(m) {
     title: t("Contester le refus"), description, form: "cl-appeal", live: "clAppeal", size: "lg",
     body: `<div class="grid gap-5">
       ${refusal}
-      ${alertBox("info", `<strong class="font-semibold">${t("Une seule contestation possible par clip.")}</strong> ${t("Expliquez pourquoi ce refus vous semble injustifié et joignez une capture d'écran qui le prouve. L'équipe ClipBoost revoit le clip et vous répond par une notification.")}`)}
+      ${alertBox("info", `<strong class="font-semibold">${t("Une seule contestation possible par clip.")}</strong> ${t("Expliquez pourquoi ce refus vous semble injustifié et joignez une capture d'écran qui le prouve. L'équipe {brand} revoit le clip et vous répond par une notification.")}`)}
       <div class="grid gap-1.5" data-field><label class="contents"><span class="text-small font-medium text-fg">${t("Votre message")}</span>
         <textarea name="message" rows="5" maxlength="1000" required autofocus dir="auto" placeholder="${esc(t("Ex. La musique vient de la bibliothèque audio libre de droits de la plateforme : la licence est sur la capture."))}" aria-describedby="cl-appeal-hint" class="${textareaCls}"></textarea></label>
         <span id="cl-appeal-hint" class="flex justify-between gap-3 text-xs text-fg-subtle"><span>${t("Entre 20 et 1 000 caractères.")}</span><span data-live-out="count" dir="ltr" class="shrink-0 tabular-nums">${LIVE.clAppeal({}).count}</span></span></div>
@@ -1389,7 +1389,7 @@ function handleClipperSubmit(form, data) {
       if (pick) pick.focus();
       return;
     }
-    return act("POST", `/api/clips/${encodeURIComponent(id)}/appeal`, { message, proof }, t("Contestation envoyée : l'équipe ClipBoost va revoir votre clip"), () => { state.modal = null; });
+    return act("POST", `/api/clips/${encodeURIComponent(id)}/appeal`, { message, proof }, t("Contestation envoyée : l'équipe {brand} va revoir votre clip"), () => { state.modal = null; });
   }
   if (form === "cl-msg") {
     const c = campaignById(state.route.item || ""), body = String(data.body || "").trim();

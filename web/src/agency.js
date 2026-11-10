@@ -34,11 +34,11 @@ const agRemovable = (c) => agEditable(c) && !(c.reserved > 0) && !(c.spent > 0);
 
 function agencyStatusHint(c) {
   return {
-    "En attente": t("En cours de vérification par l'équipe ClipBoost. Encore modifiable."),
+    "En attente": t("En cours de vérification par l'équipe {brand}. Encore modifiable."),
     "Active": t("Visible par les clippers."),
     "En pause": t("Masquée aux clippers, aucun nouveau clip."),
     "Terminée": t("Campagne archivée."),
-    "Refusée": t("Refusée par l'équipe ClipBoost. Modifiez-la pour la relancer."),
+    "Refusée": t("Refusée par l'équipe {brand}. Modifiez-la pour la relancer."),
   }[c.status] || "";
 }
 
@@ -144,7 +144,7 @@ function agOpen(modal) {
 function agOnboarding(u, pending) {
   const steps = [
     [t("Créez la campagne"), t("Budget, tarif pour 1 000 vues, seuil et plafond par clip.")],
-    [t("ClipBoost la vérifie"), t("Le budget et la commission de {rate} % sont débités à l'approbation.", { rate: db.settings.commissionRate })],
+    [t("{brand} la vérifie"), t("Le budget et la commission de {rate} % sont débités à l'approbation.", { rate: db.settings.commissionRate })],
     [t("Les clippers publient"), t("Vous ne payez que les vues des clips validés.")],
   ];
   return `<section class="rounded-card bg-night p-6 text-on-brand sm:p-8">
@@ -171,11 +171,11 @@ function agRefusedAlert(list) {
     const c = refused[0];
     const what = c.reviewNote
       ? t("« {title} » a été refusée : {reason}", { title: esc(c.title), reason: esc(agSentence(c.reviewNote)) })
-      : t("« {title} » a été refusée par l'équipe ClipBoost.", { title: esc(c.title) });
+      : t("« {title} » a été refusée par l'équipe {brand}.", { title: esc(c.title) });
     return alertBox("danger", `<p><span class="font-medium">${what}</span> ${t("Modifiez-la pour la relancer, ou supprimez-la.")}</p>
       <p class="mt-2 flex flex-wrap gap-x-4 gap-y-1"><button type="button" data-action="ag-edit" data-id="${c.id}" class="${btn("link")}">${t("Modifier et relancer")}</button><button type="button" data-action="ag-open" data-id="${c.id}" class="${btn("link")}">${t("Voir la campagne")}</button></p>`);
   }
-  return alertBox("danger", `<p><span class="font-medium">${plural(refused.length, "campagne a été refusée par l'équipe ClipBoost.", "campagnes ont été refusées par l'équipe ClipBoost.")}</span> ${t("Modifiez-les pour les relancer, ou supprimez-les.")}</p>
+  return alertBox("danger", `<p><span class="font-medium">${plural(refused.length, "campagne a été refusée par l'équipe {brand}.", "campagnes ont été refusées par l'équipe {brand}.")}</span> ${t("Modifiez-les pour les relancer, ou supprimez-les.")}</p>
     <p class="mt-2"><button type="button" data-action="ag-show-refused" class="${btn("link")}">${t("Voir les campagnes refusées")}</button></p>`);
 }
 
@@ -200,7 +200,7 @@ function gApercu() {
   const u = me(), list = myCampaigns(), clips = clipsOf(list.map((c) => c.id)), pending = agPendingCredit();
   const hello = t("Bonjour {name}", { name: esc((u.contact || u.name).split(" ")[0]) });
   const intro = t("{name} · activité au {date}", { name: esc(u.name), date: date(agToday()) });
-  if (!list.length) return `${pageHeader(hello, t("{name} · bienvenue sur ClipBoost", { name: esc(u.name) }))}<div class="mt-6">${agOnboarding(u, pending)}</div>`;
+  if (!list.length) return `${pageHeader(hello, t("{name} · bienvenue sur {brand}", { name: esc(u.name) }))}<div class="mt-6">${agOnboarding(u, pending)}</div>`;
 
   const { spent, engaged, left } = agTotals(list);
   const views = list.reduce((s, c) => s + campaignViews(c), 0), inReview = clips.filter((p) => p.status === "En attente").length;
@@ -293,8 +293,8 @@ function gCampagnes() {
     ? `<div class="grid gap-4 sm:grid-cols-2 lg:gap-5 xl:grid-cols-3">${list.map(agCampaignCard).join("")}</div>`
     : all.length
       ? emptyState("search", t("Aucune campagne ne correspond"), t("Essayez un autre statut ou effacez la recherche."), `<button type="button" data-action="ag-clear" class="${btn("secondary")}">${t("Effacer les filtres")}</button>`)
-      : emptyState("megaphone", t("Aucune campagne"), t("Créez votre première campagne : elle sera publiée après vérification par l'équipe ClipBoost."), agNewBtn());
-  return `${pageHeader(t("Mes campagnes"), t("Créez, suivez et pilotez vos campagnes. Chaque nouvelle campagne est vérifiée par ClipBoost avant publication : d'ici là, vous pouvez la modifier ou l'annuler."), all.length ? `<span class="lg:hidden">${agNewBtn()}</span>` : "")}
+      : emptyState("megaphone", t("Aucune campagne"), t("Créez votre première campagne : elle sera publiée après vérification par l'équipe {brand}."), agNewBtn());
+  return `${pageHeader(t("Mes campagnes"), t("Créez, suivez et pilotez vos campagnes. Chaque nouvelle campagne est vérifiée par {brand} avant publication : d'ici là, vous pouvez la modifier ou l'annuler."), all.length ? `<span class="lg:hidden">${agNewBtn()}</span>` : "")}
     ${all.length ? `<div class="mt-6 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
       ${searchInput("ag-q", state.ag.q, t("Rechercher une campagne"), t("Rechercher une campagne"), "w-full xl:max-w-xs")}
       ${segmented("ag-status", state.ag.status, statuses, t("Filtrer par statut"), { scroll: true })}
@@ -313,7 +313,7 @@ function gClips() {
   const body = list.length ? publicationsTable(list, { showUser: true, amountLabel: "Coût" })
     : all.length ? emptyState("film", none, t("Les autres clips restent visibles dans « Tous »."), `<button type="button" data-action="ag-clip-status" data-value="Toutes" class="${btn("secondary")}">${t("Voir tous les clips")}</button>`)
     : emptyState("film", t("Aucun clip reçu"), t("Dès qu'un clipper publie sur l'une de vos campagnes, son clip apparaît ici avec ses vues et son coût."));
-  return `${pageHeader(t("Clips reçus"), t("Les clips publiés par les clippers sur vos campagnes. Modération assurée par l'équipe ClipBoost."))}
+  return `${pageHeader(t("Clips reçus"), t("Les clips publiés par les clippers sur vos campagnes. Modération assurée par l'équipe {brand}."))}
     ${all.length ? `<div class="mt-6">${segmented("ag-clip-status", state.ag.clipStatus, statuses, t("Filtrer par statut"), { scroll: true })}</div>` : ""}
     <div class="${all.length ? "mt-4" : "mt-6"}">${body}</div>`;
 }
@@ -373,7 +373,7 @@ function gPaiement() {
   const simulated = !!(db.payments || {}).simulated, open = x.status === "En cours";
   const mark = x.method === "carte CIB" ? "CIB" : "Edahabia";
   const rows = [
-    [t("Marchand"), `<span class="font-medium text-fg">ClipBoost</span>`],
+    [t("Marchand"), `<span class="font-medium text-fg">${esc(BRAND)}</span>`],
     [t("Moyen de paiement"), `<span class="inline-flex items-center gap-2"><span class="hidden sm:inline-flex">${agBrandMark(mark)}</span><span class="whitespace-nowrap">${agOnlineLabel(x)}</span></span>`],
     [t("Référence"), `<span class="inline-flex items-center gap-1 text-fg">${agRef(x.ref)}${agCopyBtn(x.ref)}</span>`],
     [t("Date"), `<span class="tabular-nums">${date(x.date)}</span>`],
@@ -468,7 +468,7 @@ function gBudget() {
     ${sectionHeader(t("Par campagne"))}
     ${perCampaign}
     ${recharges.length ? `${sectionHeader(t("Recharges"))}${history}
-      <p class="mt-3 text-xs text-fg-subtle">${t("Carte Edahabia ou CIB : le crédit est ajouté dès que le paiement en ligne est confirmé. Virement ou carte Visa / Mastercard : dès que l'équipe ClipBoost confirme la réception de votre paiement.")}</p>` : ""}`;
+      <p class="mt-3 text-xs text-fg-subtle">${t("Carte Edahabia ou CIB : le crédit est ajouté dès que le paiement en ligne est confirmé. Virement ou carte Visa / Mastercard : dès que l'équipe {brand} confirme la réception de votre paiement.")}</p>` : ""}`;
 }
 
 // ---------- Profil de l'agence ----------
@@ -513,12 +513,12 @@ function agVerifyCard(u) {
         <p class="mt-1 text-small text-fg-muted">${t("Le badge bleu s'affiche à côté de son nom : sur sa page, sur ses campagnes et dans la liste des agences.")}</p></div></div>`);
   }
   const head = (right = "") => `<header class="flex flex-wrap items-center justify-between gap-2"><h2 class="flex items-center gap-2 text-section text-fg">${icon("shield", "size-5 text-fg-subtle")}${t("Badge de vérification")}</h2>${right}</header>`;
-  const intro = `<p class="mt-3 text-small text-fg-muted">${t("Le badge bleu {badge} montre aux clippers que votre agence a été vérifiée par l'équipe ClipBoost. Il s'affiche à côté de son nom, sur sa page et sur ses campagnes.", { badge: `<span aria-hidden="true">${verifiedBadge("size-4")}</span>` })}</p>`;
+  const intro = `<p class="mt-3 text-small text-fg-muted">${t("Le badge bleu {badge} montre aux clippers que votre agence a été vérifiée par l'équipe {brand}. Il s'affiche à côté de son nom, sur sa page et sur ses campagnes.", { badge: `<span aria-hidden="true">${verifiedBadge("size-4")}</span>` })}</p>`;
   const ask = (label) => `<button type="button" data-action="ag-verify" class="${btn("secondary", "md", "mt-4 w-full")}">${icon("send")}${label}</button>`;
   if (st === "pending") {
     return card(`${head(badge(t("En cours d'examen"), "warning", { ic: "clock" }))}
       <p class="mt-3 text-sm font-medium text-fg">${t("Demande en cours d'examen")}</p>
-      <p class="mt-0.5 text-small text-fg-muted">${t("L'équipe ClipBoost examine votre demande. Vous serez prévenu de sa décision par notification.")}</p>
+      <p class="mt-0.5 text-small text-fg-muted">${t("L'équipe {brand} examine votre demande. Vous serez prévenu de sa décision par notification.")}</p>
       ${note ? `<figure class="mt-3 rounded-tile bg-subtle p-3"><figcaption class="text-xs text-fg-subtle">${t("Votre message")}</figcaption><blockquote class="mt-1 whitespace-pre-line break-words text-small text-fg">${esc(note)}</blockquote></figure>` : ""}`);
   }
   if (st === "rejected") {
@@ -643,8 +643,8 @@ LIVE.campaign = (d) => {
     min: views(mn) || t("Gain minimum d'un clip"),
     max: mx && mx <= mn ? agHint(t("Doit dépasser le seuil."), true) : b && mx > b ? agHint(t("Ne peut pas dépasser le budget."), true) : views(mx) || t("Gain maximum d'un clip"),
     budget: `${summary(admin
-      ? [[t("Budget"), money(b)], [t("Commission ClipBoost"), t("Aucune")], [t("Engagé à la publication"), money(b), true]]
-      : [[t("Budget"), money(b)], [t("Commission ClipBoost ({rate} %)", { rate: commission }), money(fee)], [t("Débité à l'approbation"), money(cost), true]])}
+      ? [[t("Budget"), money(b)], [t("Commission {brand}"), t("Aucune")], [t("Engagé à la publication"), money(b), true]]
+      : [[t("Budget"), money(b)], [t("Commission {brand} ({rate} %)", { rate: commission }), money(fee)], [t("Débité à l'approbation"), money(cost), true]])}
       ${b && b < s.minBudget ? `<div class="mt-3">${alertBox("warning", t("Le budget minimum est de {amount}.", { amount: da(s.minBudget) }))}</div>`
         : !admin && cost > credit ? `<div class="mt-3">${alertBox("warning", `${t("Crédit actuel : {credit}. Il manque {missing} pour l'approbation.", { credit: da(credit), missing: `<strong class="font-semibold tabular-nums">${da(cost - credit)}</strong>` })}${waitingNote} <button type="button" data-action="ag-credit" class="${btn("link")}">${t("Recharger le crédit")}</button>`)}</div>`
         : !admin ? `<p class="mt-3 text-xs tabular-nums text-fg-subtle">${t("Crédit actuel : {credit}. Il restera {left} après l'approbation.", { credit: da(credit), left: da(credit - cost) })}</p>` : ""}`,
@@ -829,7 +829,7 @@ LIVE.budget = (d) => {
   }
   const cost = withCommission(a, c.commissionRate), fee = cost - a;
   return {
-    "": `${summary([[t("Ajouté au budget"), money(a)], [t("Commission ClipBoost ({rate} %)", { rate: c.commissionRate }), money(fee)], [t("Débité de votre crédit"), money(cost), true]])}
+    "": `${summary([[t("Ajouté au budget"), money(a)], [t("Commission {brand} ({rate} %)", { rate: c.commissionRate }), money(fee)], [t("Débité de votre crédit"), money(cost), true]])}
       <div class="mt-3">${cost > u.credit
         ? alertBox("warning", `${t("Crédit insuffisant : il manque {missing}.", { missing: `<strong class="font-semibold tabular-nums">${da(cost - u.credit)}</strong>` })} <button type="button" data-action="ag-credit" class="${btn("link")}">${t("Recharger le crédit")}</button>`)
         : `<p class="text-xs tabular-nums text-fg-subtle">${t("Crédit restant après l'opération : {amount}", { amount: da(u.credit - cost) })}</p>`}</div>`,
@@ -876,10 +876,10 @@ function agencyModal() {
   if (!m) return "";
   const cancel = `<button type="button" data-action="close-modal" class="${btn("ghost")}">${t("Annuler")}</button>`;
   const closeBtn = `<button type="button" data-action="close-modal" class="${btn("ghost")}">${t("Fermer")}</button>`;
-  const noReason = t("L'équipe ClipBoost n'a pas précisé de motif.");
+  const noReason = t("L'équipe {brand} n'a pas précisé de motif.");
   if (m.type === "ag-new") {
     return modalShell({
-      title: t("Nouvelle campagne"), description: t("Elle sera publiée après vérification par l'équipe ClipBoost."), size: "xl", form: "ag-campaign", live: "campaign",
+      title: t("Nouvelle campagne"), description: t("Elle sera publiée après vérification par l'équipe {brand}."), size: "xl", form: "ag-campaign", live: "campaign",
       body: campaignForm("ag-campaign", t("Envoyer pour validation"), t("Le budget non consommé vous est rendu à la fin de la campagne.")),
       footer: `${cancel}<button type="submit" class="${btn("primary")}">${t("Envoyer pour validation")}</button>`,
     });
@@ -898,7 +898,7 @@ function agencyModal() {
     const relaunch = c.status === "Refusée";
     return modalShell({
       title: relaunch ? t("Modifier et relancer") : t("Modifier la campagne"),
-      description: relaunch ? t("Corrigez la campagne : elle repassera en vérification par l'équipe ClipBoost.") : t("Elle reste en attente de vérification par l'équipe ClipBoost."),
+      description: relaunch ? t("Corrigez la campagne : elle repassera en vérification par l'équipe {brand}.") : t("Elle reste en attente de vérification par l'équipe {brand}."),
       size: "xl", form: "ag-edit", live: "campaign",
       body: `${relaunch ? alertBox("danger", `<p class="font-medium">${t("Motif du refus")}</p><p class="mt-0.5 break-words">${c.reviewNote ? esc(c.reviewNote) : noReason}</p>`) : ""}
         ${campaignForm("ag-edit", relaunch ? t("Relancer la campagne") : t("Enregistrer les modifications"), t("Rien n'est prélevé avant l'approbation. Le budget non consommé vous est rendu à la fin de la campagne."), c)}`,
@@ -933,14 +933,14 @@ function agencyModal() {
     ];
     const notice = refused
       ? alertBox("danger", `<p class="font-medium">${t("Motif du refus")}</p><p class="mt-0.5 break-words">${c.reviewNote ? esc(c.reviewNote) : noReason}</p><p class="mt-2">${t("Corrigez la campagne puis relancez-la : elle repassera en vérification. Vous pouvez aussi la supprimer.")}</p>`)
-      : pending ? alertBox("info", t("L'équipe ClipBoost vérifie la campagne avant sa mise en ligne. D'ici là, vous pouvez la modifier ou l'annuler : rien n'est prélevé sur votre crédit avant l'approbation."))
+      : pending ? alertBox("info", t("L'équipe {brand} vérifie la campagne avant sa mise en ligne. D'ici là, vous pouvez la modifier ou l'annuler : rien n'est prélevé sur votre crédit avant l'approbation."))
       : "";
     const short = pending && cost > u.credit
       ? `<div class="mt-3">${alertBox("warning", `${t("Crédit insuffisant pour l'approbation : il manque {missing}.", { missing: `<strong class="font-semibold tabular-nums">${da(cost - u.credit)}</strong>` })} <button type="button" data-action="ag-credit" class="${btn("link")}">${t("Recharger le crédit")}</button>`)}</div>` : "";
     const budgetBlock = live
       ? `<div class="mt-5"><p class="mb-2 text-small font-medium text-fg">${t("Budget")}</p>${progress(c.spent, c.budget, { aria: t("Budget consommé de {title}", { title: c.title }) })}
           <p class="mt-1.5 text-xs tabular-nums text-fg-subtle">${agClosed(c) ? t("Le budget non consommé a été rendu à votre crédit.") : t("Reste {amount} à consommer.", { amount: da(Math.max(0, c.budget - c.spent)) })}</p></div>`
-      : `${summary([[t("Budget"), money(c.budget)], [t("Commission ClipBoost ({rate} %)", { rate: c.commissionRate }), money(cost - c.budget)], [t("Débité à l'approbation"), money(cost), true]])}${short}`;
+      : `${summary([[t("Budget"), money(c.budget)], [t("Commission {brand} ({rate} %)", { rate: c.commissionRate }), money(cost - c.budget)], [t("Débité à l'approbation"), money(cost), true]])}${short}`;
     const [rmAction, rmIcon] = agRemoveAction(c);
     const remove = agRemovable(c) ? `<button type="button" data-action="${rmAction}" data-id="${c.id}" class="${btn("dangerSoft", "md", "sm:me-auto")}">${icon(rmIcon)}${refused ? t("Supprimer") : t("Annuler la campagne")}</button>` : "";
     const footer = !live ? `${remove}${agEditBtn(c, "md", "", "primary")}`
@@ -974,7 +974,7 @@ function agencyModal() {
     return modalShell({
       title: t("Ajouter du budget"), description: t("« {title} » · crédit disponible : {amount}", { title: esc(c.title), amount: da(u.credit) }), form: "ag-topup", live: "budget",
       body: `<div class="grid gap-3">
-          ${field(t("Montant ajouté au budget"), unitInput(`name="amount" value="${fmt(50000)}" autocomplete="off" autofocus`, t("DA"), { lg: true }), funded ? t("Commission ClipBoost de {rate} % en plus, prélevée sur votre crédit.", { rate: c.commissionRate }) : "")}
+          ${field(t("Montant ajouté au budget"), unitInput(`name="amount" value="${fmt(50000)}" autocomplete="off" autofocus`, t("DA"), { lg: true }), funded ? t("Commission {brand} de {rate} % en plus, prélevée sur votre crédit.", { rate: c.commissionRate }) : "")}
           ${agPresetRow(init.presets)}
         </div>
         ${funded ? "" : `<div class="mt-4">${alertBox("info", t("La campagne n'est pas encore approuvée : rien n'est prélevé pour l'instant. Le budget et la commission seront débités à l'approbation."))}</div>`}
@@ -985,7 +985,7 @@ function agencyModal() {
   if (m.type === "ag-credit") {
     const init = LIVE.recharge({ amount: fmt(250000), method: AG_METHODS[0][0] });
     return modalShell({
-      title: t("Recharger le crédit"), description: t("Carte Edahabia ou CIB : paiement en ligne, crédit ajouté aussitôt. Virement ou carte Visa / Mastercard : crédit ajouté à la confirmation de l'équipe ClipBoost."), form: "ag-credit", live: "recharge",
+      title: t("Recharger le crédit"), description: t("Carte Edahabia ou CIB : paiement en ligne, crédit ajouté aussitôt. Virement ou carte Visa / Mastercard : crédit ajouté à la confirmation de l'équipe {brand}."), form: "ag-credit", live: "recharge",
       body: `<div class="group/pay grid gap-5">
           <div class="grid gap-3">
             ${field(t("Montant"), unitInput(`name="amount" value="${fmt(250000)}" autocomplete="off" autofocus`, t("DA"), { lg: true }), t("Minimum {amount}.", { amount: da(10000) }))}
@@ -1003,7 +1003,7 @@ function agencyModal() {
               ${field(t("Expiration"), `<input name="cardExp" inputmode="numeric" autocomplete="cc-exp" maxlength="5" spellcheck="false" placeholder="${t("MM/AA")}" dir="ltr" data-card-exp class="${inputCls} tabular-nums"/>`)}
               ${field(t("Code de sécurité"), `<input name="cardCvc" inputmode="numeric" autocomplete="cc-csc" maxlength="3" spellcheck="false" placeholder="123" dir="ltr" data-card-cvc class="${inputCls} tabular-nums"/>`, t("3 chiffres, au dos de la carte."))}
             </div>
-            <p class="flex items-start gap-2 text-xs text-fg-muted">${icon("lock", "mt-px size-3.5 shrink-0 text-fg-subtle")}<span>${t("Le numéro complet de votre carte ne quitte jamais votre navigateur : seuls la marque et les 4 derniers chiffres sont transmis. Comme pour les autres moyens, le crédit est ajouté après confirmation du paiement par l'équipe ClipBoost.")}</span></p>
+            <p class="flex items-start gap-2 text-xs text-fg-muted">${icon("lock", "mt-px size-3.5 shrink-0 text-fg-subtle")}<span>${t("Le numéro complet de votre carte ne quitte jamais votre navigateur : seuls la marque et les 4 derniers chiffres sont transmis. Comme pour les autres moyens, le crédit est ajouté après confirmation du paiement par l'équipe {brand}.")}</span></p>
           </div>
         </div>
         <div data-live-out>${init[""]}</div>
@@ -1017,7 +1017,7 @@ function agencyModal() {
     if (u.verification === "pending" || u.verification === "verified") {
       return modalShell({
         title: t("Badge de vérification"),
-        body: alertBox("info", u.verification === "verified" ? t("Votre agence est déjà vérifiée : le badge bleu s'affiche à côté de son nom.") : t("Votre demande est déjà en cours d'examen par l'équipe ClipBoost.")),
+        body: alertBox("info", u.verification === "verified" ? t("Votre agence est déjà vérifiée : le badge bleu s'affiche à côté de son nom.") : t("Votre demande est déjà en cours d'examen par l'équipe {brand}.")),
         footer: closeBtn,
       });
     }
@@ -1026,11 +1026,11 @@ function agencyModal() {
       t("Les clippers savent que l'agence et ses campagnes sont authentiques."),
     ];
     return modalShell({
-      title: t("Demander le badge de vérification"), description: t("Le badge bleu indique aux clippers que votre agence a été vérifiée par l'équipe ClipBoost."), form: "ag-verify",
+      title: t("Demander le badge de vérification"), description: t("Le badge bleu indique aux clippers que votre agence a été vérifiée par l'équipe {brand}."), form: "ag-verify",
       body: `<div class="flex items-center gap-3 rounded-tile bg-muted p-3">${avatar(u, "md")}<p class="min-w-0 break-words text-sm font-semibold text-fg">${esc(u.name)}${NB}<span aria-hidden="true">${verifiedBadge("size-4")}</span></p></div>
         <ul class="mt-4 grid gap-2">${perks.map((p) => `<li class="flex gap-2 text-sm text-fg-muted">${icon("check", "mt-0.5 size-4 shrink-0 text-income")}<span>${p}</span></li>`).join("")}</ul>
         <div class="mt-5">${field(`${t("Message pour l'équipe")} ${agOptional()}`, `<textarea name="message" rows="3" maxlength="300" placeholder="${t("Site web, comptes officiels de la marque, registre du commerce…")}" class="${textareaCls}"></textarea>`, t("300 caractères maximum."))}</div>
-        <p class="mt-4 flex items-start gap-2 text-small text-fg-muted">${icon("info", "mt-0.5 size-4 shrink-0 text-fg-subtle")}<span>${t("L'équipe ClipBoost examine chaque demande et vous informe de sa décision par notification. Des justificatifs pourront vous être demandés.")}</span></p>`,
+        <p class="mt-4 flex items-start gap-2 text-small text-fg-muted">${icon("info", "mt-0.5 size-4 shrink-0 text-fg-subtle")}<span>${t("L'équipe {brand} examine chaque demande et vous informe de sa décision par notification. Des justificatifs pourront vous être demandés.")}</span></p>`,
       footer: `${cancel}<button type="submit" class="${btn("primary")}">${icon("send")}${t("Envoyer la demande")}</button>`,
     });
   }
@@ -1149,7 +1149,7 @@ function handleAgencySubmit(form, data) {
   }
   if (form === "ag-verify") {
     const message = String(data.message || "").trim();
-    return act("POST", "/api/verification", message ? { message } : {}, t("Demande de badge envoyée à l'équipe ClipBoost"), () => { state.modal = null; });
+    return act("POST", "/api/verification", message ? { message } : {}, t("Demande de badge envoyée à l'équipe {brand}"), () => { state.modal = null; });
   }
   if (form === "ag-profile") {
     if (!String(data.name || "").trim()) return agInvalid(form, "name", t("Indiquez le nom de l'agence."));

@@ -6,6 +6,7 @@ import {
   acceptedReferrer, normalizeReferralCode, payoutKey, referralCode, referralDecision, referralFirstName, referralLabel, referralNotice, referralRefusedText,
   keepsWeekReading, prizeLabel, prizeNotice, rankText, weekBounds, weekClosedText, weekGains, weekKey, weeklyRanking, weekNumber, weeksToClose, weekStart,
 } from "../lib/server/rules";
+import { BRAND_NAME } from "../lib/brand";
 
 const derby = { rate: 150, minPayout: 300, maxPayout: 30000 };
 
@@ -212,7 +213,7 @@ test("messagerie : extrait des notifications, campagnes de ClipBoost, conversati
   assert.equal(messageExcerpt("  Bonjour,\n  une question  "), "Bonjour, une question");
   const long = messageExcerpt("Bonjour, le festival accepte-t-il des extraits sous-titrés en arabe et en français ?");
   assert.ok(long.length <= 61 && long.endsWith("…") && !long.includes(" …"), long);
-  assert.equal(replyText(null, "Kahwa", "Oui."), "L'équipe ClipBoost a répondu sur « Kahwa » : « Oui. »");
+  assert.equal(replyText(null, "Kahwa", "Oui."), `L'équipe ${BRAND_NAME} a répondu sur « Kahwa » : « Oui. »`);
   assert.deepEqual([isTeamCampaign(null, null), isTeamCampaign("a1", "admin"), isTeamCampaign("a1", "agence")], [true, true, false]);
   const m = (id: string, senderId: string, at: number, readAt: number | null = null) => ({ id, campaignId: "c1", clipperId: "k1", senderId, body: id, createdAt: at, readAt });
   const rows = [m("r", "ag", 2), m("q", "k1", 1, 2), m("q2", "k1", 3), { ...m("o", "k2", 5), clipperId: "k2" }];

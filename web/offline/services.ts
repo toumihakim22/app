@@ -12,6 +12,7 @@ import {
 import { issueDocument } from "./documents";
 import { hashPassword, sha256Hex, strongEnough, verifyPassword } from "./password";
 import { referrerFor, rewardReferral } from "./referrals";
+import { BRAND_NAME } from "../../lib/brand";
 
 /** Contexte d'une requête : la copie de travail de la base et l'enregistrement immédiat (hors transaction). */
 export type Ctx = { db: Store; commit: () => void };
@@ -146,7 +147,7 @@ export async function login({ db }: Ctx, emailInput: string, password: string) {
   const ok = await verifyPassword(password, user?.passwordHash || NO_USER_HASH);
   if (!user || !user.passwordHash || !ok) throw badRequest("Email ou mot de passe incorrect");
   if (user.status === "Suspendu") throw forbidden("Votre compte est suspendu. Contactez le support.");
-  if (getSettings(db).maintenance && user.role !== "admin") throw forbidden("ClipBoost est en maintenance, réessayez plus tard");
+  if (getSettings(db).maintenance && user.role !== "admin") throw forbidden(`${BRAND_NAME} est en maintenance, réessayez plus tard`);
   createSession(db, user.id);
   return user;
 }
@@ -189,13 +190,13 @@ export function oauthDemo({ db }: Ctx, input: { provider: OAuthProvider; name: s
   const email = normalizeEmail(input.email), subject = `demo:${email}`;
   const linked = db.oauth.find((a) => a.provider === input.provider && a.subject === subject);
   let user = (linked && db.users.find((u) => u.id === linked.userId)) || db.users.find((u) => u.email === email);
-  const maintenance = "ClipBoost est en maintenance, réessayez plus tard.";
+  const maintenance = `${BRAND_NAME} est en maintenance, réessayez plus tard.`;
   if (user) {
     if (user.role === "admin") throw forbidden("Les comptes administrateurs se connectent avec leur mot de passe.");
     if (user.status === "Suspendu") throw forbidden("Ce compte est suspendu.");
     if (settings.maintenance) throw forbidden(maintenance);
   } else {
-    if (input.mode !== "signup") throw badRequest("Aucun compte ClipBoost n'est associé à cette adresse. Inscrivez-vous d'abord.");
+    if (input.mode !== "signup") throw badRequest(`Aucun compte ${BRAND_NAME} n'est associé à cette adresse. Inscrivez-vous d'abord.`);
     if (settings.maintenance) throw forbidden(maintenance);
     if (!settings.signupsOpen) throw forbidden("Les inscriptions sont fermées pour le moment.");
     // Aucun mot de passe (passwordHash vide) : l'utilisateur pourra en définir un dans ses paramètres.

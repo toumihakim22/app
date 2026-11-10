@@ -3,6 +3,7 @@
 // mêmes numéros, même mise en page, mêmes colonnes. Les PDF sont en français ou en anglais selon la langue du compte ;
 // un compte en arabe reçoit la version française (les polices standard des PDF n'ont pas de glyphes arabes).
 import { A4, hex, PdfPage, pdfDocument, textWidth, wrapText, type Rgb } from "./pdf";
+import { BRAND_NAME, BRAND_SLUG } from "../brand";
 
 export type DocumentKind = "facture" | "recu";
 export type DocumentLocale = "fr" | "en";
@@ -69,15 +70,15 @@ const LABELS = {
     issued: "Date d'émission", rechargeDate: "Date de la recharge", requestDate: "Date de la demande",
     reference: "Référence de la transaction", payMethod: "Moyen de paiement", payoutMethod: "Versé par",
     description: "Description", qty: "Qté", unit: "Prix unitaire", amount: "Montant",
-    topUp: "Recharge du crédit prépayé ClipBoost", topUpSub: "Crédit utilisé pour le budget et la commission de vos campagnes",
-    withdrawal: "Retrait de vos gains ClipBoost", standard: "Retrait standard", instant: "Retrait instantané", fee: "Frais de retrait instantané",
+    topUp: `Recharge du crédit prépayé ${BRAND_NAME}`, topUpSub: "Crédit utilisé pour le budget et la commission de vos campagnes",
+    withdrawal: `Retrait de vos gains ${BRAND_NAME}`, standard: "Retrait standard", instant: "Retrait instantané", fee: "Frais de retrait instantané",
     subtotal: "Sous-total", total: "Total", paid: "Montant payé", due: "Reste à payer",
     requested: "Montant demandé", fees: "Frais", net: "Net versé",
     paidStamp: "PAYÉE", paidOutStamp: "VERSÉ",
     online: "paiement en ligne, Chargily Pay",
     invoiceNote: "Recharge confirmée : le montant a été ajouté au crédit prépayé de votre agence. Montants en DA.",
     receiptNote: "Ce reçu confirme le versement de vos gains sur le compte enregistré dans votre profil. Montants en DA.",
-    generated: "Document généré électroniquement par ClipBoost le {date}.", thanks: "Merci de votre confiance.", page: "Page {n} / {total}",
+    generated: `Document généré électroniquement par ${BRAND_NAME} le {date}.`, thanks: "Merci de votre confiance.", page: "Page {n} / {total}",
     methods: { "virement bancaire": "Virement bancaire", "carte Visa / Mastercard": "Carte Visa / Mastercard", "carte Edahabia": "Carte Edahabia", "carte CIB": "Carte CIB", BaridiMob: "BaridiMob", CCP: "CCP", "RIB bancaire": "Virement sur RIB bancaire" } as Record<string, string>,
     dateLocale: "fr-FR", group: " ",
   },
@@ -88,15 +89,15 @@ const LABELS = {
     issued: "Issue date", rechargeDate: "Top-up date", requestDate: "Request date",
     reference: "Transaction reference", payMethod: "Payment method", payoutMethod: "Paid by",
     description: "Description", qty: "Qty", unit: "Unit price", amount: "Amount",
-    topUp: "ClipBoost prepaid credit top-up", topUpSub: "Credit used for your campaigns' budget and commission",
-    withdrawal: "Withdrawal of your ClipBoost earnings", standard: "Standard withdrawal", instant: "Instant withdrawal", fee: "Instant withdrawal fee",
+    topUp: `${BRAND_NAME} prepaid credit top-up`, topUpSub: "Credit used for your campaigns' budget and commission",
+    withdrawal: `Withdrawal of your ${BRAND_NAME} earnings`, standard: "Standard withdrawal", instant: "Instant withdrawal", fee: "Instant withdrawal fee",
     subtotal: "Subtotal", total: "Total", paid: "Amount paid", due: "Balance due",
     requested: "Amount requested", fees: "Fees", net: "Net paid out",
     paidStamp: "PAID", paidOutStamp: "PAID OUT",
     online: "online payment, Chargily Pay",
     invoiceNote: "Top-up confirmed: the amount was added to your agency's prepaid credit. Amounts in DA.",
     receiptNote: "This receipt confirms that your earnings were paid to the account saved in your profile. Amounts in DA.",
-    generated: "Document generated electronically by ClipBoost on {date}.", thanks: "Thank you for your business.", page: "Page {n} of {total}",
+    generated: `Document generated electronically by ${BRAND_NAME} on {date}.`, thanks: "Thank you for your business.", page: "Page {n} of {total}",
     methods: { "virement bancaire": "Bank transfer", "carte Visa / Mastercard": "Visa / Mastercard card", "carte Edahabia": "Edahabia card", "carte CIB": "CIB card", BaridiMob: "BaridiMob", CCP: "CCP", "RIB bancaire": "Bank account (RIB)" } as Record<string, string>,
     dateLocale: "en-GB", group: ",",
   },
@@ -134,7 +135,7 @@ function renderDocument(d: DocumentData): Uint8Array<ArrayBuffer> {
 
   // Bandeau de la marque : « ClipBoost » à gauche, type et numéro du document à droite.
   p.rect(0, H - 118, W, 118, { fill: BRAND });
-  p.text(M, H - 62, "ClipBoost", { size: 28, font: "bold", color: WHITE });
+  p.text(M, H - 62, BRAND_NAME, { size: 28, font: "bold", color: WHITE });
   p.text(M, H - 82, L.tagline, { size: 10, color: BRAND_ON });
   p.text(R, H - 58, L[d.kind], { size: 18, font: "bold", color: WHITE, align: "right" });
   p.text(R, H - 78, `${L.number} ${d.number}`, { size: 11, color: BRAND_ON, align: "right" });
@@ -152,8 +153,8 @@ function renderDocument(d: DocumentData): Uint8Array<ArrayBuffer> {
     }
     return ly;
   };
-  const issuer: [string, boolean][] = [[d.company.name || "ClipBoost", true]];
-  if (d.company.name && d.company.name !== "ClipBoost") issuer.push(["ClipBoost", false]);
+  const issuer: [string, boolean][] = [[d.company.name || BRAND_NAME, true]];
+  if (d.company.name && d.company.name !== BRAND_NAME) issuer.push([BRAND_NAME, false]);
   for (const line of d.company.address.split("\n").filter(Boolean)) issuer.push([line, false]);
   if (d.company.taxId) issuer.push([`${L.taxId}${L.colon}${d.company.taxId}`, false]);
   const customer: [string, boolean][] = [[d.customer.name, true]];
@@ -235,12 +236,12 @@ function renderDocument(d: DocumentData): Uint8Array<ArrayBuffer> {
   }
   p.text(M, y - 6, L.thanks, { size: 9.5, font: "bold", color: BRAND_DARK });
   p.line(M, 64, R, 64, { color: LINE });
-  const legal = [d.company.name || "ClipBoost", d.company.taxId ? `${L.taxId}${L.colon}${d.company.taxId}` : ""].filter(Boolean).join(" · ");
+  const legal = [d.company.name || BRAND_NAME, d.company.taxId ? `${L.taxId}${L.colon}${d.company.taxId}` : ""].filter(Boolean).join(" · ");
   p.text(M, 46, legal, { size: 8.5, color: MUTED });
   p.text(R, 46, `${d.number} · ${fill(L.page, { n: 1, total: 1 })}`, { size: 8.5, color: MUTED, align: "right" });
   p.text(M, 32, fill(L.generated, { date: dateText(d.issuedAt, L) }), { size: 8, color: MUTED });
 
-  return pdfDocument([p], { title: `${L[d.kind]} ${d.number}`, author: d.company.name || "ClipBoost", createdAt: d.issuedAt });
+  return pdfDocument([p], { title: `${L[d.kind]} ${d.number}`, author: d.company.name || BRAND_NAME, createdAt: d.issuedAt });
 }
 
 /** Facture d'une recharge validée (agence). */
@@ -295,4 +296,4 @@ export function transactionsCsv(rows: CsvTransaction[]): string {
 }
 
 /** Nom du fichier exporté : « clipboost-transactions-2026-10-19.csv ». */
-export const csvFilename = (now = new Date()) => `clipboost-transactions-${now.toISOString().slice(0, 10)}.csv`;
+export const csvFilename = (now = new Date()) => `${BRAND_SLUG}-transactions-${now.toISOString().slice(0, 10)}.csv`;

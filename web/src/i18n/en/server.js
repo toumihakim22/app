@@ -29,13 +29,13 @@ Object.assign(I18N.en, {
   "Le mot de passe doit contenir au moins 8 caractères, dont une lettre et un chiffre": "Your password must be at least 8 characters long and include a letter and a number",
   "Le nouveau mot de passe doit contenir au moins 8 caractères, dont une lettre et un chiffre": "Your new password must be at least 8 characters long and include a letter and a number",
   "Email ou mot de passe incorrect": "Incorrect email or password",
-  "ClipBoost est en maintenance, réessayez plus tard": "ClipBoost is under maintenance, please try again later",
-  "ClipBoost est en maintenance, réessayez plus tard.": "ClipBoost is under maintenance, please try again later.",
+  "{brand} est en maintenance, réessayez plus tard": "{brand} is under maintenance, please try again later",
+  "{brand} est en maintenance, réessayez plus tard.": "{brand} is under maintenance, please try again later.",
   "Mot de passe actuel incorrect": "Current password is incorrect",
   // Connexion Google, Apple ou Discord simulée (version autonome, POST /api/auth/oauth/demo).
   "Les comptes administrateurs se connectent avec leur mot de passe.": "Administrator accounts sign in with their password.",
   "Ce compte est suspendu.": "This account is suspended.",
-  "Aucun compte ClipBoost n'est associé à cette adresse. Inscrivez-vous d'abord.": "No ClipBoost account is linked to this address. Please sign up first.",
+  "Aucun compte {brand} n'est associé à cette adresse. Inscrivez-vous d'abord.": "No {brand} account is linked to this address. Please sign up first.",
   "Les inscriptions sont fermées pour le moment.": "Sign-ups are closed for now.",
 
   // ---------- Validation des formulaires (lib/server/validation.ts) ----------
@@ -190,7 +190,7 @@ Object.assign(I18N.en, {
   "En pause": "Paused",
   "Terminée": "Ended",
   "Refusée": "Rejected",
-  "Équipe ClipBoost": "ClipBoost Team",
+  "Équipe {brand}": "{brand} Team",
   // ---------- Messagerie par campagne (lib/server/services/messages.ts, validation.ts) ----------
   "Écrivez votre message": "Write your message",
   "Campagne manquante": "Missing campaign",
@@ -332,7 +332,7 @@ I18N_RX.en.push(
   [/^Nouvelle question de (.+) sur « (.+) » : « ([\s\S]*) »$/, "New question from $1 on “$2”: “$3”"],
   [/^Nouveau message de (.+) sur « (.+) » : « ([\s\S]*) »$/, "New message from $1 on “$2”: “$3”"],
   [/^Réponse de (.+) sur « (.+) » : « ([\s\S]*) »$/, "Reply from $1 on “$2”: “$3”"],
-  [/^L'équipe ClipBoost a répondu sur « (.+) » : « ([\s\S]*) »$/, "The ClipBoost team replied on “$1”: “$2”"],
+  [/^L'équipe \{brand\} a répondu sur « (.+) » : « ([\s\S]*) »$/, "The {brand} team replied on “$1”: “$2”"],
 );
 
 // Classement hebdomadaire (lib/server/services/leaderboard.ts, rules.ts : prizeLabel, prizeNotice, weekClosedText ;

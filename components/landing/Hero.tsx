@@ -1,6 +1,7 @@
 import { transactions } from "@/data/landing";
 import IncomeCard from "./IncomeCard";
 import TransactionRow from "./TransactionRow";
+import { BRAND_NAME } from "../../lib/brand";
 
 // Chaînes équivalentes à btn() de web/src/ui.js (§7).
 const FOCUS = "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus";
@@ -27,7 +28,7 @@ export default function Hero() {
             Transformez vos clips en <span className="text-brand-fg">revenus<span className="-ml-[0.08em]">.</span></span>
           </h1>
           <p className="mt-5 max-w-xl text-lg leading-8 text-fg-muted">
-            ClipBoost met en relation les marques et les créateurs de vidéos courtes. Choisissez une campagne, publiez vos clips et
+            {BRAND_NAME} met en relation les marques et les créateurs de vidéos courtes. Choisissez une campagne, publiez vos clips et
             suivez vos gains depuis un seul tableau de bord.
           </p>
           <div className="mt-8 flex flex-col gap-3 sm:flex-row">

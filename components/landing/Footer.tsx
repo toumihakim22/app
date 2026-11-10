@@ -1,4 +1,5 @@
 import Logo from "./Logo";
+import { BRAND_NAME } from "../../lib/brand";
 
 const FOCUS = "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus";
 
@@ -34,7 +35,7 @@ const legal = [
   {
     id: "conditions",
     title: "Conditions d'utilisation",
-    text: "ClipBoost met en relation des clippers et des marques. Les gains sont calculés sur les vues des clips validés, selon le tarif, le seuil et le plafond de chaque campagne, puis restent quelques jours en rétention avant d'être retirables. Un clip qui ne respecte pas les règles de sa campagne ou dont les vues sont gonflées artificiellement est refusé, et le compte peut être suspendu.",
+    text: `${BRAND_NAME} met en relation des clippers et des marques. Les gains sont calculés sur les vues des clips validés, selon le tarif, le seuil et le plafond de chaque campagne, puis restent quelques jours en rétention avant d'être retirables. Un clip qui ne respecte pas les règles de sa campagne ou dont les vues sont gonflées artificiellement est refusé, et le compte peut être suspendu.`,
   },
   {
     id: "confidentialite",
@@ -44,7 +45,7 @@ const legal = [
   {
     id: "mentions-legales",
     title: "Mentions légales",
-    text: "ClipBoost est une plateforme de mise en relation entre créateurs de clips et marques. Les marques citées sur cette page appartiennent à leurs propriétaires respectifs.",
+    text: `${BRAND_NAME} est une plateforme de mise en relation entre créateurs de clips et marques. Les marques citées sur cette page appartiennent à leurs propriétaires respectifs.`,
   },
 ];
 
@@ -84,7 +85,7 @@ export default function Footer() {
           ))}
         </div>
         <div className="flex flex-col gap-3 border-t border-line py-6 text-xs text-fg-subtle sm:flex-row sm:items-center sm:justify-between">
-          <p>© 2026 ClipBoost</p>
+          <p>© 2026 {BRAND_NAME}</p>
         </div>
       </div>
     </footer>
