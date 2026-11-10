@@ -272,6 +272,7 @@ lib/server/          base de données, authentification, règles et services
 drizzle/             migrations SQL
 scripts/             migrate, seed et relevé des vues (cron:views)
 web/                 application /espace (JavaScript, sans framework) et version autonome (web/offline/)
+  src/clipper/, src/admin/, src/agency/   un fichier par partie de chaque espace (01-commun.js, 02-…), collés dans l'ordre par web/build.mjs
 tests/               tests des règles et du parcours API
 ```
 

@@ -36,7 +36,9 @@ const dictionaries = existsSync(i18nDir)
 // Nom de la plateforme (brand.json, voir lib/brand.ts) : constante BRAND de l'application, et titre de la page.
 const brand = JSON.parse(readFileSync(join(dir, "..", "brand.json"), "utf8"));
 if (!brand.name?.trim() || !/^[a-z0-9-]+$/.test(brand.slug ?? "")) throw new Error("brand.json : « name » non vide et « slug » en minuscules (lettres, chiffres, tirets) sont obligatoires.");
-const files = ["i18n.js", ...dictionaries, "data.js", "ui.js", "auth.js", "clipper.js", "admin.js", "agency.js", "main.js"];
+// Espaces Clipper, Admin et Agence : un dossier chacun, ses fichiers collés dans l'ordre de leur numéro (01-commun.js…).
+const area = (name) => readdirSync(join(dir, "src", name)).filter((f) => f.endsWith(".js")).sort().map((f) => join(name, f));
+const files = ["i18n.js", ...dictionaries, "data.js", "ui.js", "auth.js", ...area("clipper"), ...area("admin"), ...area("agency"), "main.js"];
 const parts = files.map((f) => `// ---- web/src/${f.replace(/\\/g, "/")} ----\n${readFileSync(join(dir, "src", f), "utf8")}`);
 const js = `${readFileSync(join(dir, "theme.js"), "utf8")}\n(function () {\n"use strict";\nconst BRAND = ${JSON.stringify(brand.name)};\n${parts.join("\n")}\n})();`;
 

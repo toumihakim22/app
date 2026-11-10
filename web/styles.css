@@ -1,5 +1,8 @@
 @import "tailwindcss" source(none);
 @source "./src/*.js";
+@source "./src/clipper/*.js";
+@source "./src/admin/*.js";
+@source "./src/agency/*.js";
 @source "./index.html";
 @import "../app/theme.css";
 @import "../app/dark.css";
